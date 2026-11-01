@@ -2,6 +2,14 @@
 
 **Current phase:** 1 — Skeleton
 
+## Phase 2 — Catalog and measurements (in review)
+
+- [x] Catalog YAML models, JSON Schemas, validation, SQLite migrations (#4)
+- [x] Plex importer and TMDB gap filler (#5)
+- [x] `make inventory` (#6)
+- [ ] First real import: Plex on the NAS was down on 2026-11-01, so the dry run is pending
+- [ ] Done when the report lists episodes per channel and year, plus gaps, from real data
+
 ## Phase 1 — Skeleton
 
 - [x] Repo layout, Makefile, server (`/health`, `/version`), web "hello" screen, fixture generator, ops files, workflows

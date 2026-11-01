@@ -2,6 +2,8 @@
 .env
 .fixtures/
 .deploy/
+data/
+reports/
 
 # Python
 __pycache__/

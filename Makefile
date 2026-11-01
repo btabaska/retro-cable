@@ -6,10 +6,11 @@ SHELL := bash
 UV := uv run --project server
 COMPOSE_TEST := docker compose -f ops/compose.yml -f ops/compose.test.yml
 PY_PATHS := src tests ../tools/fixtures ../ops/tests
+RC_DB ?= $(CURDIR)/data/retro-cable.db
 
 .PHONY: help bootstrap fixtures dev lint lint-server lint-web test test-server test-web \
 	test-tools test-ops e2e e2e-stack api api-check stack-up stack-down \
-	catalog-check catalog-schema
+	catalog-check catalog-schema ingest inventory
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -63,6 +64,13 @@ catalog-check: ## Validate catalog/*.yaml (schemas and cross-file checks)
 
 catalog-schema: ## Regenerate catalog/schema/*.json from the models
 	cd server && uv run python -m retro_cable.catalog.schema ../catalog/schema
+
+ingest: ## Import from Plex, then fill gaps from TMDB (needs PLEX_URL, PLEX_TOKEN, TMDB_TOKEN)
+	cd server && uv run python -m retro_cable.ingest plex --db $(RC_DB) --catalog ../catalog
+	cd server && uv run python -m retro_cable.ingest tmdb --db $(RC_DB)
+
+inventory: ## Write reports/inventory.md and .json from the catalog DB
+	cd server && uv run python -m retro_cable.inventory --db $(RC_DB) --catalog ../catalog --out ../reports
 
 api: ## Regenerate server/openapi.json and the web client
 	cd server && uv run python -m retro_cable.openapi openapi.json
