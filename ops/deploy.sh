@@ -32,12 +32,13 @@ case $source in
   pull) ;;
   build)
     head=$(git -C "$here" rev-parse HEAD)
+    matches=no
     if [[ $version == sha-* ]]; then
-      matches=$([[ $head == "${version#sha-}"* ]] && echo yes || true)
-    else
-      matches=$(git -C "$here" tag --points-at HEAD | grep -qx "v$version" && echo yes || true)
+      if [[ $head == "${version#sha-}"* ]]; then matches=yes; fi
+    elif git -C "$here" tag --points-at HEAD | grep -qx "v$version"; then
+      matches=yes
     fi
-    if [[ -z $matches ]]; then
+    if [[ $matches == no ]]; then
       echo "deploy: checkout $head does not match $version" >&2
       exit 2
     fi
