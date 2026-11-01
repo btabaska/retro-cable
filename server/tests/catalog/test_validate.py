@@ -1,5 +1,5 @@
 from retro_cable.catalog import load_catalog, validate
-from tests.catalog.conftest import CARRIAGE, CHANNELS, HOLIDAYS, OVERRIDES, SYNTHETIC, MakeCatalog
+from tests.conftest import CARRIAGE, CHANNELS, HOLIDAYS, OVERRIDES, SYNTHETIC, MakeCatalog
 
 
 def errors(make_catalog: MakeCatalog, **replace: str | None) -> list[str]:

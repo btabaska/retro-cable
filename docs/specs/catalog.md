@@ -136,3 +136,24 @@ The scheduler's inputs are five YAML files in `catalog/`. Each starts with a `ya
   - `movies`, with a premiere date;
   - `import_runs`.
 - Overrides and synthetic dates are not written into the database. They are applied when the schedule is read, so editing the YAML never needs a re-import.
+
+### Plex import (`python -m retro_cable.ingest plex`)
+
+- Reads `PLEX_URL` and `PLEX_TOKEN` from the environment. The token is sent as the `X-Plex-Token` header, never in a URL, and is never printed.
+- **What it reads:** walks the show and movie library sections:
+  - shows from `/library/sections/{key}/all?type=2&includeGuids=1`;
+  - episodes from `/library/metadata/{show}/allLeaves`;
+  - movies from `/library/sections/{key}/all?includeGuids=1`.
+- **Matching:** only carried titles are imported. Titles are compared case-, accent- and punctuation-insensitively, then again without a trailing `(year)`. `overrides.yaml` `plex_title` takes precedence, and `exclude` skips a show. Everything unmatched is listed in the run stats.
+- **What it stores:** TMDB, TVDB and IMDb ids from Plex GUIDs, the original air date (`originallyAvailableAt`), runtime, and the first media part's file path and size. Items without an episode number (extras) are skipped.
+- **Re-runs** are idempotent. A file Plex no longer has is detached (`file_path` cleared) but its episode row stays. Plex never erases a known air date or runtime with an empty value, and Plex air dates win over TMDB ones.
+- Each run is recorded in `import_runs` with its stats.
+
+### TMDB gap filling (`python -m retro_cable.ingest tmdb`)
+
+- Reads `TMDB_TOKEN` (a v4 read access token, sent as a bearer header). This is the app's only runtime call outside the LAN, made by the worker.
+- **Interface:** `MetadataSource` (`seasons`, `season`), with `TmdbClient` as the implementation. Tests use recorded responses and a fake.
+- **For every show with a TMDB id:**
+  - fills only empty air dates (source `tmdb`), runtimes and titles;
+  - adds episodes Plex doesn't have, with no file, which gives the inventory its expected-versus-on-disk counts.
+- A show that fails is listed and skipped. Shows without a TMDB id are listed.

@@ -1,0 +1,5 @@
+{"MediaContainer": {"size": 3, "allowSync": false, "title1": "Plex Library", "Directory": [
+  {"allowSync": true, "art": "/:/resources/show-fanart.jpg", "key": "1", "type": "show", "title": "TV Shows", "agent": "tv.plex.agents.series", "scanner": "Plex TV Series", "language": "en-US", "uuid": "00000000-0000-0000-0000-000000000001", "Location": [{"id": 1, "path": "/data/tv"}]},
+  {"allowSync": true, "key": "2", "type": "movie", "title": "Movies", "agent": "tv.plex.agents.movie", "scanner": "Plex Movie", "language": "en-US", "uuid": "00000000-0000-0000-0000-000000000002", "Location": [{"id": 2, "path": "/data/movies"}]},
+  {"allowSync": false, "key": "3", "type": "artist", "title": "Music", "agent": "tv.plex.agents.music", "uuid": "00000000-0000-0000-0000-000000000003"}
+]}}
