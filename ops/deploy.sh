@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Deploy a released image version: snapshot the DB, pull, start, smoke test, roll back on failure.
-# Run by Hermes on the homelab only.   Usage: ops/deploy.sh <version>   (e.g. 0.1.0, sha-1a2b3c4)
 set -euo pipefail
+# Deploy a released image version: snapshot the DB, pull, start, smoke test, roll back on failure.
+# Run on the homelab only.   Usage: ops/deploy.sh <version>   (e.g. 0.1.0, sha-1a2b3c4)
+#   RC_IMAGE_SOURCE=pull   (default) pull the version's images from GHCR
+#   RC_IMAGE_SOURCE=build  build them from this checkout, which must be at <version>
 
 here=$(cd "$(dirname "$0")" && pwd)
 state=${RC_STATE_DIR:-$here/../.deploy}
@@ -14,6 +16,28 @@ if [[ ! $version =~ ^([0-9]+\.[0-9]+\.[0-9]+|sha-[0-9a-f]{7,40})$ ]]; then
   exit 2
 fi
 
+source=${RC_IMAGE_SOURCE:-pull}
+case $source in
+  pull) ;;
+  build)
+    head=$(git -C "$here" rev-parse HEAD)
+    if [[ $version == sha-* ]]; then
+      matches=$([[ $head == "${version#sha-}"* ]] && echo yes || true)
+    else
+      matches=$(git -C "$here" tag --points-at HEAD | grep -qx "v$version" && echo yes || true)
+    fi
+    if [[ -z $matches ]]; then
+      echo "deploy: checkout $head does not match $version" >&2
+      exit 2
+    fi
+    export RC_GIT_SHA=${head:0:7}
+    ;;
+  *)
+    echo "deploy: RC_IMAGE_SOURCE must be pull or build" >&2
+    exit 2
+    ;;
+esac
+
 mkdir -p "$state"
 current=$(cat "$state/current" 2>/dev/null || true)
 
@@ -25,7 +49,11 @@ if [[ -n $current ]]; then
 fi
 
 export RC_VERSION=$version
-docker compose -f "$here/compose.yml" pull
+if [[ $source == build ]]; then
+  docker compose -f "$here/compose.yml" -f "$here/compose.build.yml" build
+else
+  docker compose -f "$here/compose.yml" pull
+fi
 docker compose -f "$here/compose.yml" up -d --wait
 
 if RC_EXPECT_VERSION=$version "$here/smoke.sh"; then

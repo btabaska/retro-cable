@@ -1,5 +1,6 @@
 # Production stack. Deployed by ops/deploy.sh, which sets RC_VERSION.
-# The host Caddy (ops/caddy/retro-cable.caddy) proxies tv.home.tabaska.us to the web port.
+# The homelab Caddy shares the external `edge` network and proxies tv.home.tabaska.us to
+# retro-cable-web:80 (ops/caddy/retro-cable.caddy). Host settings go in ops/.env.
 name: retro-cable
 
 services:
@@ -27,10 +28,23 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    # Loopback only, for ops/smoke.sh; LAN clients come in through Caddy.
     ports:
       - "${RC_WEB_BIND:-127.0.0.1}:${RC_WEB_PORT:-8080}:80"
+    # Normalized media on the NAS, mounted on the host (Phase 4 adds signed URLs).
+    volumes:
+      - ${RC_MEDIA_DIR:-./media}:/srv/media:ro
+    networks:
+      default:
+      edge:
+        aliases: [retro-cable-web]
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
       interval: 10s
       timeout: 3s
       retries: 3
+
+networks:
+  edge:
+    external: true
+    name: ${RC_EDGE_NETWORK:-edge}

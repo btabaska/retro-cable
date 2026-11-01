@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Restore the previously deployed image version and its DB snapshot, then smoke test.
 # Run by Hermes on the homelab only, automatically after a failed deploy or after you approve.
-set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 state=${RC_STATE_DIR:-$here/../.deploy}

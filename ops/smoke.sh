@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Post-deploy smoke test: web app, /api/health and /api/version.
 #   RC_SMOKE_URL       base URL (default http://127.0.0.1:8080)
-#   RC_EXPECT_VERSION  if set, /api/version must report it
-set -euo pipefail
+#   RC_EXPECT_VERSION  if set, /api/version must report it: x.y.z checks the version,
+#                      sha-<hex> checks the commit
 
 base=${RC_SMOKE_URL:-http://127.0.0.1:8080}
 retries=${RC_SMOKE_RETRIES:-10}
@@ -23,7 +24,13 @@ fetch() {
 fetch / | grep -q 'id="root"' || { echo "smoke: web app missing" >&2; exit 1; }
 fetch /api/health | grep -q '"status":"ok"' || { echo "smoke: unhealthy" >&2; exit 1; }
 version_json=$(fetch /api/version)
-if [[ -n ${RC_EXPECT_VERSION:-} ]] && ! grep -q "\"version\":\"$RC_EXPECT_VERSION\"" <<<"$version_json"; then
+expected=${RC_EXPECT_VERSION:-}
+if [[ $expected == sha-* ]]; then
+  pattern="\"commit\":\"${expected:4:7}"
+else
+  pattern="\"version\":\"$expected\""
+fi
+if [[ -n $expected ]] && ! grep -q "$pattern" <<<"$version_json"; then
   echo "smoke: expected version $RC_EXPECT_VERSION, got $version_json" >&2
   exit 1
 fi

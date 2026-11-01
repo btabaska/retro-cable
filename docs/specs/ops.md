@@ -193,21 +193,30 @@ When a job fails in a way its runbook doesn't cover, Hermes opens a GitHub issue
 
 ## Implemented (Phase 1)
 
+### Where it runs
+
+- **Stack:** the Ubuntu Mac mini (`mini`, 192.168.10.2), the homelab's Docker host. It has 4 cores, 7.6 GB RAM and about 2 GB free, which is plenty for api + web. The NAS has Docker but is the media store, the rig is the gaming/AI PC the plan rules out, and the mini already runs the homelab Caddy.
+- **Media:** stored on the NAS (Synology, 192.168.10.4) and mounted on the mini over SMB, like the mini's other NAS shares. It is bind-mounted read-only into `web` at `/srv/media` (`RC_MEDIA_DIR`).
+- **Checkout:** `/opt/retro-cable` on the mini, cloned with a read-only deploy key.
+- **Reverse proxy:** the `caddy` container in `/opt/stacks/caddy`, on the external `edge` network. The live site block mirrors `ops/caddy/retro-cable.caddy`, and the Home repo (`foss-setup/configs/docker-stack/stacks/caddy/`) tracks it.
+- **DNS:** the homelab wildcard already resolves `tv.home.tabaska.us` to the mini on the LAN.
+
 ### Images and compose
 
 - Two images on GHCR: `ghcr.io/btabaska/retro-cable-api` (`server/Dockerfile`) and `ghcr.io/btabaska/retro-cable-web` (`web/Dockerfile`, Caddy serving the static build).
-- `ops/compose.yml` runs `api` and `web`. Only `web` publishes a port, bound to `${RC_WEB_BIND:-127.0.0.1}:${RC_WEB_PORT:-8080}`. Inside the web container, Caddy serves the app, proxies `/api/*` to `api:8000` with the prefix stripped, and serves `/media/*` from `/srv/media`.
-- The host Caddy imports `ops/caddy/retro-cable.caddy`, which drops any client outside `private_ranges` and proxies to the web port. TLS (DNS-01) is configured in the host Caddy's global options.
-- `ops/compose.test.yml` overrides the stack to build both images from source, use a throwaway data volume and mount `.fixtures/` read-only at `/srv/media`. `make stack-up` and `make stack-down` start and stop it.
+- `ops/compose.yml` runs `api` and `web`. `web` joins the external `edge` network under the alias `retro-cable-web`, so the homelab Caddy proxies to `retro-cable-web:80`. Its only published port is on loopback (`${RC_WEB_BIND:-127.0.0.1}:${RC_WEB_PORT:-8080}`), for `smoke.sh`. Inside the web container, Caddy serves the app, proxies `/api/*` to `api:8000` with the prefix stripped, and serves `/media/*` from `/srv/media`.
+- `ops/caddy/retro-cable.caddy` imports the homelab's `local_tls` snippet (Let's Encrypt via Cloudflare DNS-01), drops any client outside `private_ranges`, and proxies to `retro-cable-web:80`. The homelab Caddy is in Docker, so `remote_ip` sees the client as Docker NAT sees it. The real LAN boundary is that no port is forwarded, and DNS answers only inside the house.
+- `ops/compose.test.yml` overrides the stack to build both images from source, use a throwaway data volume, create a private `retro-cable-test-edge` network and mount `.fixtures/` read-only at `/srv/media`. `make stack-up` and `make stack-down` start and stop it.
+- `ops/compose.build.yml` adds build contexts with the same image names, for `RC_IMAGE_SOURCE=build`.
 - Host settings and secrets go in `ops/.env` (see `ops/.env.example`); compose reads it if present.
 
 ### Deploy scripts
 
 All use `set -euo pipefail` and are covered by `ops/tests/`.
 
-- `ops/deploy.sh <version>` accepts only `x.y.z` or `sha-<hex>`. It records the running version as previous, snapshots `retro-cable.db` from the data directory, pulls and starts the stack, and runs `smoke.sh`. On failure it calls `rollback.sh` and exits non-zero.
+- `ops/deploy.sh <version>` accepts only `x.y.z` or `sha-<hex>`. With `RC_IMAGE_SOURCE=pull` (the default) it pulls that version from GHCR. With `RC_IMAGE_SOURCE=build` it builds from the checkout, and refuses unless HEAD is that commit or carries tag `v<version>`. Build mode is used on the mini until it has a read-only GHCR token, because the packages are private. It records the running version as previous, snapshots `retro-cable.db` from the data directory, pulls and starts the stack, and runs `smoke.sh`. On failure it calls `rollback.sh` and exits non-zero.
 - `ops/rollback.sh` restores the previous version and its DB snapshot, then runs `smoke.sh`.
-- `ops/smoke.sh` checks the web app, `/api/health` and `/api/version` (and the expected version, when given), with retries. Tuning, media ranges and Grafana join in later phases.
+- `ops/smoke.sh` checks the web app, `/api/health` and `/api/version`. When an expected version is given, it checks the version for `x.y.z` and the commit for `sha-<hex>`, with retries. Tuning, media ranges and Grafana join in later phases.
 - State lives in `.deploy/` at the repo root (`current`, `previous`, `db-<version>.sqlite`); override with `RC_STATE_DIR`. The data directory defaults to `ops/data`; override with `RC_DATA_DIR`.
 
 ### CI/CD
