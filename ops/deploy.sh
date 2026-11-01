@@ -6,6 +6,17 @@ set -euo pipefail
 #   RC_IMAGE_SOURCE=build  build them from this checkout, which must be at <version>
 
 here=$(cd "$(dirname "$0")" && pwd)
+
+# Host settings: RC_* keys from ops/.env, unless already set in the environment.
+env_file=${RC_ENV_FILE:-$here/.env}
+if [[ -f $env_file ]]; then
+  while IFS='=' read -r key value; do
+    [[ $key =~ ^RC_[A-Z_]+$ && -z ${!key:-} ]] || continue
+    value=${value%%#*}
+    value=${value%"${value##*[![:space:]]}"}
+    export "$key=$value"
+  done <"$env_file"
+fi
 state=${RC_STATE_DIR:-$here/../.deploy}
 data=${RC_DATA_DIR:-$here/data}
 export RC_DATA_DIR=$data

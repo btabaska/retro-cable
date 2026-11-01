@@ -298,3 +298,22 @@ def test_deploy_build_mode_refuses_a_checkout_that_does_not_match(
     assert result.returncode != 0
     assert "does not match" in result.stderr
     assert not log.exists()
+
+
+def test_deploy_reads_host_settings_from_env_file(
+    tmp_path: Path, fake_docker: tuple[Path, Path], stack: tuple[str, Path]
+) -> None:
+    bin_dir, log = fake_docker
+    url, root = stack
+    port = url.rsplit(":", 1)[1]
+    (root / "api" / "version").write_text(f'{{"version":"0.0.0","commit":"{head_sha()}"}}')
+    env_file = tmp_path / "host.env"
+    env_file.write_text(f"RC_IMAGE_SOURCE=build\nRC_WEB_PORT={port}\n")
+    env = deploy_env(tmp_path, bin_dir, url)
+    del env["RC_SMOKE_URL"]  # smoke must find the stack through RC_WEB_PORT
+    env["RC_ENV_FILE"] = str(env_file)
+
+    result = run("deploy.sh", f"sha-{head_sha()}", env=env)
+
+    assert result.returncode == 0, result.stderr
+    assert any(c.endswith(" build") for c in log.read_text().splitlines())

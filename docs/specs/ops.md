@@ -217,6 +217,7 @@ All use `set -euo pipefail` and are covered by `ops/tests/`.
 - `ops/deploy.sh <version>` accepts only `x.y.z` or `sha-<hex>`. With `RC_IMAGE_SOURCE=pull` (the default) it pulls that version from GHCR. With `RC_IMAGE_SOURCE=build` it builds from the checkout, and refuses unless HEAD is that commit or carries tag `v<version>`. Build mode is used on the mini until it has a read-only GHCR token, because the packages are private. It records the running version as previous, snapshots `retro-cable.db` from the data directory, pulls and starts the stack, and runs `smoke.sh`. On failure it calls `rollback.sh` and exits non-zero.
 - `ops/rollback.sh` restores the previous version and its DB snapshot, then runs `smoke.sh`.
 - `ops/smoke.sh` checks the web app, `/api/health` and `/api/version`. When an expected version is given, it checks the version for `x.y.z` and the commit for `sha-<hex>`, with retries. Tuning, media ranges and Grafana join in later phases.
+- `deploy.sh` and `rollback.sh` read `RC_*` keys from `ops/.env` (or the file named by `RC_ENV_FILE`), and variables already in the environment win. `smoke.sh` defaults to `http://127.0.0.1:$RC_WEB_PORT`.
 - State lives in `.deploy/` at the repo root (`current`, `previous`, `db-<version>.sqlite`); override with `RC_STATE_DIR`. The data directory defaults to `ops/data`; override with `RC_DATA_DIR`.
 
 ### CI/CD
