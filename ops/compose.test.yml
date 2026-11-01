@@ -1,0 +1,23 @@
+# Local test stack: builds from source and serves fixture media.
+#   make fixtures
+#   docker compose -f ops/compose.yml -f ops/compose.test.yml up -d --build --wait
+services:
+  api:
+    image: retro-cable-api:test
+    build:
+      context: ../server
+      args:
+        RC_GIT_SHA: ${RC_GIT_SHA:-test}
+    volumes:
+      - api-data:/data  # replaces the /data bind mount
+
+  web:
+    image: retro-cable-web:test
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+    volumes:
+      - ../.fixtures:/srv/media:ro
+
+volumes:
+  api-data:

@@ -1,0 +1,36 @@
+# Production stack. Deployed by ops/deploy.sh, which sets RC_VERSION.
+# The host Caddy (ops/caddy/retro-cable.caddy) proxies tv.home.tabaska.us to the web port.
+name: retro-cable
+
+services:
+  api:
+    image: ghcr.io/btabaska/retro-cable-api:${RC_VERSION:-edge}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RC_DATA_DIR: /data
+    volumes:
+      - ${RC_DATA_DIR:-./data}:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # Static browser app plus a reverse proxy: /api/* -> api, /media/* -> media files.
+  web:
+    image: ghcr.io/btabaska/retro-cable-web:${RC_VERSION:-edge}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${RC_WEB_BIND:-127.0.0.1}:${RC_WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3

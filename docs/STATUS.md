@@ -2,6 +2,13 @@
 
 **Current phase:** 1 — Skeleton
 
+## Phase 1 — Skeleton
+
+- [x] Repo layout, Makefile, server (`/health`, `/version`), web "hello" screen, fixture generator, ops files, workflows
+- [x] `docs/specs/` split from `docs/plan.md`
+- [ ] Hermes deploys it (needs the homelab host)
+- [ ] Mac runner posts its first `local-test` report
+
 ## Phase 0 — Permits (Brandon)
 
 - [x] Private repo `btabaska/retro-cable` created
