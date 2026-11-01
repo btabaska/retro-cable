@@ -122,5 +122,8 @@ def test_cli_writes_markdown_and_json(
 
 def test_cli_works_before_any_import(make_catalog: MakeCatalog, tmp_path: Path) -> None:
     db_path = tmp_path / "not-yet" / "retro-cable.db"
-    assert main(["--db", str(db_path), "--catalog", str(make_catalog()), "--out", str(tmp_path / "r")]) == 0
+    assert (
+        main(["--db", str(db_path), "--catalog", str(make_catalog()), "--out", str(tmp_path / "r")])
+        == 0
+    )
     assert "x-men" in (tmp_path / "r" / "inventory.md").read_text()
