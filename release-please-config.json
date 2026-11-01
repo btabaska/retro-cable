@@ -6,7 +6,10 @@
   "packages": {
     ".": {
       "package-name": "retro-cable",
-      "extra-files": ["server/src/retro_cable/__init__.py"]
+      "extra-files": [
+        "server/src/retro_cable/__init__.py"
+      ],
+      "initial-version": "0.1.0"
     }
   }
 }

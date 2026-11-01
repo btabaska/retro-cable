@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Restore the previously deployed image version and its DB snapshot, then smoke test.
 # Run by Hermes on the homelab only, automatically after a failed deploy or after you approve.
-set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
+
+# Host settings: RC_* keys from ops/.env, unless already set in the environment.
+env_file=${RC_ENV_FILE:-$here/.env}
+if [[ -f $env_file ]]; then
+  while IFS='=' read -r key value; do
+    [[ $key =~ ^RC_[A-Z_]+$ && -z ${!key:-} ]] || continue
+    value=${value%%#*}
+    value=${value%"${value##*[![:space:]]}"}
+    export "$key=$value"
+  done <"$env_file"
+fi
 state=${RC_STATE_DIR:-$here/../.deploy}
 data=${RC_DATA_DIR:-$here/data}
 export RC_DATA_DIR=$data
