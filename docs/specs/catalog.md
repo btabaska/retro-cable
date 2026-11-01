@@ -157,3 +157,28 @@ The scheduler's inputs are five YAML files in `catalog/`. Each starts with a `ya
   - fills only empty air dates (source `tmdb`), runtimes and titles;
   - adds episodes Plex doesn't have, with no file, which gives the inventory its expected-versus-on-disk counts.
 - A show that fails is listed and skipped. Shows without a TMDB id are listed.
+
+### Inventory (`make inventory`)
+
+- `python -m retro_cable.inventory --db --catalog --out` writes `inventory.md` and `inventory.json`. `make inventory` writes them to `reports/` (gitignored) from `data/retro-cable.db`, or from `RC_DB` if set.
+- **Rows:** one per channel per year in the year range, only for years the channel is on the dial (launched, or library).
+  - Shows: carried shows whose carriage window overlaps the year.
+  - Expected: those shows' episodes eligible by Dec 31 of that year, plus every episode of a library show.
+  - On disk: the expected episodes that have a file.
+  - Missing: expected minus on disk.
+  - Movies: carried movies already premiered by Dec 31 (or with an unknown premiere), and how many are on disk.
+- **Effective air dates** (`effective_dates`, shared with the scheduler):
+  - per-episode dates from `overrides.yaml` replace the originals (`S1E2` and `S01E02` are equivalent);
+  - then a synthetic premiere, or failing that a US debut, shifts the whole show;
+  - undated episodes are never eligible.
+- **Library rules:**
+  - A library *channel* is always on the dial, but its items still respect their air dates (Halloweentown can't air before October 1998).
+  - A library *show* (`synthetic.yaml`) has every episode eligible.
+- **Gaps:**
+  - carried shows not in Plex;
+  - shows in Plex with no episode files;
+  - episodes on disk without an air date;
+  - carried shows without a TMDB id;
+  - carried movies not on disk;
+  - titles in Plex that aren't carried (from the last Plex import).
+- Untagged specials join the report in Phase 7, with holiday tagging.
