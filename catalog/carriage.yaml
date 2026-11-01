@@ -1,0 +1,333 @@
+# yaml-language-server: $schema=schema/carriage.schema.json
+# Which shows air on which channel, and when. Proposed from docs/archive-list.md: windows are
+# approximate years from memory (Jan 1 of the first year to Dec 31 of the last), clamped to the
+# channel's launch. Episode eligibility still comes from Plex/TMDB air dates and overrides.yaml,
+# so a loose window only decides which channel can air a show, not which episodes.
+# `show` is the stable id; `title` is matched against Plex (overrides.yaml can set plex_title).
+# Prune freely.
+
+carriage:
+  # KQED 9 — PBS
+  - { show: "sesame-street", title: "Sesame Street", channel: kqed, from: 1990-01-01 }
+  - { show: "mister-rogers-neighborhood", title: "Mister Rogers' Neighborhood", channel: kqed, from: 1990-01-01, until: 2001-12-31 }
+  - { show: "square-one-tv", title: "Square One TV", channel: kqed, from: 1990-01-01, until: 1992-12-31 }
+  - { show: "shining-time-station", title: "Shining Time Station", channel: kqed, from: 1990-01-01, until: 1993-12-31 }
+  - { show: "where-in-the-world-is-carmen-sandiego", title: "Where in the World Is Carmen Sandiego?", channel: kqed, from: 1991-01-01, until: 1995-12-31 }
+  - { show: "barney-and-friends", title: "Barney & Friends", channel: kqed, from: 1992-01-01 }
+  - { show: "lamb-chops-play-along", title: "Lamb Chop's Play-Along", channel: kqed, from: 1992-01-01, until: 1997-12-31 }
+  - { show: "ghostwriter", title: "Ghostwriter", channel: kqed, from: 1992-01-01, until: 1995-12-31 }
+  - { show: "reading-rainbow", title: "Reading Rainbow", channel: kqed, from: 1990-01-01, until: 2006-12-31 }
+  - { show: "bill-nye-the-science-guy", title: "Bill Nye the Science Guy", channel: kqed, from: 1993-01-01, until: 1998-12-31 }
+  - { show: "the-magic-school-bus", title: "The Magic School Bus", channel: kqed, from: 1994-01-01, until: 1997-12-31 }
+  - { show: "wishbone", title: "Wishbone", channel: kqed, from: 1995-01-01, until: 1998-12-31 }
+  - { show: "arthur", title: "Arthur", channel: kqed, from: 1996-01-01 }
+  - { show: "kratts-creatures", title: "Kratts' Creatures", channel: kqed, from: 1996-01-01, until: 1996-12-31 }
+  - { show: "teletubbies", title: "Teletubbies", channel: kqed, from: 1998-01-01, until: 2001-12-31 }
+  - { show: "zoboomafoo", title: "Zoboomafoo", channel: kqed, from: 1999-01-01, until: 2001-12-31 }
+  - { show: "zoom", title: "Zoom", channel: kqed, from: 1999-01-01, until: 2005-12-31 }
+  - { show: "dragon-tales", title: "Dragon Tales", channel: kqed, from: 1999-01-01, until: 2005-12-31 }
+  - { show: "between-the-lions", title: "Between the Lions", channel: kqed, from: 2000-01-01 }
+  - { show: "clifford-the-big-red-dog", title: "Clifford the Big Red Dog", channel: kqed, from: 2000-01-01, until: 2003-12-31 }
+  - { show: "cyberchase", title: "Cyberchase", channel: kqed, from: 2002-01-01 }
+  - { show: "libertys-kids", title: "Liberty's Kids", channel: kqed, from: 2002-01-01, until: 2003-12-31 }
+  - { show: "wordgirl", title: "WordGirl", channel: kqed, from: 2008-01-01 }
+  - { show: "martha-speaks", title: "Martha Speaks", channel: kqed, from: 2008-01-01 }
+  - { show: "the-joy-of-painting", title: "The Joy of Painting", channel: kqed, from: 1990-01-01, until: 1994-12-31 }
+  - { show: "nova", title: "Nova", channel: kqed, from: 1990-01-01 }
+  - { show: "nature", title: "Nature", channel: kqed, from: 1990-01-01 }
+  - { show: "this-old-house", title: "This Old House", channel: kqed, from: 1990-01-01 }
+  - { show: "antiques-roadshow", title: "Antiques Roadshow", channel: kqed, from: 1997-01-01 }
+  - { show: "mystery", title: "Mystery!", channel: kqed, from: 1990-01-01 }
+
+  # KTVU 2 — Fox (primetime)
+  - { show: "the-simpsons", title: "The Simpsons", channel: ktvu, from: 1990-01-01 }
+  - { show: "married-with-children", title: "Married... with Children", channel: ktvu, from: 1990-01-01, until: 1997-12-31 }
+  - { show: "in-living-color", title: "In Living Color", channel: ktvu, from: 1990-01-01, until: 1994-12-31 }
+  - { show: "beverly-hills-90210", title: "Beverly Hills, 90210", channel: ktvu, from: 1990-01-01, until: 2000-12-31 }
+  - { show: "martin", title: "Martin", channel: ktvu, from: 1992-01-01, until: 1997-12-31 }
+  - { show: "living-single", title: "Living Single", channel: ktvu, from: 1993-01-01, until: 1998-12-31 }
+  - { show: "the-x-files", title: "The X-Files", channel: ktvu, from: 1993-01-01, until: 2002-12-31 }
+  - { show: "madtv", title: "MADtv", channel: ktvu, from: 1995-01-01, until: 2009-12-31 }
+  - { show: "king-of-the-hill", title: "King of the Hill", channel: ktvu, from: 1997-01-01 }
+  - { show: "that-70s-show", title: "That '70s Show", channel: ktvu, from: 1998-01-01, until: 2006-12-31 }
+  - { show: "futurama", title: "Futurama", channel: ktvu, from: 1999-01-01, until: 2003-12-31 }
+  - { show: "family-guy", title: "Family Guy", channel: ktvu, from: 1999-01-01, until: 2002-12-31 }
+  - { show: "family-guy", title: "Family Guy", channel: ktvu, from: 2005-01-01 }
+  - { show: "malcolm-in-the-middle", title: "Malcolm in the Middle", channel: ktvu, from: 2000-01-01, until: 2006-12-31 }
+  - { show: "24", title: "24", channel: ktvu, from: 2001-01-01 }
+  - { show: "american-idol", title: "American Idol", channel: ktvu, from: 2002-01-01 }
+  - { show: "arrested-development", title: "Arrested Development", channel: ktvu, from: 2003-01-01, until: 2006-12-31 }
+  - { show: "the-o-c", title: "The O.C.", channel: ktvu, from: 2003-01-01, until: 2007-12-31 }
+  - { show: "house", title: "House", channel: ktvu, from: 2004-01-01 }
+  - { show: "american-dad", title: "American Dad!", channel: ktvu, from: 2005-01-01 }
+  - { show: "bones", title: "Bones", channel: ktvu, from: 2005-01-01 }
+  - { show: "cops", title: "Cops", channel: ktvu, from: 1990-01-01 }
+  - { show: "americas-most-wanted", title: "America's Most Wanted", channel: ktvu, from: 1990-01-01 }
+
+  # Fox Kids block (on KTVU 2, 1990–2002)
+  - { show: "bobbys-world", title: "Bobby's World", channel: ktvu, block: fox-kids, from: 1990-09-08, until: 1998-12-31 }
+  - { show: "tiny-toon-adventures", title: "Tiny Toon Adventures", channel: ktvu, block: fox-kids, from: 1992-01-01, until: 1995-12-31 }
+  - { show: "batman-the-animated-series", title: "Batman: The Animated Series", channel: ktvu, block: fox-kids, from: 1992-01-01, until: 1995-12-31 }
+  - { show: "x-men", title: "X-Men", channel: ktvu, block: fox-kids, from: 1992-01-01, until: 1997-12-31 }
+  - { show: "eek-the-cat", title: "Eek! The Cat", channel: ktvu, block: fox-kids, from: 1992-01-01, until: 1997-12-31 }
+  - { show: "mighty-morphin-power-rangers", title: "Mighty Morphin Power Rangers", channel: ktvu, block: fox-kids, from: 1993-01-01, until: 2002-12-31 }
+  - { show: "animaniacs", title: "Animaniacs", channel: ktvu, block: fox-kids, from: 1993-01-01, until: 1995-12-31 }
+  - { show: "the-tick", title: "The Tick", channel: ktvu, block: fox-kids, from: 1994-01-01, until: 1996-12-31 }
+  - { show: "spider-man", title: "Spider-Man", channel: ktvu, block: fox-kids, from: 1994-01-01, until: 1998-12-31 }
+  - { show: "life-with-louie", title: "Life with Louie", channel: ktvu, block: fox-kids, from: 1995-01-01, until: 1998-12-31 }
+  - { show: "goosebumps", title: "Goosebumps", channel: ktvu, block: fox-kids, from: 1995-01-01, until: 1998-12-31 }
+  - { show: "big-bad-beetleborgs", title: "Big Bad Beetleborgs", channel: ktvu, block: fox-kids, from: 1996-01-01, until: 1998-12-31 }
+  - { show: "digimon", title: "Digimon", channel: ktvu, block: fox-kids, from: 1999-01-01, until: 2002-12-31 }
+
+  # KRON 4 → KNTV 11 — NBC
+  - { show: "seinfeld", title: "Seinfeld", channel: nbc, from: 1990-01-01, until: 1998-12-31 }
+  - { show: "quantum-leap", title: "Quantum Leap", channel: nbc, from: 1990-01-01, until: 1993-12-31 }
+  - { show: "unsolved-mysteries", title: "Unsolved Mysteries", channel: nbc, from: 1990-01-01, until: 1997-12-31 }
+  - { show: "the-fresh-prince-of-bel-air", title: "The Fresh Prince of Bel-Air", channel: nbc, from: 1990-01-01, until: 1996-12-31 }
+  - { show: "wings", title: "Wings", channel: nbc, from: 1990-01-01, until: 1997-12-31 }
+  - { show: "law-and-order", title: "Law & Order", channel: nbc, from: 1990-01-01 }
+  - { show: "saved-by-the-bell", title: "Saved by the Bell", channel: nbc, from: 1990-01-01, until: 1993-12-31 }
+  - { show: "california-dreams", title: "California Dreams", channel: nbc, from: 1992-01-01, until: 1996-12-31 }
+  - { show: "saved-by-the-bell-the-new-class", title: "Saved by the Bell: The New Class", channel: nbc, from: 1993-01-01, until: 2000-12-31 }
+  - { show: "city-guys", title: "City Guys", channel: nbc, from: 1997-01-01, until: 2001-12-31 }
+  - { show: "mad-about-you", title: "Mad About You", channel: nbc, from: 1992-01-01, until: 1999-12-31 }
+  - { show: "frasier", title: "Frasier", channel: nbc, from: 1993-01-01, until: 2004-12-31 }
+  - { show: "friends", title: "Friends", channel: nbc, from: 1994-01-01, until: 2004-12-31 }
+  - { show: "er", title: "ER", channel: nbc, from: 1994-01-01, until: 2009-12-31 }
+  - { show: "newsradio", title: "NewsRadio", channel: nbc, from: 1995-01-01, until: 1999-12-31 }
+  - { show: "3rd-rock-from-the-sun", title: "3rd Rock from the Sun", channel: nbc, from: 1996-01-01, until: 2001-12-31 }
+  - { show: "just-shoot-me", title: "Just Shoot Me!", channel: nbc, from: 1997-01-01, until: 2003-12-31 }
+  - { show: "will-and-grace", title: "Will & Grace", channel: nbc, from: 1998-01-01, until: 2006-12-31 }
+  - { show: "freaks-and-geeks", title: "Freaks and Geeks", channel: nbc, from: 1999-01-01, until: 2000-12-31 }
+  - { show: "scrubs", title: "Scrubs", channel: nbc, from: 2001-01-01, until: 2008-12-31 }
+  - { show: "the-office", title: "The Office", channel: nbc, from: 2005-01-01 }
+  - { show: "my-name-is-earl", title: "My Name Is Earl", channel: nbc, from: 2005-01-01, until: 2009-12-31 }
+  - { show: "30-rock", title: "30 Rock", channel: nbc, from: 2006-01-01 }
+  - { show: "heroes", title: "Heroes", channel: nbc, from: 2006-01-01 }
+  - { show: "saturday-night-live", title: "Saturday Night Live", channel: nbc, from: 1990-01-01 }
+  - { show: "late-night-with-conan-obrien", title: "Late Night with Conan O'Brien", channel: nbc, from: 1993-01-01, until: 2009-12-31 }
+
+  # KPIX 5 — CBS
+  - { show: "murphy-brown", title: "Murphy Brown", channel: kpix, from: 1990-01-01, until: 1998-12-31 }
+  - { show: "northern-exposure", title: "Northern Exposure", channel: kpix, from: 1990-01-01, until: 1995-12-31 }
+  - { show: "dr-quinn-medicine-woman", title: "Dr. Quinn, Medicine Woman", channel: kpix, from: 1993-01-01, until: 1998-12-31 }
+  - { show: "walker-texas-ranger", title: "Walker, Texas Ranger", channel: kpix, from: 1993-01-01, until: 2001-12-31 }
+  - { show: "the-nanny", title: "The Nanny", channel: kpix, from: 1993-01-01, until: 1999-12-31 }
+  - { show: "diagnosis-murder", title: "Diagnosis: Murder", channel: kpix, from: 1993-01-01, until: 2001-12-31 }
+  - { show: "touched-by-an-angel", title: "Touched by an Angel", channel: kpix, from: 1994-01-01, until: 2003-12-31 }
+  - { show: "everybody-loves-raymond", title: "Everybody Loves Raymond", channel: kpix, from: 1996-01-01, until: 2005-12-31 }
+  - { show: "the-king-of-queens", title: "The King of Queens", channel: kpix, from: 1998-01-01, until: 2007-12-31 }
+  - { show: "survivor", title: "Survivor", channel: kpix, from: 2000-01-01 }
+  - { show: "csi-crime-scene-investigation", title: "CSI: Crime Scene Investigation", channel: kpix, from: 2000-01-01 }
+  - { show: "the-amazing-race", title: "The Amazing Race", channel: kpix, from: 2001-01-01 }
+  - { show: "two-and-a-half-men", title: "Two and a Half Men", channel: kpix, from: 2003-01-01 }
+  - { show: "how-i-met-your-mother", title: "How I Met Your Mother", channel: kpix, from: 2005-01-01 }
+  - { show: "the-big-bang-theory", title: "The Big Bang Theory", channel: kpix, from: 2007-01-01 }
+  - { show: "late-show-with-david-letterman", title: "Late Show with David Letterman", channel: kpix, from: 1993-01-01 }
+  - { show: "peanuts-holiday-specials", title: "Peanuts holiday specials", channel: kpix, from: 1990-01-01, until: 2000-12-31 }
+  - { show: "rudolph-the-red-nosed-reindeer", title: "Rudolph the Red-Nosed Reindeer", channel: kpix, from: 1990-01-01, kind: movie }
+  - { show: "frosty-the-snowman", title: "Frosty the Snowman", channel: kpix, from: 1990-01-01, kind: movie }
+
+  # Nickelodeon
+  - { show: "double-dare", title: "Double Dare", channel: nick, from: 1990-01-01, until: 1993-12-31 }
+  - { show: "hey-dude", title: "Hey Dude", channel: nick, from: 1990-01-01, until: 1991-12-31 }
+  - { show: "clarissa-explains-it-all", title: "Clarissa Explains It All", channel: nick, from: 1991-01-01, until: 1994-12-31 }
+  - { show: "doug", title: "Doug", channel: nick, from: 1991-01-01, until: 1994-12-31 }
+  - { show: "rugrats", title: "Rugrats", channel: nick, from: 1991-01-01, until: 2004-12-31 }
+  - { show: "the-ren-and-stimpy-show", title: "The Ren & Stimpy Show", channel: nick, from: 1991-01-01, until: 1995-12-31 }
+  - { show: "salute-your-shorts", title: "Salute Your Shorts", channel: nick, from: 1991-01-01, until: 1992-12-31 }
+  - { show: "are-you-afraid-of-the-dark", title: "Are You Afraid of the Dark?", channel: nick, from: 1992-01-01, until: 2000-12-31 }
+  - { show: "guts", title: "GUTS", channel: nick, from: 1992-01-01, until: 1996-12-31 }
+  - { show: "legends-of-the-hidden-temple", title: "Legends of the Hidden Temple", channel: nick, from: 1993-01-01, until: 1995-12-31 }
+  - { show: "rockos-modern-life", title: "Rocko's Modern Life", channel: nick, from: 1993-01-01, until: 1996-12-31 }
+  - { show: "the-adventures-of-pete-and-pete", title: "The Adventures of Pete & Pete", channel: nick, from: 1993-01-01, until: 1996-12-31 }
+  - { show: "aaahh-real-monsters", title: "Aaahh!!! Real Monsters", channel: nick, from: 1994-01-01, until: 1997-12-31 }
+  - { show: "all-that", title: "All That", channel: nick, from: 1994-01-01, until: 2005-12-31 }
+  - { show: "kenan-and-kel", title: "Kenan & Kel", channel: nick, from: 1996-01-01, until: 2000-12-31 }
+  - { show: "hey-arnold", title: "Hey Arnold!", channel: nick, from: 1996-01-01, until: 2004-12-31 }
+  - { show: "blues-clues", title: "Blue's Clues", channel: nick, from: 1996-01-01, until: 2006-12-31 }
+  - { show: "the-angry-beavers", title: "The Angry Beavers", channel: nick, from: 1997-01-01, until: 2001-12-31 }
+  - { show: "catdog", title: "CatDog", channel: nick, from: 1998-01-01, until: 2005-12-31 }
+  - { show: "the-wild-thornberrys", title: "The Wild Thornberrys", channel: nick, from: 1998-01-01, until: 2004-12-31 }
+  - { show: "spongebob-squarepants", title: "SpongeBob SquarePants", channel: nick, from: 1999-01-01 }
+  - { show: "rocket-power", title: "Rocket Power", channel: nick, from: 1999-01-01, until: 2004-12-31 }
+  - { show: "the-amanda-show", title: "The Amanda Show", channel: nick, from: 1999-01-01, until: 2002-12-31 }
+  - { show: "as-told-by-ginger", title: "As Told by Ginger", channel: nick, from: 2000-01-01, until: 2006-12-31 }
+  - { show: "the-fairly-oddparents", title: "The Fairly OddParents", channel: nick, from: 2001-01-01 }
+  - { show: "invader-zim", title: "Invader Zim", channel: nick, from: 2001-01-01, until: 2002-12-31 }
+  - { show: "the-adventures-of-jimmy-neutron", title: "The Adventures of Jimmy Neutron", channel: nick, from: 2002-01-01, until: 2006-12-31 }
+  - { show: "drake-and-josh", title: "Drake & Josh", channel: nick, from: 2004-01-01, until: 2007-12-31 }
+  - { show: "danny-phantom", title: "Danny Phantom", channel: nick, from: 2004-01-01, until: 2007-12-31 }
+  - { show: "neds-declassified-school-survival-guide", title: "Ned's Declassified School Survival Guide", channel: nick, from: 2004-01-01, until: 2007-12-31 }
+  - { show: "avatar-the-last-airbender", title: "Avatar: The Last Airbender", channel: nick, from: 2005-01-01, until: 2008-12-31 }
+  - { show: "zoey-101", title: "Zoey 101", channel: nick, from: 2005-01-01, until: 2008-12-31 }
+  - { show: "icarly", title: "iCarly", channel: nick, from: 2007-01-01 }
+
+  # Cartoon Network (from Oct 1992)
+  - { show: "looney-tunes", title: "Looney Tunes", channel: cartoon-network, from: 1992-10-01 }
+  - { show: "tom-and-jerry", title: "Tom and Jerry", channel: cartoon-network, from: 1992-10-01 }
+  - { show: "scooby-doo-where-are-you", title: "Scooby-Doo, Where Are You!", channel: cartoon-network, from: 1992-10-01 }
+  - { show: "space-ghost-coast-to-coast", title: "Space Ghost Coast to Coast", channel: cartoon-network, from: 1994-01-01, until: 2001-12-31 }
+  - { show: "what-a-cartoon", title: "What a Cartoon!", channel: cartoon-network, from: 1995-01-01, until: 1997-12-31 }
+  - { show: "dexters-laboratory", title: "Dexter's Laboratory", channel: cartoon-network, from: 1996-01-01, until: 2003-12-31 }
+  - { show: "johnny-bravo", title: "Johnny Bravo", channel: cartoon-network, from: 1997-01-01, until: 2004-12-31 }
+  - { show: "cow-and-chicken", title: "Cow and Chicken", channel: cartoon-network, from: 1997-01-01, until: 1999-12-31 }
+  - { show: "i-am-weasel", title: "I Am Weasel", channel: cartoon-network, from: 1997-01-01, until: 2000-12-31 }
+  - { show: "the-powerpuff-girls", title: "The Powerpuff Girls", channel: cartoon-network, from: 1998-01-01, until: 2005-12-31 }
+  - { show: "ed-edd-n-eddy", title: "Ed, Edd n Eddy", channel: cartoon-network, from: 1999-01-01, until: 2009-12-31 }
+  - { show: "courage-the-cowardly-dog", title: "Courage the Cowardly Dog", channel: cartoon-network, from: 1999-01-01, until: 2002-12-31 }
+  - { show: "sheep-in-the-big-city", title: "Sheep in the Big City", channel: cartoon-network, from: 2000-01-01, until: 2002-12-31 }
+  - { show: "time-squad", title: "Time Squad", channel: cartoon-network, from: 2001-01-01, until: 2003-12-31 }
+  - { show: "samurai-jack", title: "Samurai Jack", channel: cartoon-network, from: 2001-01-01, until: 2004-12-31 }
+  - { show: "justice-league", title: "Justice League", channel: cartoon-network, from: 2001-01-01, until: 2006-12-31 }
+  - { show: "codename-kids-next-door", title: "Codename: Kids Next Door", channel: cartoon-network, from: 2002-01-01, until: 2008-12-31 }
+  - { show: "the-grim-adventures-of-billy-and-mandy", title: "The Grim Adventures of Billy & Mandy", channel: cartoon-network, from: 2003-01-01, until: 2008-12-31 }
+  - { show: "teen-titans", title: "Teen Titans", channel: cartoon-network, from: 2003-01-01, until: 2006-12-31 }
+  - { show: "star-wars-clone-wars", title: "Star Wars: Clone Wars", channel: cartoon-network, from: 2003-01-01, until: 2005-12-31 }
+  - { show: "fosters-home-for-imaginary-friends", title: "Foster's Home for Imaginary Friends", channel: cartoon-network, from: 2004-01-01, until: 2009-12-31 }
+  - { show: "camp-lazlo", title: "Camp Lazlo", channel: cartoon-network, from: 2005-01-01, until: 2008-12-31 }
+  - { show: "ben-10", title: "Ben 10", channel: cartoon-network, from: 2005-01-01, until: 2008-12-31 }
+  - { show: "chowder", title: "Chowder", channel: cartoon-network, from: 2007-01-01 }
+  - { show: "the-marvelous-misadventures-of-flapjack", title: "The Marvelous Misadventures of Flapjack", channel: cartoon-network, from: 2008-01-01 }
+  - { show: "adventure-time", title: "Adventure Time", channel: cartoon-network, from: 2010-01-01 }
+  - { show: "regular-show", title: "Regular Show", channel: cartoon-network, from: 2010-01-01 }
+
+  # Toonami (24/7, from Mar 1997; years = US debut on Toonami)
+  - { show: "thundercats", title: "ThunderCats", channel: toonami, from: 1997-03-17, until: 1997-12-31 }
+  - { show: "voltron", title: "Voltron", channel: toonami, from: 1997-03-17, until: 1997-12-31 }
+  - { show: "the-real-adventures-of-jonny-quest", title: "The Real Adventures of Jonny Quest", channel: toonami, from: 1997-03-17, until: 1997-12-31 }
+  - { show: "robotech", title: "Robotech", channel: toonami, from: 1998-01-01, until: 1998-12-31 }
+  - { show: "sailor-moon", title: "Sailor Moon", channel: toonami, from: 1998-01-01, until: 1998-12-31 }
+  - { show: "dragon-ball-z", title: "Dragon Ball Z", channel: toonami, from: 1998-01-01, until: 1998-12-31 }
+  - { show: "ronin-warriors", title: "Ronin Warriors", channel: toonami, from: 1999-01-01, until: 1999-12-31 }
+  - { show: "batman-the-animated-series", title: "Batman: The Animated Series", channel: toonami, from: 2000-01-01, until: 2000-12-31 }
+  - { show: "superman-the-animated-series", title: "Superman: The Animated Series", channel: toonami, from: 2000-01-01, until: 2000-12-31 }
+  - { show: "mobile-suit-gundam-wing", title: "Mobile Suit Gundam Wing", channel: toonami, from: 2000-01-01, until: 2000-12-31 }
+  - { show: "tenchi-muyo", title: "Tenchi Muyo!", channel: toonami, from: 2000-01-01, until: 2000-12-31 }
+  - { show: "outlaw-star", title: "Outlaw Star", channel: toonami, from: 2001-01-01, until: 2001-12-31 }
+  - { show: "the-big-o", title: "The Big O", channel: toonami, from: 2001-01-01, until: 2001-12-31 }
+  - { show: "batman-beyond", title: "Batman Beyond", channel: toonami, from: 2001-01-01, until: 2001-12-31 }
+  - { show: "cardcaptors", title: "Cardcaptors", channel: toonami, from: 2001-01-01, until: 2001-12-31 }
+  - { show: "dragon-ball", title: "Dragon Ball", channel: toonami, from: 2001-01-01, until: 2001-12-31 }
+  - { show: "zoids-new-century-zero", title: "Zoids: New Century Zero", channel: toonami, from: 2001-01-01, until: 2001-12-31 }
+  - { show: "yu-yu-hakusho", title: "Yu Yu Hakusho", channel: toonami, from: 2002-01-01, until: 2002-12-31 }
+  - { show: "rurouni-kenshin", title: "Rurouni Kenshin", channel: toonami, from: 2003-01-01, until: 2003-12-31 }
+  - { show: "hack-sign", title: ".hack//SIGN", channel: toonami, from: 2003-01-01, until: 2003-12-31 }
+  - { show: "dragon-ball-gt", title: "Dragon Ball GT", channel: toonami, from: 2003-01-01, until: 2003-12-31 }
+  - { show: "megas-xlr", title: "Megas XLR", channel: toonami, from: 2004-01-01, until: 2004-12-31 }
+  - { show: "rave-master", title: "Rave Master", channel: toonami, from: 2004-01-01, until: 2004-12-31 }
+  - { show: "igpx", title: "IGPX", channel: toonami, from: 2005-01-01, until: 2005-12-31 }
+  - { show: "naruto", title: "Naruto", channel: toonami, from: 2005-01-01, until: 2005-12-31 }
+  - { show: "one-piece", title: "One Piece", channel: toonami, from: 2005-01-01, until: 2005-12-31 }
+
+  # Boomerang (always on, pre-1990 library)
+  - { show: "the-flintstones", title: "The Flintstones", channel: boomerang, from: 1990-01-01 }
+  - { show: "the-jetsons", title: "The Jetsons", channel: boomerang, from: 1990-01-01 }
+  - { show: "scooby-doo-where-are-you", title: "Scooby-Doo, Where Are You!", channel: boomerang, from: 1990-01-01 }
+  - { show: "yogi-bear", title: "Yogi Bear", channel: boomerang, from: 1990-01-01 }
+  - { show: "huckleberry-hound", title: "Huckleberry Hound", channel: boomerang, from: 1990-01-01 }
+  - { show: "top-cat", title: "Top Cat", channel: boomerang, from: 1990-01-01 }
+  - { show: "jonny-quest", title: "Jonny Quest", channel: boomerang, from: 1990-01-01 }
+  - { show: "space-ghost-and-dino-boy", title: "Space Ghost and Dino Boy", channel: boomerang, from: 1990-01-01 }
+  - { show: "wacky-races", title: "Wacky Races", channel: boomerang, from: 1990-01-01 }
+  - { show: "dastardly-and-muttley", title: "Dastardly and Muttley", channel: boomerang, from: 1990-01-01 }
+  - { show: "josie-and-the-pussycats", title: "Josie and the Pussycats", channel: boomerang, from: 1990-01-01 }
+  - { show: "hong-kong-phooey", title: "Hong Kong Phooey", channel: boomerang, from: 1990-01-01 }
+  - { show: "jabberjaw", title: "Jabberjaw", channel: boomerang, from: 1990-01-01 }
+  - { show: "captain-caveman", title: "Captain Caveman", channel: boomerang, from: 1990-01-01 }
+  - { show: "speed-buggy", title: "Speed Buggy", channel: boomerang, from: 1990-01-01 }
+  - { show: "super-friends", title: "Super Friends", channel: boomerang, from: 1990-01-01 }
+  - { show: "the-smurfs", title: "The Smurfs", channel: boomerang, from: 1990-01-01 }
+  - { show: "snorks", title: "Snorks", channel: boomerang, from: 1990-01-01 }
+  - { show: "looney-tunes", title: "Looney Tunes", channel: boomerang, from: 1990-01-01 }
+  - { show: "tom-and-jerry", title: "Tom and Jerry", channel: boomerang, from: 1990-01-01 }
+  - { show: "the-pink-panther", title: "The Pink Panther", channel: boomerang, from: 1990-01-01 }
+
+  # Disney Channel
+  - { show: "the-all-new-mickey-mouse-club", title: "The All-New Mickey Mouse Club", channel: disney, from: 1990-01-01, until: 1994-12-31 }
+  - { show: "adventures-in-wonderland", title: "Adventures in Wonderland", channel: disney, from: 1992-01-01, until: 1995-12-31 }
+  - { show: "bear-in-the-big-blue-house", title: "Bear in the Big Blue House", channel: disney, from: 1997-01-01, until: 2006-12-31 }
+  - { show: "bug-juice", title: "Bug Juice", channel: disney, from: 1998-01-01, until: 2001-12-31 }
+  - { show: "even-stevens", title: "Even Stevens", channel: disney, from: 2000-01-01, until: 2003-12-31 }
+  - { show: "the-proud-family", title: "The Proud Family", channel: disney, from: 2001-01-01, until: 2005-12-31 }
+  - { show: "lizzie-mcguire", title: "Lizzie McGuire", channel: disney, from: 2001-01-01, until: 2004-12-31 }
+  - { show: "kim-possible", title: "Kim Possible", channel: disney, from: 2002-01-01, until: 2007-12-31 }
+  - { show: "thats-so-raven", title: "That's So Raven", channel: disney, from: 2003-01-01, until: 2007-12-31 }
+  - { show: "lilo-and-stitch-the-series", title: "Lilo & Stitch: The Series", channel: disney, from: 2003-01-01, until: 2006-12-31 }
+  - { show: "phil-of-the-future", title: "Phil of the Future", channel: disney, from: 2004-01-01, until: 2006-12-31 }
+  - { show: "the-suite-life-of-zack-and-cody", title: "The Suite Life of Zack & Cody", channel: disney, from: 2005-01-01, until: 2008-12-31 }
+  - { show: "hannah-montana", title: "Hannah Montana", channel: disney, from: 2006-01-01 }
+  - { show: "wizards-of-waverly-place", title: "Wizards of Waverly Place", channel: disney, from: 2007-01-01 }
+  - { show: "phineas-and-ferb", title: "Phineas and Ferb", channel: disney, from: 2008-01-01 }
+
+  # Comedy Central (from Apr 1991)
+  - { show: "mystery-science-theater-3000", title: "Mystery Science Theater 3000", channel: comedy-central, from: 1991-04-01, until: 1996-12-31 }
+  - { show: "dr-katz-professional-therapist", title: "Dr. Katz, Professional Therapist", channel: comedy-central, from: 1995-01-01, until: 1999-12-31 }
+  - { show: "the-daily-show", title: "The Daily Show", channel: comedy-central, from: 1996-01-01 }
+  - { show: "south-park", title: "South Park", channel: comedy-central, from: 1997-01-01 }
+  - { show: "win-ben-steins-money", title: "Win Ben Stein's Money", channel: comedy-central, from: 1997-01-01, until: 2003-12-31 }
+  - { show: "comedy-central-presents", title: "Comedy Central Presents", channel: comedy-central, from: 1998-01-01 }
+  - { show: "upright-citizens-brigade", title: "Upright Citizens Brigade", channel: comedy-central, from: 1998-01-01, until: 2000-12-31 }
+  - { show: "the-man-show", title: "The Man Show", channel: comedy-central, from: 1999-01-01, until: 2004-12-31 }
+  - { show: "strangers-with-candy", title: "Strangers with Candy", channel: comedy-central, from: 1999-01-01, until: 2000-12-31 }
+  - { show: "crank-yankers", title: "Crank Yankers", channel: comedy-central, from: 2002-01-01, until: 2005-12-31 }
+  - { show: "chappelles-show", title: "Chappelle's Show", channel: comedy-central, from: 2003-01-01, until: 2006-12-31 }
+  - { show: "reno-911", title: "Reno 911!", channel: comedy-central, from: 2003-01-01, until: 2009-12-31 }
+  - { show: "the-colbert-report", title: "The Colbert Report", channel: comedy-central, from: 2005-01-01 }
+  - { show: "futurama", title: "Futurama", channel: comedy-central, from: 2008-01-01 }
+  - { show: "saturday-night-live", title: "Saturday Night Live", channel: comedy-central, from: 1991-04-01, until: 1999-12-31 }
+  - { show: "the-kids-in-the-hall", title: "The Kids in the Hall", channel: comedy-central, from: 1991-04-01, until: 1999-12-31 }
+
+  # Adult Swim (from Sep 2, 2001)
+  - { show: "space-ghost-coast-to-coast", title: "Space Ghost Coast to Coast", channel: adult-swim, from: 2001-09-02 }
+  - { show: "sealab-2021", title: "Sealab 2021", channel: adult-swim, from: 2001-09-02 }
+  - { show: "harvey-birdman-attorney-at-law", title: "Harvey Birdman, Attorney at Law", channel: adult-swim, from: 2001-09-02 }
+  - { show: "the-brak-show", title: "The Brak Show", channel: adult-swim, from: 2001-09-02 }
+  - { show: "aqua-teen-hunger-force", title: "Aqua Teen Hunger Force", channel: adult-swim, from: 2001-09-02 }
+  - { show: "home-movies", title: "Home Movies", channel: adult-swim, from: 2001-09-02 }
+  - { show: "cowboy-bebop", title: "Cowboy Bebop", channel: adult-swim, from: 2001-09-02 }
+  - { show: "inuyasha", title: "Inuyasha", channel: adult-swim, from: 2002-01-01 }
+  - { show: "trigun", title: "Trigun", channel: adult-swim, from: 2003-01-01 }
+  - { show: "lupin-the-3rd", title: "Lupin the 3rd", channel: adult-swim, from: 2003-01-01 }
+  - { show: "flcl", title: "FLCL", channel: adult-swim, from: 2003-01-01 }
+  - { show: "futurama", title: "Futurama", channel: adult-swim, from: 2003-01-01 }
+  - { show: "family-guy", title: "Family Guy", channel: adult-swim, from: 2003-01-01 }
+  - { show: "fullmetal-alchemist", title: "Fullmetal Alchemist", channel: adult-swim, from: 2004-01-01 }
+  - { show: "the-venture-bros", title: "The Venture Bros.", channel: adult-swim, from: 2004-01-01 }
+  - { show: "ghost-in-the-shell-sac", title: "Ghost in the Shell: SAC", channel: adult-swim, from: 2004-01-01 }
+  - { show: "robot-chicken", title: "Robot Chicken", channel: adult-swim, from: 2005-01-01 }
+  - { show: "squidbillies", title: "Squidbillies", channel: adult-swim, from: 2005-01-01 }
+  - { show: "bleach", title: "Bleach", channel: adult-swim, from: 2006-01-01 }
+  - { show: "metalocalypse", title: "Metalocalypse", channel: adult-swim, from: 2006-01-01 }
+  - { show: "death-note", title: "Death Note", channel: adult-swim, from: 2007-01-01 }
+  - { show: "tim-and-eric-awesome-show-great-job", title: "Tim and Eric Awesome Show, Great Job!", channel: adult-swim, from: 2007-01-01 }
+
+  # Disney Channel Original Movies: on Disney Channel from premiere, always on Disney Movies
+  - { show: "under-wraps", title: "Under Wraps", channel: disney, from: 1997-01-01, kind: movie }
+  - { show: "under-wraps", title: "Under Wraps", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "halloweentown", title: "Halloweentown", channel: disney, from: 1998-01-01, kind: movie }
+  - { show: "halloweentown", title: "Halloweentown", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "brink", title: "Brink!", channel: disney, from: 1998-01-01, kind: movie }
+  - { show: "brink", title: "Brink!", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "zenon-girl-of-the-21st-century", title: "Zenon: Girl of the 21st Century", channel: disney, from: 1999-01-01, kind: movie }
+  - { show: "zenon-girl-of-the-21st-century", title: "Zenon: Girl of the 21st Century", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "smart-house", title: "Smart House", channel: disney, from: 1999-01-01, kind: movie }
+  - { show: "smart-house", title: "Smart House", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "johnny-tsunami", title: "Johnny Tsunami", channel: disney, from: 1999-01-01, kind: movie }
+  - { show: "johnny-tsunami", title: "Johnny Tsunami", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "phantom-of-the-megaplex", title: "Phantom of the Megaplex", channel: disney, from: 2000-01-01, kind: movie }
+  - { show: "phantom-of-the-megaplex", title: "Phantom of the Megaplex", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "motocrossed", title: "Motocrossed", channel: disney, from: 2001-01-01, kind: movie }
+  - { show: "motocrossed", title: "Motocrossed", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "the-luck-of-the-irish", title: "The Luck of the Irish", channel: disney, from: 2001-01-01, kind: movie }
+  - { show: "the-luck-of-the-irish", title: "The Luck of the Irish", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "halloweentown-ii-kalabars-revenge", title: "Halloweentown II: Kalabar's Revenge", channel: disney, from: 2001-01-01, kind: movie }
+  - { show: "halloweentown-ii-kalabars-revenge", title: "Halloweentown II: Kalabar's Revenge", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "the-cheetah-girls", title: "The Cheetah Girls", channel: disney, from: 2003-01-01, kind: movie }
+  - { show: "the-cheetah-girls", title: "The Cheetah Girls", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "twitches", title: "Twitches", channel: disney, from: 2005-01-01, kind: movie }
+  - { show: "twitches", title: "Twitches", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "high-school-musical", title: "High School Musical", channel: disney, from: 2006-01-01, kind: movie }
+  - { show: "high-school-musical", title: "High School Musical", channel: disney-movies, from: 1990-01-01, kind: movie }
+  - { show: "camp-rock", title: "Camp Rock", channel: disney, from: 2008-01-01, kind: movie }
+  - { show: "camp-rock", title: "Camp Rock", channel: disney-movies, from: 1990-01-01, kind: movie }

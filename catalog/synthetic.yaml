@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=schema/synthetic.schema.json
+# Transplants: shows given a made-up premiere inside 1990-2010 (episodes keep their real
+# spacing), or `library: true` to make every episode available whenever the channel is on.
+# Each transplant also needs a carriage.yaml entry on its new channel.
+# Suggestions from docs/archive-list.md, off until Brandon picks them:
+#   - { show: "pokemon", premiere: 1998-09-08 }                       # Cartoon Network or Kids' WB
+#   - { show: "the-amazing-world-of-gumball", premiere: 2006-05-03 } # Cartoon Network
+#   - { show: "gravity-falls", premiere: 2004-06-15 }                # Disney Channel, beside Kim Possible
+#   - { show: "the-legend-of-korra", premiere: 2009-04-14 }          # Nickelodeon, after Avatar
+#   - { show: "steven-universe", premiere: 2008-11-04 }              # Cartoon Network
+#   - { show: "over-the-garden-wall", premiere: 2007-11-03 }         # Cartoon Network, Halloween miniseries
+#   - { show: "star-vs-the-forces-of-evil", premiere: 2009-01-18 }   # Disney Channel
+
+synthetic: []

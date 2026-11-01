@@ -1,6 +1,7 @@
+# yaml-language-server: $schema=schema/channels.schema.json
 # Starter channel lineup. Dates are best-effort from memory: verify before relying on them.
 # Numbers marked "invented" are placeholders until Brandon recalls his provider's lineup.
-# The schema is formalized and validated in Phase 2 (docs/specs/catalog.md).
+# Validated by `make catalog-check` (schema: catalog/schema/channels.schema.json).
 
 timezone: America/New_York   # viewer's wall clock for simulated time
 year_range: [1990, 2010]

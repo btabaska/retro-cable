@@ -1,0 +1,102 @@
+{
+  "$defs": {
+    "Carriage": {
+      "additionalProperties": false,
+      "description": "A show (or movie) airing on a channel for a window of dates.",
+      "properties": {
+        "block": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Block"
+        },
+        "channel": {
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Channel",
+          "type": "string"
+        },
+        "from": {
+          "format": "date",
+          "title": "From",
+          "type": "string"
+        },
+        "kind": {
+          "default": "show",
+          "enum": [
+            "show",
+            "movie"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "show": {
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Show",
+          "type": "string"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "title": {
+          "description": "Title as it appears in Plex, for matching",
+          "title": "Title",
+          "type": "string"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Until"
+        },
+        "weight": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "show",
+        "title",
+        "channel",
+        "from"
+      ],
+      "title": "Carriage",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "carriage": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Carriage"
+      },
+      "title": "Carriage",
+      "type": "array"
+    }
+  },
+  "title": "catalog/carriage.yaml",
+  "type": "object"
+}

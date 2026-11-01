@@ -1,0 +1,242 @@
+{
+  "$defs": {
+    "Block": {
+      "additionalProperties": false,
+      "description": "A named block inside a channel, such as Fox Kids on KTVU.",
+      "properties": {
+        "from": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "From"
+        },
+        "id": {
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Until"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Block",
+      "type": "object"
+    },
+    "Channel": {
+      "additionalProperties": false,
+      "properties": {
+        "authenticity": {
+          "default": 30,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Authenticity",
+          "type": "integer"
+        },
+        "blocks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "title": "Blocks",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "identity": {
+          "items": {
+            "$ref": "#/$defs/Identity"
+          },
+          "minItems": 1,
+          "title": "Identity",
+          "type": "array"
+        },
+        "launch": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hidden before this date unless library",
+          "title": "Launch"
+        },
+        "library": {
+          "default": false,
+          "description": "Always on the dial, every item eligible",
+          "title": "Library",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "playlist": {
+          "anyOf": [
+            {
+              "enum": [
+                "ordered",
+                "shuffled"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Movie channels only",
+          "title": "Playlist"
+        },
+        "transplant_mark": {
+          "default": true,
+          "description": "Mark transplanted shows in the guide",
+          "title": "Transplant Mark",
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "network",
+            "marathon",
+            "movie"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type",
+        "identity"
+      ],
+      "title": "Channel",
+      "type": "object"
+    },
+    "Identity": {
+      "additionalProperties": false,
+      "description": "How a channel appeared on the dial for a period (NBC was KRON 4, then KNTV 11).",
+      "properties": {
+        "call_sign": {
+          "maxLength": 12,
+          "minLength": 1,
+          "title": "Call Sign",
+          "type": "string"
+        },
+        "from": {
+          "format": "date",
+          "title": "From",
+          "type": "string"
+        },
+        "network": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Network"
+        },
+        "number": {
+          "maximum": 999,
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Until"
+        }
+      },
+      "required": [
+        "from",
+        "number",
+        "call_sign"
+      ],
+      "title": "Identity",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "channels": {
+      "items": {
+        "$ref": "#/$defs/Channel"
+      },
+      "title": "Channels",
+      "type": "array"
+    },
+    "timezone": {
+      "default": "America/New_York",
+      "title": "Timezone",
+      "type": "string"
+    },
+    "year_range": {
+      "default": [
+        1990,
+        2010
+      ],
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "integer"
+        }
+      ],
+      "title": "Year Range",
+      "type": "array"
+    }
+  },
+  "required": [
+    "channels"
+  ],
+  "title": "catalog/channels.yaml",
+  "type": "object"
+}
