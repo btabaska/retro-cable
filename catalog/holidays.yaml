@@ -1,0 +1,58 @@
+# Holiday calendar. Rules: fixed (month/day) or nth_weekday (n, weekday, month).
+# window_days: days before the holiday (inclusive of the day) when tagged items are favored.
+# mode per channel: on | specials_only | off. Default applies when a channel isn't listed.
+
+holidays:
+  - id: halloween
+    name: Halloween
+    rule: { type: fixed, month: 10, day: 31 }
+    window_days: 7
+    strength: strong
+    default_mode: "on"
+
+  - id: thanksgiving
+    name: Thanksgiving
+    rule: { type: nth_weekday, n: 4, weekday: thursday, month: 11 }
+    window_days: 3
+    strength: medium
+    default_mode: "on"
+
+  - id: christmas
+    name: Christmas
+    rule: { type: fixed, month: 12, day: 25 }
+    window_days: 25
+    strength: strong
+    default_mode: "on"
+
+  - id: new-years-eve
+    name: New Year's Eve
+    rule: { type: fixed, month: 12, day: 31 }
+    window_days: 1
+    strength: medium
+    default_mode: specials_only
+
+  - id: valentines
+    name: Valentine's Day
+    rule: { type: fixed, month: 2, day: 14 }
+    window_days: 2
+    strength: medium
+    default_mode: "on"
+
+  - id: st-patricks
+    name: St. Patrick's Day
+    rule: { type: fixed, month: 3, day: 17 }
+    window_days: 3
+    strength: medium
+    default_mode: specials_only
+    channels:
+      disney: "on"
+      disney-movies: "on"
+    tagged:
+      - { title: "The Luck of the Irish", kind: movie, channel: disney, premiere: 2001 }
+
+  - id: independence-day
+    name: Independence Day
+    rule: { type: fixed, month: 7, day: 4 }
+    window_days: 2
+    strength: low
+    default_mode: specials_only

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin: Disney Channel</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@600;700&amp;family=Arimo:wght@400;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1C3A7A}a:hover{color:#0B1E4A}
+</style>
+</head>
+<body>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F4F6FB; color: #0B1E4A; font-family: 'Arimo', Arial, sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<div style="height: 64px; flex-shrink: 0; background: #0B1E4A; color: #FFFFFF; display: flex; align-items: center; gap: 12px; padding: 0 12px; box-sizing: border-box">
+<a href="AdminChannels.html" style="text-decoration: none; color: #F2C230; font-size: 15px; font-weight: 700; padding: 12px 8px">‹ Channels</a>
+<span style="font-family: 'Archivo Narrow', Arial, sans-serif; font-size: 24px; font-weight: 700">Disney Channel</span>
+</div>
+
+<div style="flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 14px 14px 0; box-sizing: border-box; min-height: 0">
+
+<div style="background: #FFFFFF; border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #4A5878">Number</span><span style="font-size: 16px; font-weight: 700">30</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #4A5878">Type</span><span style="font-size: 16px; font-weight: 700">Network</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #4A5878">On the dial from</span><span style="font-size: 16px; font-weight: 700">1983</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #4A5878">Holidays</span><span style="font-size: 16px; font-weight: 700">On · specials too</span></div>
+</div>
+
+<div style="background: #FFFFFF; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<label for="auth" style="font-size: 15px; font-weight: 700">Authenticity dial</label>
+<span style="font-size: 22px; font-weight: 700">30</span>
+</div>
+<input id="auth" type="range" min="0" max="100" step="5" value="30" style="width: 100%; accent-color: #1C3A7A; height: 28px">
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #4A5878"><span>0 · era-accurate</span><span>100 · all favorites</span></div>
+</div>
+
+<div style="display: flex; justify-content: space-between; align-items: center">
+<span style="font-size: 15px; font-weight: 700">Shows on this channel</span>
+<button style="font-family: 'Arimo', Arial, sans-serif; font-size: 14px; font-weight: 700; color: #1C3A7A; background: #FFFFFF; border: 2px solid #1C3A7A; border-radius: 8px; padding: 10px 12px">+ Add show</button>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; align-items: center; gap: 10px; height: 50px; background: #FFFFFF; border-radius: 8px; padding: 0 12px"><div style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px">Kim Possible</span><span style="font-size: 12px; color: #4A5878">from 2002</span></div><input type="checkbox" checked="checked" aria-label="Kim Possible airs" style="width: 22px; height: 22px; accent-color: #1C3A7A"></div>
+<div style="display: flex; align-items: center; gap: 10px; height: 50px; background: #FFFFFF; border-radius: 8px; padding: 0 12px"><div style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px">Lizzie McGuire</span><span style="font-size: 12px; color: #4A5878">from 2001</span></div><input type="checkbox" checked="checked" aria-label="Lizzie McGuire airs" style="width: 22px; height: 22px; accent-color: #1C3A7A"></div>
+<div style="display: flex; align-items: center; gap: 10px; height: 50px; background: #FFFFFF; border: 2px solid #2B8FC4; border-radius: 8px; padding: 0 10px"><div style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px; font-weight: 700"><span style="display: inline-block; width: 7px; height: 7px; border: 2px solid #2B8FC4; transform: rotate(45deg); margin: 0 9px 2px 2px"></span>Gravity Falls</span><span style="font-size: 12px; color: #4A5878">Transplant · synthetic premiere Sep 2004</span></div><button style="font-family: 'Arimo', Arial, sans-serif; font-size: 13px; color: #1C3A7A; background: transparent; border: 0; padding: 10px 6px; font-weight: 700">Edit date</button><input type="checkbox" checked="checked" aria-label="Gravity Falls airs" style="width: 22px; height: 22px; accent-color: #1C3A7A"></div>
+<div style="display: flex; align-items: center; gap: 10px; height: 50px; background: #FFFFFF; border-radius: 8px; padding: 0 12px"><div style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px">That’s So Raven</span><span style="font-size: 12px; color: #4A5878">from 2003</span></div><input type="checkbox" checked="checked" aria-label="That's So Raven airs" style="width: 22px; height: 22px; accent-color: #1C3A7A"></div>
+<div style="display: flex; align-items: center; gap: 10px; height: 50px; background: #FFFFFF; border-radius: 8px; padding: 0 12px"><div style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px">Even Stevens</span><span style="font-size: 12px; color: #4A5878">from 2000</span></div><input type="checkbox" checked="checked" aria-label="Even Stevens airs" style="width: 22px; height: 22px; accent-color: #1C3A7A"></div>
+<div style="display: flex; align-items: center; gap: 10px; height: 50px; background: #FFFFFF; border-radius: 8px; padding: 0 12px"><div style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px; color: #4A5878">Bug Juice</span><span style="font-size: 12px; color: #4A5878">from 1998 · off</span></div><input type="checkbox" aria-label="Bug Juice airs" style="width: 22px; height: 22px; accent-color: #1C3A7A"></div>
+<div style="display: flex; align-items: center; gap: 10px; height: 50px; background: #FFFFFF; border-radius: 8px; padding: 0 12px"><div style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px">Hannah Montana</span><span style="font-size: 12px; color: #4A5878">from 2006</span></div><input type="checkbox" checked="checked" aria-label="Hannah Montana airs" style="width: 22px; height: 22px; accent-color: #1C3A7A"></div>
+</div>
+
+</div>
+
+<div style="flex-shrink: 0; display: flex; gap: 10px; padding: 12px 14px 18px; box-sizing: border-box">
+<button style="flex: 1; font-family: 'Arimo', Arial, sans-serif; font-size: 15px; font-weight: 700; color: #1C3A7A; background: #FFFFFF; border: 2px solid #1C3A7A; border-radius: 10px; height: 50px">Preview week</button>
+<button style="flex: 1; font-family: 'Arimo', Arial, sans-serif; font-size: 15px; font-weight: 700; color: #FFFFFF; background: #1C3A7A; border: 0; border-radius: 10px; height: 50px">Save</button>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,101 @@
+# Starter channel lineup. Dates are best-effort from memory: verify before relying on them.
+# Numbers marked "invented" are placeholders until Brandon recalls his provider's lineup.
+# The schema is formalized and validated in Phase 2 (docs/specs/catalog.md).
+
+timezone: America/New_York   # viewer's wall clock for simulated time
+year_range: [1990, 2010]
+
+channels:
+  - id: ktvu
+    name: KTVU (Fox)
+    type: network
+    identity:
+      - { from: 1990-01-01, number: 2, call_sign: KTVU, network: FOX }
+    blocks:
+      - { id: fox-kids, name: Fox Kids, until: 2002-09-01 }   # approximate end
+    authenticity: 30
+
+  - id: nbc
+    name: NBC (Bay Area)
+    type: network
+    identity:
+      - { from: 1990-01-01, until: 2001-12-31, number: 4, call_sign: KRON, network: NBC }
+      - { from: 2002-01-01, number: 11, call_sign: KNTV, network: NBC }
+    authenticity: 30
+
+  - id: kpix
+    name: KPIX (CBS)
+    type: network
+    identity:
+      - { from: 1990-01-01, number: 5, call_sign: KPIX, network: CBS }
+    authenticity: 30
+
+  - id: kqed
+    name: KQED (PBS)
+    type: network
+    identity:
+      - { from: 1990-01-01, number: 9, call_sign: KQED, network: PBS }
+    authenticity: 10
+
+  - id: nick
+    name: Nickelodeon
+    type: network
+    identity:
+      - { from: 1990-01-01, number: 24, call_sign: NICK }   # number invented
+    authenticity: 30
+
+  - id: cartoon-network
+    name: Cartoon Network
+    type: network
+    launch: 1992-10-01
+    identity:
+      - { from: 1992-10-01, number: 27, call_sign: TOON }   # number invented
+    authenticity: 30
+
+  - id: toonami
+    name: Toonami
+    type: network
+    launch: 1997-03-17
+    identity:
+      - { from: 1997-03-17, number: 28, call_sign: TOONAMI }   # number invented
+    authenticity: 30
+
+  - id: boomerang
+    name: Boomerang
+    type: network
+    library: true            # always on the dial, all episodes eligible
+    identity:
+      - { from: 1990-01-01, number: 29, call_sign: BOOM }   # number invented
+    authenticity: 50
+
+  - id: disney
+    name: Disney Channel
+    type: network
+    identity:
+      - { from: 1990-01-01, number: 30, call_sign: DSNY }   # number invented
+    authenticity: 30
+
+  - id: disney-movies
+    name: Disney Movies
+    type: movie
+    library: true
+    playlist: ordered        # Brandon's hand-curated order, edited in /admin
+    identity:
+      - { from: 1990-01-01, number: 31, call_sign: DMOV }   # custom channel
+    authenticity: 100
+
+  - id: comedy-central
+    name: Comedy Central
+    type: network
+    launch: 1991-04-01
+    identity:
+      - { from: 1991-04-01, number: 45, call_sign: COM }   # number invented
+    authenticity: 30
+
+  - id: adult-swim
+    name: Adult Swim
+    type: network
+    launch: 2001-09-02
+    identity:
+      - { from: 2001-09-02, number: 46, call_sign: ADSM }   # number invented
+    authenticity: 30

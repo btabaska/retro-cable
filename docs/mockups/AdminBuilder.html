@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin: build a channel with AI</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@600;700&amp;family=Arimo:wght@400;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1C3A7A}a:hover{color:#0B1E4A}
+</style>
+</head>
+<body>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F4F6FB; color: #0B1E4A; font-family: 'Arimo', Arial, sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<div style="height: 64px; flex-shrink: 0; background: #0B1E4A; color: #FFFFFF; display: flex; align-items: center; padding: 0 20px; box-sizing: border-box">
+<div style="display: flex; flex-direction: column">
+<span style="font-size: 12px; color: #B9C8EA; letter-spacing: 1px">RETRO CABLE ADMIN</span>
+<span style="font-family: 'Archivo Narrow', Arial, sans-serif; font-size: 24px; font-weight: 700">Build a channel with AI</span>
+</div>
+</div>
+
+<div style="flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 0; box-sizing: border-box; min-height: 0">
+
+<div style="display: flex; gap: 10px">
+<div style="flex: 3; display: flex; flex-direction: column; gap: 4px"><label for="cname" style="font-size: 12px; color: #4A5878">Channel name</label><input id="cname" type="text" value="Netflix" style="font-family: 'Arimo', Arial, sans-serif; font-size: 15px; height: 44px; border: 1px solid #B8C2D6; border-radius: 8px; padding: 0 10px; box-sizing: border-box; color: #0B1E4A"></div>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 4px"><label for="cnum" style="font-size: 12px; color: #4A5878">Number</label><input id="cnum" type="text" value="60" style="font-family: 'Arimo', Arial, sans-serif; font-size: 15px; height: 44px; border: 1px solid #B8C2D6; border-radius: 8px; padding: 0 10px; box-sizing: border-box; color: #0B1E4A"></div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="addshow" style="font-size: 12px; color: #4A5878">Shows</label>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<span style="font-size: 13px; background: #DCE3F2; border-radius: 14px; padding: 6px 10px">Stranger Things</span>
+<span style="font-size: 13px; background: #DCE3F2; border-radius: 14px; padding: 6px 10px">BoJack Horseman</span>
+<span style="font-size: 13px; background: #DCE3F2; border-radius: 14px; padding: 6px 10px">The Dragon Prince</span>
+</div>
+<input id="addshow" type="text" placeholder="Add a show from your library" style="font-family: 'Arimo', Arial, sans-serif; font-size: 14px; height: 44px; border: 1px solid #B8C2D6; border-radius: 8px; padding: 0 10px; box-sizing: border-box; color: #0B1E4A">
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<label for="vibe" style="font-size: 12px; color: #4A5878">Vibe</label>
+<textarea id="vibe" rows="2" style="font-family: 'Arimo', Arial, sans-serif; font-size: 14px; border: 1px solid #B8C2D6; border-radius: 8px; padding: 8px 10px; box-sizing: border-box; color: #0B1E4A; resize: none">Friday nights in 2003: animation early, sci-fi after 9.</textarea>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<label for="dates" style="font-size: 12px; color: #4A5878">Air dates</label>
+<select id="dates" style="font-family: 'Arimo', Arial, sans-serif; font-size: 14px; height: 44px; border: 1px solid #B8C2D6; border-radius: 8px; padding: 0 8px; color: #0B1E4A; background: #FFFFFF"><option>Shift real dates into 2001–2010</option><option>Library: all episodes always available</option><option>Let the AI choose per show</option></select>
+</div>
+
+<button style="font-family: 'Arimo', Arial, sans-serif; font-size: 15px; font-weight: 700; color: #0B1E4A; background: #F2C230; border: 0; border-radius: 10px; height: 48px">Draft with local model</button>
+
+<div style="background: #FFFFFF; border: 2px solid #1C3A7A; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-size: 15px; font-weight: 700">Draft: Fri Oct 31, 2003</span><span style="font-size: 12px; font-weight: 700; color: #1E6B3A">Schema valid</span></div>
+<div style="display: flex; gap: 10px; font-size: 13.5px"><span style="width: 58px; color: #4A5878">7:00 PM</span><span style="flex: 1">The Dragon Prince <span style="color: #4A5878">· synthetic premiere Sep 2002</span></span></div>
+<div style="display: flex; gap: 10px; font-size: 13.5px"><span style="width: 58px; color: #4A5878">7:27 PM</span><span style="flex: 1">BoJack Horseman <span style="color: #4A5878">· synthetic premiere Aug 2001</span></span></div>
+<div style="display: flex; gap: 10px; font-size: 13.5px"><span style="width: 58px; color: #4A5878">9:00 PM</span><span style="flex: 1">Stranger Things <span style="color: #4A5878">· synthetic premiere Jul 2003</span></span></div>
+<div style="display: flex; gap: 8px; margin-top: 4px">
+<button style="flex: 1; font-family: 'Arimo', Arial, sans-serif; font-size: 14px; font-weight: 700; color: #FFFFFF; background: #1C3A7A; border: 0; border-radius: 8px; height: 44px">Approve</button>
+<button style="flex: 1; font-family: 'Arimo', Arial, sans-serif; font-size: 14px; font-weight: 700; color: #1C3A7A; background: #FFFFFF; border: 2px solid #1C3A7A; border-radius: 8px; height: 44px">Edit YAML</button>
+</div>
+</div>
+
+</div>
+
+<div style="height: 64px; flex-shrink: 0; background: #FFFFFF; border-top: 1px solid #D5DCEB; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
+<a href="AdminChannels.html" style="text-decoration: none; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A5878">Channels</a>
+<a href="AdminHolidays.html" style="text-decoration: none; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A5878">Holidays</a>
+<a href="AdminAI.html" style="text-decoration: none; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A5878">Manager</a>
+<a href="AdminBuilder.html" style="text-decoration: none; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #0B1E4A; border-top: 3px solid #F2C230">Build</a>
+</div>
+
+</div>
+</body>
+</html>
