@@ -28,6 +28,7 @@ Retro Cable recreates 1990–2010 Bay Area cable TV on a homelab: a browser app 
 - `make lint` runs ruff, mypy --strict, tsc and eslint.
 - `make test` runs everything; `make test-server`, `make test-web`, `make e2e` run parts.
 - `make api` regenerates `server/openapi.json` and the web client.
+- `make stack-up` / `make stack-down` start and stop the Docker test stack (`ops/compose.test.yml`) on `127.0.0.1:8080`; `make e2e-stack` runs Playwright against it.
 
 ## Definition of done for every PR
 

@@ -1,0 +1,45 @@
+[project]
+name = "retro-cable-server"
+dynamic = ["version"]
+description = "Retro Cable scheduling and tuning API"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=0.1",
+    "mypy>=1.13",
+    "pillow>=11.0",
+    "pytest>=8.3",
+    "pyyaml>=6.0",
+    "ruff>=0.8",
+    "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/retro_cable/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/retro_cable"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"

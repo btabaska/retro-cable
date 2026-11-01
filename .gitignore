@@ -1,0 +1,19 @@
+.DS_Store
+.env
+.fixtures/
+.deploy/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Web
+node_modules/
+web/dist/
+web/playwright-report/
+web/test-results/
+web/blob-report/

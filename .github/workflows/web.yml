@@ -1,0 +1,48 @@
+name: web
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+      - run: cd server && uv sync --frozen
+      - run: cd web && npm ci
+      - name: Generated API client is up to date
+        run: make api-check
+      - name: Lint (tsc, eslint)
+        run: make lint-web
+      - name: Unit tests (Vitest)
+        run: make test-web
+      - run: cd web && npx playwright install --with-deps chromium
+      - name: End-to-end (Playwright, Chromium)
+        run: make e2e
+        env:
+          CI: "true"
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-web-${{ github.run_attempt }}
+          path: |
+            web/playwright-report
+            web/test-results
+          retention-days: 7
