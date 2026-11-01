@@ -5,6 +5,7 @@ description = "Retro Cable scheduling and tuning API"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115",
+    "pyyaml>=6.0",
     "uvicorn[standard]>=0.32",
 ]
 
@@ -14,7 +15,6 @@ dev = [
     "mypy>=1.13",
     "pillow>=11.0",
     "pytest>=8.3",
-    "pyyaml>=6.0",
     "ruff>=0.8",
     "types-pyyaml>=6.0",
 ]
@@ -43,3 +43,6 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 [tool.mypy]
 strict = true
 python_version = "3.12"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501"]  # YAML fixtures in strings

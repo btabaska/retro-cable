@@ -98,3 +98,41 @@ The inventory job replaces these estimates with real counts after the first impo
 ## Archive list
 
 The per-channel show list to prune is in `docs/archive-list.md`.
+
+## Implemented (Phase 2)
+
+### Catalog files
+
+The scheduler's inputs are five YAML files in `catalog/`. Each starts with a `yaml-language-server` comment that points editors at its JSON Schema in `catalog/schema/`, generated from the pydantic models in `server/src/retro_cable/catalog/models.py` (`make catalog-schema`; a test fails if they are stale).
+
+| File | Required | Holds |
+| --- | --- | --- |
+| `channels.yaml` | yes | Timezone, year range, channels: type (network, marathon, movie), launch, library, playlist, year-ranged identity (number, call sign, network), blocks, authenticity, transplant mark |
+| `holidays.yaml` | yes | Holidays: fixed or nth-weekday rule (n = -1 for the last), window, strength, default mode, per-channel modes, tagged items |
+| `carriage.yaml` | no | Which show or movie airs on which channel from when until when, optionally in a block, with a weight and tags |
+| `synthetic.yaml` | no | Transplants: a synthetic premiere inside 1990–2010, or `library: true` |
+| `overrides.yaml` | no | Per show: Plex title, US debut, per-episode air dates, holiday tags, exclude |
+
+- Show ids are slugs (`the-simpsons`). Carriage pairs each id with the Plex title used for matching; `overrides.yaml` can set a different `plex_title`.
+- YAML dates and `1:30`-style values are read as text and parsed by the models, so a bad date names the file and field. Unquoted `on` is a YAML boolean and is rejected with the field name; holiday modes must be quoted.
+- **Validation** (`make catalog-check`, also run by the server tests on the checked-in catalog) adds cross-file checks the schemas can't express:
+  - unique ids, a valid timezone, and a year range within 1990–2010;
+  - identity periods that don't overlap and that cover the launch date;
+  - movie channels, and only movie channels, have a playlist;
+  - fixed holiday dates exist, and holiday channels exist;
+  - carriage names known channels and blocks, ends after it starts, and doesn't overlap for the same show and channel;
+  - synthetic premieres fall within 1990–2010, or the entry is library;
+  - every override and synthetic entry names a carried show, override holiday tags name known holidays, and no show has both a US debut and a synthetic premiere.
+- **Catalog version**: the first 12 hex characters of a SHA-256 over the five files. It is one of the four inputs that make a schedule a pure function.
+- **US debut and synthetic premiere** use the same rule (`shift_air_dates`): the earliest episode moves to the anchor date and every other episode keeps its spacing. Missing dates stay missing.
+- The first `carriage.yaml` (299 entries) was generated from `docs/archive-list.md`. Windows run from Jan 1 of the first year to Dec 31 of the last, clamped to the channel's launch; open-ended runs have no `until`. DCOMs air on Disney Channel from their premiere year and always on Disney Movies. `overrides.yaml` has best-effort US debut dates for the Toonami and Adult Swim anime. `synthetic.yaml` lists the archive list's transplant ideas as comments for Brandon to pick.
+
+### Database
+
+- SQLite, opened with foreign keys on and WAL. Migrations are numbered files in `server/src/retro_cable/db/migrations/`, applied in order, each in one transaction and recorded in `schema_migrations`.
+- `0001_catalog` creates:
+  - `shows`, keyed by catalog slug, with Plex, TMDB, TVDB and IMDb ids;
+  - `episodes`, unique per show, season and number, holding the original `air_date` and its source (`plex` or `tmdb`), runtime, Plex key and file path (no file path means known but not on disk);
+  - `movies`, with a premiere date;
+  - `import_runs`.
+- Overrides and synthetic dates are not written into the database. They are applied when the schedule is read, so editing the YAML never needs a re-import.

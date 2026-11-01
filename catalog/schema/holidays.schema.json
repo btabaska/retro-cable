@@ -1,0 +1,234 @@
+{
+  "$defs": {
+    "FixedRule": {
+      "additionalProperties": false,
+      "properties": {
+        "day": {
+          "maximum": 31,
+          "minimum": 1,
+          "title": "Day",
+          "type": "integer"
+        },
+        "month": {
+          "maximum": 12,
+          "minimum": 1,
+          "title": "Month",
+          "type": "integer"
+        },
+        "type": {
+          "const": "fixed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "month",
+        "day"
+      ],
+      "title": "FixedRule",
+      "type": "object"
+    },
+    "Holiday": {
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "default": {},
+          "patternProperties": {
+            "^[a-z0-9]+(-[a-z0-9]+)*$": {
+              "enum": [
+                "on",
+                "specials_only",
+                "off"
+              ],
+              "type": "string"
+            }
+          },
+          "title": "Channels",
+          "type": "object"
+        },
+        "default_mode": {
+          "enum": [
+            "on",
+            "specials_only",
+            "off"
+          ],
+          "title": "Default Mode",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "rule": {
+          "discriminator": {
+            "mapping": {
+              "fixed": "#/$defs/FixedRule",
+              "nth_weekday": "#/$defs/NthWeekdayRule"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/FixedRule"
+            },
+            {
+              "$ref": "#/$defs/NthWeekdayRule"
+            }
+          ],
+          "title": "Rule"
+        },
+        "strength": {
+          "enum": [
+            "low",
+            "medium",
+            "strong"
+          ],
+          "title": "Strength",
+          "type": "string"
+        },
+        "tagged": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TaggedItem"
+          },
+          "title": "Tagged",
+          "type": "array"
+        },
+        "window_days": {
+          "description": "Days up to and including the holiday",
+          "maximum": 60,
+          "minimum": 1,
+          "title": "Window Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "rule",
+        "window_days",
+        "strength",
+        "default_mode"
+      ],
+      "title": "Holiday",
+      "type": "object"
+    },
+    "NthWeekdayRule": {
+      "additionalProperties": false,
+      "properties": {
+        "month": {
+          "maximum": 12,
+          "minimum": 1,
+          "title": "Month",
+          "type": "integer"
+        },
+        "n": {
+          "description": "1-5, or -1 for the last one in the month",
+          "maximum": 5,
+          "minimum": -1,
+          "title": "N",
+          "type": "integer"
+        },
+        "type": {
+          "const": "nth_weekday",
+          "title": "Type",
+          "type": "string"
+        },
+        "weekday": {
+          "enum": [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday"
+          ],
+          "title": "Weekday",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "n",
+        "weekday",
+        "month"
+      ],
+      "title": "NthWeekdayRule",
+      "type": "object"
+    },
+    "TaggedItem": {
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Channel"
+        },
+        "kind": {
+          "enum": [
+            "episode",
+            "movie",
+            "special"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "premiere": {
+          "anyOf": [
+            {
+              "maximum": 2010,
+              "minimum": 1900,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Premiere"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "kind"
+      ],
+      "title": "TaggedItem",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "holidays": {
+      "items": {
+        "$ref": "#/$defs/Holiday"
+      },
+      "title": "Holidays",
+      "type": "array"
+    }
+  },
+  "required": [
+    "holidays"
+  ],
+  "title": "catalog/holidays.yaml",
+  "type": "object"
+}

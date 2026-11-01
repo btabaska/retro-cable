@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=schema/overrides.schema.json
+# Per-show corrections to Plex/TMDB metadata.
+#   plex_title    match a Plex title that differs from carriage.yaml's title
+#   us_debut      imports: the first US air date; episodes keep their spacing from there
+#   episodes      per-episode air dates (SxxEyy: date), for one-off fixes
+#   holiday_tags  per-episode holiday ids, overriding the tagger
+#   exclude       never schedule this show
+# US debut dates are best-effort from memory: verify before relying on them.
+
+shows:
+  - { show: "sailor-moon", us_debut: 1995-09-11 }
+  - { show: "dragon-ball", us_debut: 1995-09-09 }
+  - { show: "dragon-ball-z", us_debut: 1996-09-13 }
+  - { show: "mobile-suit-gundam-wing", us_debut: 2000-03-06 }
+  - { show: "outlaw-star", us_debut: 2001-01-15 }
+  - { show: "cowboy-bebop", us_debut: 2001-09-02 }
+  - { show: "yu-yu-hakusho", us_debut: 2002-02-23 }
+  - { show: "inuyasha", us_debut: 2002-08-31 }
+  - { show: "rurouni-kenshin", us_debut: 2003-03-17 }
+  - { show: "fullmetal-alchemist", us_debut: 2004-11-06 }
+  - { show: "naruto", us_debut: 2005-09-10 }
+  - { show: "bleach", us_debut: 2006-09-09 }
+  - { show: "death-note", us_debut: 2007-10-20 }

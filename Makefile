@@ -8,7 +8,8 @@ COMPOSE_TEST := docker compose -f ops/compose.yml -f ops/compose.test.yml
 PY_PATHS := src tests ../tools/fixtures ../ops/tests
 
 .PHONY: help bootstrap fixtures dev lint lint-server lint-web test test-server test-web \
-	test-tools test-ops e2e e2e-stack api api-check stack-up stack-down
+	test-tools test-ops e2e e2e-stack api api-check stack-up stack-down \
+	catalog-check catalog-schema
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -56,6 +57,12 @@ test-web: ## Vitest unit tests
 
 e2e: ## Playwright against a local API and production web build
 	cd web && npx playwright test --project=chromium
+
+catalog-check: ## Validate catalog/*.yaml (schemas and cross-file checks)
+	cd server && uv run python -m retro_cable.catalog ../catalog
+
+catalog-schema: ## Regenerate catalog/schema/*.json from the models
+	cd server && uv run python -m retro_cable.catalog.schema ../catalog/schema
 
 api: ## Regenerate server/openapi.json and the web client
 	cd server && uv run python -m retro_cable.openapi openapi.json

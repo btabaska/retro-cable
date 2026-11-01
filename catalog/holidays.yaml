@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=schema/holidays.schema.json
 # Holiday calendar. Rules: fixed (month/day) or nth_weekday (n, weekday, month).
 # window_days: days before the holiday (inclusive of the day) when tagged items are favored.
 # mode per channel: on | specials_only | off. Default applies when a channel isn't listed.

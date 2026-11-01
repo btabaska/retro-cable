@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "Synthetic": {
+      "additionalProperties": false,
+      "description": "A transplanted show: a made-up premiere inside 1990-2010, or library (always eligible).",
+      "properties": {
+        "library": {
+          "default": false,
+          "title": "Library",
+          "type": "boolean"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override the channel's transplant_mark",
+          "title": "Mark"
+        },
+        "premiere": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Premiere"
+        },
+        "show": {
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Show",
+          "type": "string"
+        }
+      },
+      "required": [
+        "show"
+      ],
+      "title": "Synthetic",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "synthetic": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Synthetic"
+      },
+      "title": "Synthetic",
+      "type": "array"
+    }
+  },
+  "title": "catalog/synthetic.yaml",
+  "type": "object"
+}
