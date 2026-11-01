@@ -1,0 +1,10 @@
+{"MediaContainer": {"size": 4, "grandparentTitle": "The Simpsons", "Metadata": [
+  {"ratingKey": "1001", "type": "episode", "title": "Treehouse of Horror IX", "grandparentTitle": "The Simpsons", "parentIndex": 10, "index": 4, "originallyAvailableAt": "1998-10-25", "duration": 1320000, "summary": "Fixture.",
+   "Media": [{"id": 5001, "duration": 1320000, "videoResolution": "480", "Part": [{"id": 6001, "file": "/data/tv/The Simpsons (1989)/Season 10/The Simpsons - S10E04.mkv", "size": 234567890, "duration": 1320000}]}]},
+  {"ratingKey": "1002", "type": "episode", "title": "Lard of the Dance", "parentIndex": 10, "index": 1, "originallyAvailableAt": "1998-08-23", "duration": 1310000,
+   "Media": [{"Part": [{"file": "/data/tv/The Simpsons (1989)/Season 10/The Simpsons - S10E01.mkv", "size": 230000000}]}]},
+  {"ratingKey": "1003", "type": "episode", "title": "Special Feature", "parentIndex": 0, "index": 1, "duration": 600000,
+   "Media": [{"Part": [{"file": "/data/tv/The Simpsons (1989)/Specials/The Simpsons - S00E01.mkv", "size": 90000000}]}]},
+  {"ratingKey": "1004", "type": "episode", "title": "Unnumbered Extra", "parentIndex": 10,
+   "Media": [{"Part": [{"file": "/data/tv/The Simpsons (1989)/Season 10/extra.mkv", "size": 1000}]}]}
+]}}

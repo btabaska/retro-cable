@@ -56,6 +56,7 @@ carriage:
   - { show: dexters-laboratory, title: Dexter's Laboratory, channel: cartoon-network, from: 1996-04-28 }
   - { show: dragon-ball-z, title: Dragon Ball Z, channel: cartoon-network, from: 1998-03-16 }
   - { show: gravity-falls, title: Gravity Falls, channel: cartoon-network, from: 2004-06-15 }
+  - { show: halloweentown, title: Halloweentown, channel: disney-movies, from: 1990-01-01, kind: movie }
 """
 
 SYNTHETIC = """
@@ -67,6 +68,7 @@ OVERRIDES = """
 shows:
   - show: dragon-ball-z
     us_debut: 1996-09-13
+    plex_title: "Dragon Ball Z (1989)"
   - show: the-simpsons
     holiday_tags:
       S10E04: [halloween]

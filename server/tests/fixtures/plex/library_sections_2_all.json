@@ -1,0 +1,6 @@
+{"MediaContainer": {"size": 2, "librarySectionID": 2, "Metadata": [
+  {"ratingKey": "201", "type": "movie", "title": "Halloweentown", "year": 1998, "originallyAvailableAt": "1998-10-17", "duration": 5040000, "summary": "Fixture.",
+   "Guid": [{"id": "imdb://tt0000201"}, {"id": "tmdb://16784"}],
+   "Media": [{"Part": [{"file": "/data/movies/Halloweentown (1998)/Halloweentown (1998).mkv", "size": 900000000}]}]},
+  {"ratingKey": "202", "type": "movie", "title": "Uncarried Movie", "year": 2014, "Media": [{"Part": [{"file": "/data/movies/x.mkv", "size": 1}]}]}
+]}}

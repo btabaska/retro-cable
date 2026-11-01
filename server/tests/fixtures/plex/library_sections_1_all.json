@@ -1,0 +1,8 @@
+{"MediaContainer": {"size": 4, "librarySectionID": 1, "librarySectionTitle": "TV Shows", "Metadata": [
+  {"ratingKey": "101", "key": "/library/metadata/101/children", "guid": "plex://show/0000000000000000000000a1", "type": "show", "title": "The Simpsons", "year": 1989, "summary": "Fixture summary.", "leafCount": 3, "childCount": 2,
+   "Guid": [{"id": "imdb://tt0000101"}, {"id": "tmdb://456"}, {"id": "tvdb://71663"}]},
+  {"ratingKey": "102", "key": "/library/metadata/102/children", "guid": "plex://show/0000000000000000000000a2", "type": "show", "title": "Dexter’s Laboratory", "year": 1996, "summary": "", "leafCount": 1,
+   "Guid": [{"id": "tmdb://4229"}]},
+  {"ratingKey": "103", "key": "/library/metadata/103/children", "guid": "plex://show/0000000000000000000000a3", "type": "show", "title": "Dragon Ball Z (1989)", "year": 1989, "leafCount": 1},
+  {"ratingKey": "104", "key": "/library/metadata/104/children", "guid": "plex://show/0000000000000000000000a4", "type": "show", "title": "Uncarried Show", "year": 2015, "leafCount": 1}
+]}}

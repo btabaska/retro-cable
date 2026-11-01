@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from retro_cable.catalog import CatalogError, load_catalog
-from tests.catalog.conftest import CARRIAGE, CHANNELS, MakeCatalog
+from tests.conftest import CARRIAGE, CHANNELS, MakeCatalog
 
 
 def test_loads_every_file(make_catalog: MakeCatalog) -> None:
