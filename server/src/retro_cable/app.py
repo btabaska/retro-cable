@@ -16,7 +16,10 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from retro_cable import __version__, media, tv
-from retro_cable.catalog import load_catalog
+from retro_cable.admin import router as admin
+from retro_cable.admin import store
+from retro_cable.catalog import Catalog, load_catalog
+from retro_cable.catalog.overlay import Overlay, apply_overlay
 from retro_cable.db import connect, migrate
 from retro_cable.scheduler import Library, Scheduler, load_library
 
@@ -58,31 +61,54 @@ class Settings:
 
 
 class _Schedules:
-    """The current Scheduler, rebuilt when the catalog files or the database change."""
+    """The current Scheduler, rebuilt when the catalog files, the database or the admin
+    overlay change. The effective catalog is the YAML plus the head admin overlay."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._stamp: tuple[float, ...] | None = None
         self._scheduler: Scheduler | None = None
+        self._base: Catalog | None = None
+        self._library = Library()
 
     def _mtimes(self) -> tuple[float, ...]:
         paths = sorted(self.settings.catalog_dir.glob("*.yaml"))
-        paths.append(self.settings.db_path)
+        db = self.settings.db_path
+        paths += [db, db.with_name(db.name + "-wal")]
         return tuple(p.stat().st_mtime if p.exists() else 0.0 for p in paths)
+
+    def invalidate(self) -> None:
+        self._scheduler = None
+
+    @property
+    def base(self) -> Catalog:
+        self()
+        assert self._base is not None
+        return self._base
+
+    @property
+    def library(self) -> Library:
+        self()
+        return self._library
 
     def __call__(self) -> Scheduler:
         stamp = self._mtimes()
         if self._scheduler is None or stamp != self._stamp:
             catalog = load_catalog(self.settings.catalog_dir)
             library = Library()
+            overlay = Overlay()
             if self.settings.db_path.exists():
                 db = connect(self.settings.db_path)
                 try:
                     migrate(db)
                     library = load_library(db)
+                    overlay = store.head(db).overlay
                 finally:
                     db.close()
-            self._scheduler = Scheduler(catalog, library, seed=self.settings.seed)
+            self._base, self._library = catalog, library
+            self._scheduler = Scheduler(
+                apply_overlay(catalog, overlay), library, seed=self.settings.seed
+            )
             self._stamp = stamp
         return self._scheduler
 
@@ -119,6 +145,7 @@ def create_app(
         return media.sign(config.media_secret, path, now=time.time())
 
     app.include_router(tv.router(schedules, clock, sign))
+    app.include_router(admin.router(schedules, clock, config.db_path, config.seed))
 
     @app.get("/media/{path:path}", name="getMedia", include_in_schema=False)
     def get_media(

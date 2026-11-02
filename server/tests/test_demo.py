@@ -25,12 +25,15 @@ def test_seed_demo_fills_every_carried_show(make_catalog: MakeCatalog, tmp_path:
     root = make_catalog()
     db_path = tmp_path / "demo.db"
     stats = seed_demo(db_path, root, media)
-    assert stats["shows"] == 5 and stats["movies"] == 1
+    # Five carried shows, plus two uncarried library shows for the admin show picker
+    # (Gravity Falls is one of the demo's uncarried shows, but this catalog carries it).
+    assert stats["shows"] == 7 and stats["movies"] == 1
 
     db = connect(db_path)
     library = load_library(db)
     assert set(library.episodes) == {
-        "the-simpsons", "x-men", "dexters-laboratory", "dragon-ball-z", "gravity-falls"
+        "the-simpsons", "x-men", "dexters-laboratory", "dragon-ball-z", "gravity-falls",
+        "recess", "over-the-garden-wall",
     }  # fmt: skip
     simpsons = library.episodes["the-simpsons"]
     assert simpsons[0].air_date is not None and simpsons[0].air_date < date(1990, 1, 1)
