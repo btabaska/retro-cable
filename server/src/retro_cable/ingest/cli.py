@@ -85,6 +85,9 @@ def _parser() -> argparse.ArgumentParser:
                       help="auto: NVENC while the GPU is idle, else x264")  # fmt: skip
     norm.add_argument("--gpu-queue-url", default=os.environ.get("RC_GPU_QUEUE_URL", ""),
                       help="ComfyUI or its gpu-arbiter, for queued jobs")  # fmt: skip
+    norm.add_argument("--codec", choices=["h264", "hevc"],
+                      default=os.environ.get("RC_CODEC", "h264"),
+                      help="hevc: about 40%% smaller, for Safari/tvOS/Chrome (rig)")  # fmt: skip
     norm.add_argument("--order", choices=["catalog", "priority"],
                       default=os.environ.get("RC_ORDER", "catalog"),
                       help="priority: carried shows first, by earliest year")  # fmt: skip
@@ -302,6 +305,7 @@ def _normalize(
         source_root=root,
         source_map=source_maps(args.source_map),
         encoder=encoder,
+        codec=args.codec,
         max_seconds=args.max_seconds,
         limit=args.limit,
         force=args.force,

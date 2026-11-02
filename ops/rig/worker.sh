@@ -2,7 +2,7 @@
 set -euo pipefail
 # The rig's conversion loop, run inside the worker container (ops/rig/compose.yml).
 #   1. scan the NAS TV and movie trees (read-only) into the rig's own database (/data);
-#   2. normalize into the media root (the NAS .retro-cable folder): only what a channel
+#   2. normalize into the media root (the NAS LiveTV share), in HEVC: only what a channel
 #      carries (YAML, /admin here, and the mini's /admin with RC_PRIORITY_URL), earliest first,
 #      NVENC while the GPU is idle and x264 otherwise, writing a JSON sidecar per encode
 #      and manifest.json for the mini (ingest/manifest.py);
@@ -25,7 +25,7 @@ cycle() {
   # The media root must be the NAS folder: it carries a .plexignore of '*'. Without it the
   # share isn't mounted, and nothing is written anywhere.
   if [[ ! -f $media/.plexignore ]]; then
-    log "$media has no .plexignore: the .retro-cable share is not mounted; not writing"
+    log "$media has no .plexignore: the LiveTV share is not mounted; not writing"
     return 1
   fi
   # An empty source tree is an unmounted share; scanning it would detach every file.

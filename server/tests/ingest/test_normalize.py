@@ -150,6 +150,26 @@ def test_x264_command_is_the_default_shape() -> None:
     assert "-t" not in cmd
 
 
+def test_hevc_on_the_gpu_is_tagged_hvc1_for_apple_players() -> None:
+    # HEVC is about 40% smaller than the H.264 encodes at nearly the same VMAF (docs/specs/ops.md).
+    cmd = build_command(Path("/src/a.mkv"), Path("/out/a.mp4"), SD, "nvenc", codec="hevc")
+    joined = " ".join(cmd)
+    assert "-c:v hevc_nvenc" in joined and "h264_nvenc" not in joined
+    assert "-cq 26" in joined and "-tag:v hvc1" in joined
+    assert "-forced-idr 1" in joined and "-profile:v main" in joined
+    assert "-force_key_frames expr:gte(t,n_forced*1)" in joined
+    assert "-c:a aac -b:a 96k -ac 2 -ar 48000" in joined
+
+
+def test_hevc_on_the_cpu_uses_x265() -> None:
+    cmd = build_command(Path("/src/a.mkv"), Path("/out/a.mp4"), SD, "x264", codec="hevc")
+    joined = " ".join(cmd)
+    assert "-c:v libx265" in joined and "libx264" not in joined
+    assert "-crf 22" in joined and "-tag:v hvc1" in joined
+    assert "forced-idr=1" in joined
+    assert "-profile:v high" not in joined
+
+
 def test_nvenc_command_uses_the_gpu_encoder_with_forced_idr_keyframes() -> None:
     cmd = build_command(Path("/src/a.mkv"), Path("/out/a.mp4"), SD, "nvenc")
     joined = " ".join(cmd)
@@ -293,6 +313,33 @@ def test_plan_can_keep_to_some_shows(db: sqlite3.Connection, library: Path) -> N
     ]
     assert [i.table for i in plan(db, shows=set())] == ["bumpers"]
     assert {i.key for i in plan(db) if i.table == "movies"} == {"heat", "home-alone"}
+
+
+needs_x265 = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None
+    or "libx265"
+    not in subprocess.run(
+        ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True
+    ).stdout,
+    reason="needs ffmpeg with libx265",
+)
+
+
+@needs_x265
+def test_hevc_encodes_are_hvc1_with_a_keyframe_every_second(
+    db: sqlite3.Connection, library: Path, tmp_path: Path
+) -> None:
+    media = tmp_path / "media"
+    stats = normalize(db, media, source_root=library, source_map=[("/plex/tv", str(library))],
+                      codec="hevc", limit=1)  # fmt: skip
+    assert stats.encoded == 1 and stats.failed == []
+    path = media / "tv/fixture-friends/s01/fixture-friends-s01e01.mp4"
+    streams = ffprobe(path, "-show_streams")["streams"]
+    assert isinstance(streams, list)
+    video = next(s for s in streams if s["codec_type"] == "video")
+    assert (video["codec_name"], video["codec_tag_string"]) == ("hevc", "hvc1")
+    gaps = [b - a for a, b in itertools.pairwise(keyframe_times(path))]
+    assert gaps and max(gaps) <= 1.1
 
 
 @needs_ffmpeg

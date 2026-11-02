@@ -3,7 +3,7 @@ set -euo pipefail
 # Start or update the media worker on the rig, from a checkout (e.g. ~/retro-cable-worker):
 #   git pull && ops/rig/up.sh
 # Checks the three NAS mounts first: the sources must be read-only and the media root must
-# be the .retro-cable folder, so the worker can't write anywhere else. The container keeps
+# be the NAS LiveTV share (RC_RIG_MEDIA_SHARE), so the worker can't write anywhere else. The container keeps
 # running across logouts and reboots (restart: unless-stopped). Stop it with
 #   docker compose -f ops/rig/compose.yml down
 
@@ -16,7 +16,8 @@ if [[ -f $here/.env ]]; then
 fi
 tv=${RC_RIG_TV:-/mnt/nas-tv-ro}
 movies=${RC_RIG_MOVIES:-/mnt/nas-movies-ro}
-media=${RC_RIG_MEDIA:-/mnt/nas-retro-cable}
+media=${RC_RIG_MEDIA:-/mnt/nas-livetv}
+share=${RC_RIG_MEDIA_SHARE:-LiveTV}
 findmnt=${FINDMNT:-findmnt}
 
 fail() { echo "up: $*" >&2; exit 1; }
@@ -30,7 +31,7 @@ done
 for dir in "$tv" "$movies"; do
   [[ ,$(options "$dir"), == *,ro,* ]] || fail "$dir must be a read-only CIFS mount"
 done
-[[ $(source_of "$media") == */.retro-cable ]] || fail "$media must be the NAS .retro-cable folder"
+[[ $(source_of "$media") == */"$share" ]] || fail "$media must be the NAS $share share"
 [[ ,$(options "$media"), == *,rw,* ]] || fail "$media must be mounted read-write"
 [[ -f $media/.plexignore ]] || fail "$media has no .plexignore; refusing to write there"
 
