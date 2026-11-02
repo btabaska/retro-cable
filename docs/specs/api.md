@@ -49,5 +49,32 @@ Times are ISO 8601 in the catalog time zone, with offset. `year` must be 1990–
 - `GET /guide?year&date&start=HH:MM&hours` (`getGuide`) returns back-to-back slots for every channel on the dial, sorted by number, from `start` (default 00:00) for `hours` (default 24, max 36). Slots have `kind` (episode, movie, bumper or filler), start and end, title, season and episode, effective `air_date`, `new` and `transplant`, plus (Phase 7) `holiday` and `holiday_name`: the holiday the program is tagged for while that holiday is in force (see `scheduler.md`, Phase 7), or null. They carry no file paths. `/tune` slots carry the same fields.
 - `GET /tune/{channel}?year&count` (`tune`) returns the slot airing at the simulated now, `offset_seconds` into it, and the next `count` slots (default 3). Each slot has a signed `media_url`, which is null for filler. A channel not on the dial returns 404.
 - **Media URLs** are `/media/<path>?exp=<unix>&sig=<hmac-sha256(path, exp)>`, valid for 4 hours and signed with `RC_MEDIA_SECRET`. If the secret is unset, a random one is generated per process. The API serves `/media/*` itself, with byte ranges, after checking the signature. In the compose stack, the web container's Caddy serves `/media/*` directly, and the signature check there is still to do. Uvicorn runs with `--no-access-log` so signed URLs aren't logged.
-- **Settings** come from the environment: `RC_CATALOG_DIR` (default: the repo `catalog/`), `RC_DB` (default `$RC_DATA_DIR/retro-cable.db`), `RC_MEDIA_DIR`, `RC_MEDIA_SECRET` and `RC_SEED`. The scheduler is rebuilt when a catalog file or the database changes.
+- **Settings** come from the environment: `RC_CATALOG_DIR` (default: the repo `catalog/`), `RC_DB` (default `$RC_DATA_DIR/retro-cable.db`), `RC_MEDIA_DIR`, `RC_MEDIA_SECRET` and `RC_SEED`. The scheduler is rebuilt when a catalog file or the database changes. Database changes are detected with SQLite's `PRAGMA data_version` on one long-lived connection (plus the file's inode, so a replaced file is seen), not file mtimes: opening and closing connections moved the `-wal` mtime on plain reads, so every admin read rebuilt the scheduler and stalled the next TV request. Commits still in the WAL are seen. Rebuilds run under a lock, so concurrent requests after a change share one rebuild. Admin requests migrate the database once per file, not per request.
 - **Demo data.** `make demo-db` writes long color-bar feeds into `.fixtures/_demo/` (11, 22, 44 and 90 minutes, plus a bumper) and seeds `data/demo.db`. Every carried show gets weekly episodes, 22 a season, pointing at the feed for its runtime class. Air dates are invented. Episodes take their feed's length, so the feeds are always full length: seeding refuses a feed shorter than its runtime class (10, 20, 40 and 80 minutes), because shrunken feeds made guides of tens of thousands of seconds-long programs. The test stack, Playwright's API (`tools/e2e-api.sh`) and CI all use the same full-length feeds; CI caches them. `make demo` runs the API on that database with the web dev server.
+
+## Implemented (Phase 10: admin)
+
+Admin routes live under `/admin/*` (`/api/admin/*` behind Caddy) and appear in `openapi.json` with the tag `admin`. They are LAN-only like everything else and have **no auth in M1**. Every write appends an overlay revision (see `catalog.md`, Phase 10) and refreshes the schedules at once, with no restart.
+
+| Route | Operation | Does |
+| --- | --- | --- |
+| `GET /admin/channels` | `adminListChannels` | Every channel by number, with `custom` (editable) and a show count, plus `state` (revision, catalog version, can_undo) |
+| `GET /admin/channels/{id}` | `adminGetChannel` | The channel as a `ChannelDraft` (YAML channels too, read-only) |
+| `GET /admin/library?q=` | `adminLibrary` | Every show and movie in the database, filtered by title. Uncarried items come first. Each has years, episodes on disk and the channels carrying it |
+| `POST /admin/check` | `adminCheck` | Runs the save checks on a draft without saving |
+| `POST /admin/preview` | `adminPreview` | The checks plus a Sunday–Saturday week of the draft's guide for `year` (and `date`, default today), with the draft applied in memory only |
+| `POST /admin/channels` | `adminCreateChannel` | Check, then save. Returns 409 with the `CheckResult` when the checks fail |
+| `PUT /admin/channels/{id}` | `adminUpdateChannel` | Same, for a custom channel. Returns 403 for a YAML channel |
+| `DELETE /admin/channels/{id}` | `adminDeleteChannel` | Removes a custom channel |
+| `POST /admin/undo` | `adminUndo` | Reverts the last save or delete. Returns 409 when there is nothing to undo |
+| `GET /admin/state` | `adminState` | Revision, catalog version and can_undo |
+
+**Checks before save** each have a `field` (`number`, `call_sign`, `name`, `launch_year`, `shows`, `shows.<i>` or null) and a plain-words message. Errors block saving:
+- The name or call sign is empty, or the call sign is longer than 6 letters or digits.
+- The number is outside 1–999, or is already used by another channel's identity on any date the new channel is on the dial ("Number 30 is already Disney Channel.").
+- The launch year is missing or outside 1990–2010, unless the channel is library.
+- There are no shows, a show is not in the library, a show is listed twice, or its years are out of range or reversed.
+- The catalog's own cross-file validation fails.
+- The one-week invariant smoke test on the same engine fails: every day runs 5 a.m. to 5 a.m. with no gaps or overlaps, and nothing airs before its date on a non-library channel.
+
+Warnings don't block saving: a show with no files, or a show whose debut comes after its carriage start ("Kim Possible won't air before its 2002 debut.").

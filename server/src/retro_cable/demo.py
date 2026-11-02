@@ -7,6 +7,8 @@ points at one of the generic demo feeds in <media>/_demo/ (see tools/fixtures/ge
 first carriage date on a non-library channel, except the holiday DCOMs, which keep their real
 premieres. An episode that airs in the week up to a holiday is titled for it ("Episode 57:
 Halloween"), so the holiday tagger finds it, and the Peanuts specials get their real titles.
+A few shows no channel carries (Recess, Gravity Falls, Over the Garden Wall) are in the library
+too, for building custom channels in /admin.
 Air dates are invented: this is for trying the app, not for measuring the archive (that is
 `make inventory` on a real import).
 """
@@ -67,6 +69,12 @@ FIXED_EPISODES = {
     ]
 }
 HOLIDAY_WEEK = 7
+# Shows in the demo library that no channel carries (Phase 10 custom channels pick from them).
+UNCARRIED = {
+    "recess": ("Recess", date(1997, 9, 13)),
+    "gravity-falls": ("Gravity Falls", date(2012, 6, 15)),
+    "over-the-garden-wall": ("Over the Garden Wall", date(2014, 11, 3)),
+}
 
 
 def _episode_title(catalog: Catalog, number: int, aired: date) -> str:
@@ -151,6 +159,22 @@ def seed_demo(db_path: Path, catalog_dir: Path, media_dir: Path) -> dict[str, in
                         (show, season + 1, n + 1, title, aired.isoformat(), seconds, path),
                     )
                     episodes += 1
+        # A few shows no channel carries, so the admin show picker has a library to offer.
+        half_path, half_seconds = feeds["half-hour"]
+        for show, (title, first_aired) in UNCARRIED.items():
+            if show in titles:
+                continue  # carried after all
+            db.execute("INSERT INTO shows (id, title) VALUES (?, ?)", (show, title))
+            shows += 1
+            for n in range(EPISODES_PER_SEASON):
+                db.execute(
+                    "INSERT INTO episodes (show_id, season, episode, title, air_date,"
+                    " air_date_source, runtime_seconds, file_path)"
+                    " VALUES (?, 1, ?, ?, ?, 'tmdb', ?, ?)",
+                    (show, n + 1, f"Episode {n + 1}",
+                     (first_aired + timedelta(weeks=n)).isoformat(), half_seconds, half_path),
+                )  # fmt: skip
+                episodes += 1
         bumper_path, bumper_seconds = feeds["bumper"]
         for channel in catalog.channels.channels:
             db.execute(

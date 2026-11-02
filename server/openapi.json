@@ -1,6 +1,215 @@
 {
   "components": {
     "schemas": {
+      "AdminChannel": {
+        "properties": {
+          "custom": {
+            "title": "Custom",
+            "type": "boolean"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/ChannelDraft"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "custom",
+          "draft"
+        ],
+        "title": "AdminChannel",
+        "type": "object"
+      },
+      "AdminChannelList": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/AdminChannelRow"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AdminState"
+          }
+        },
+        "required": [
+          "state",
+          "channels"
+        ],
+        "title": "AdminChannelList",
+        "type": "object"
+      },
+      "AdminChannelRow": {
+        "properties": {
+          "call_sign": {
+            "title": "Call Sign",
+            "type": "string"
+          },
+          "custom": {
+            "description": "Made in /admin (editable); YAML channels are read-only",
+            "title": "Custom",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "launch": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Launch"
+          },
+          "library": {
+            "title": "Library",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "shows": {
+            "description": "Shows and movies carried, in any year",
+            "title": "Shows",
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "network",
+              "marathon",
+              "movie"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "number",
+          "call_sign",
+          "type",
+          "library",
+          "launch",
+          "custom",
+          "shows"
+        ],
+        "title": "AdminChannelRow",
+        "type": "object"
+      },
+      "AdminState": {
+        "properties": {
+          "can_undo": {
+            "title": "Can Undo",
+            "type": "boolean"
+          },
+          "catalog_version": {
+            "title": "Catalog Version",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "catalog_version",
+          "can_undo"
+        ],
+        "title": "AdminState",
+        "type": "object"
+      },
+      "ChangeResult": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AdminState"
+          }
+        },
+        "required": [
+          "message",
+          "state"
+        ],
+        "title": "ChangeResult",
+        "type": "object"
+      },
+      "ChannelDraft": {
+        "description": "What the admin form edits. Checked by POST /admin/check before any save.",
+        "properties": {
+          "call_sign": {
+            "title": "Call Sign",
+            "type": "string"
+          },
+          "launch_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required unless library",
+            "title": "Launch Year"
+          },
+          "library": {
+            "default": false,
+            "description": "Always on the dial, every episode eligible",
+            "title": "Library",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "shows": {
+            "items": {
+              "$ref": "#/components/schemas/DraftShow"
+            },
+            "title": "Shows",
+            "type": "array"
+          },
+          "type": {
+            "default": "network",
+            "enum": [
+              "network",
+              "marathon",
+              "movie"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "call_sign",
+          "name"
+        ],
+        "title": "ChannelDraft",
+        "type": "object"
+      },
       "ChannelInfo": {
         "properties": {
           "call_sign": {
@@ -72,6 +281,166 @@
           "launch"
         ],
         "title": "ChannelInfo",
+        "type": "object"
+      },
+      "CheckIssue": {
+        "properties": {
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Form field: number, call_sign, name, launch_year, shows or shows.<i>",
+            "title": "Field"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "CheckIssue",
+        "type": "object"
+      },
+      "CheckResult": {
+        "properties": {
+          "catalog_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The version this draft would produce",
+            "title": "Catalog Version"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/CheckIssue"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/CheckIssue"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "errors",
+          "warnings",
+          "catalog_version"
+        ],
+        "title": "CheckResult",
+        "type": "object"
+      },
+      "DraftRequest": {
+        "properties": {
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The channel being edited, if any",
+            "title": "Channel Id"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MM-DD of the week; default today's",
+            "title": "Date"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/ChannelDraft"
+          },
+          "year": {
+            "default": 2000,
+            "description": "Year to check",
+            "maximum": 2010.0,
+            "minimum": 1990.0,
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "draft"
+        ],
+        "title": "DraftRequest",
+        "type": "object"
+      },
+      "DraftShow": {
+        "properties": {
+          "from_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First year carried; default launch",
+            "title": "From Year"
+          },
+          "kind": {
+            "default": "show",
+            "enum": [
+              "show",
+              "movie"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "show": {
+            "description": "Library id (catalog slug) of a show or movie",
+            "title": "Show",
+            "type": "string"
+          },
+          "until_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last year carried; default open",
+            "title": "Until Year"
+          }
+        },
+        "required": [
+          "show"
+        ],
+        "title": "DraftShow",
         "type": "object"
       },
       "Guide": {
@@ -295,6 +664,111 @@
         "title": "Health",
         "type": "object"
       },
+      "LibraryChannel": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "number"
+        ],
+        "title": "LibraryChannel",
+        "type": "object"
+      },
+      "LibraryEntry": {
+        "properties": {
+          "channels": {
+            "description": "Channels that carry it, in any year",
+            "items": {
+              "$ref": "#/components/schemas/LibraryChannel"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "episodes": {
+            "description": "Episodes (or the movie) on disk",
+            "title": "Episodes",
+            "type": "integer"
+          },
+          "first_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Year"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "show",
+              "movie"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Year"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "first_year",
+          "last_year",
+          "episodes",
+          "channels"
+        ],
+        "title": "LibraryEntry",
+        "type": "object"
+      },
+      "LibraryList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "LibraryList",
+        "type": "object"
+      },
       "Lineup": {
         "properties": {
           "channels": {
@@ -336,6 +810,95 @@
           "channels"
         ],
         "title": "Lineup",
+        "type": "object"
+      },
+      "Preview": {
+        "properties": {
+          "channel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "check": {
+            "$ref": "#/components/schemas/CheckResult"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewDay"
+            },
+            "title": "Days",
+            "type": "array"
+          }
+        },
+        "required": [
+          "check",
+          "channel",
+          "days"
+        ],
+        "title": "Preview",
+        "type": "object"
+      },
+      "PreviewDay": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "on_air": {
+            "title": "On Air",
+            "type": "boolean"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/GuideSlot"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "weekday",
+          "on_air",
+          "slots"
+        ],
+        "title": "PreviewDay",
+        "type": "object"
+      },
+      "SaveResult": {
+        "properties": {
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "check": {
+            "$ref": "#/components/schemas/CheckResult"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AdminState"
+          }
+        },
+        "required": [
+          "channel_id",
+          "message",
+          "check",
+          "state"
+        ],
+        "title": "SaveResult",
         "type": "object"
       },
       "Tune": {
@@ -581,6 +1144,414 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/admin/channels": {
+      "get": {
+        "description": "Every channel, YAML and custom, by number.",
+        "operationId": "adminListChannels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminChannelList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Adminlistchannels",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Check and save a new custom channel. The catalog version changes.",
+        "operationId": "adminCreateChannel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            },
+            "description": "The checks failed; nothing was saved"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admincreatechannel",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/channels/{channel_id}": {
+      "delete": {
+        "description": "Remove a custom channel. The YAML files are never touched.",
+        "operationId": "adminDeleteChannel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admindeletechannel",
+        "tags": [
+          "admin"
+        ]
+      },
+      "get": {
+        "operationId": "adminGetChannel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminChannel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admingetchannel",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "description": "Check and save changes to a custom channel.",
+        "operationId": "adminUpdateChannel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            },
+            "description": "The checks failed; nothing was saved"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adminupdatechannel",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/check": {
+      "post": {
+        "description": "Run the save checks on a draft without saving it.",
+        "operationId": "adminCheck",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admincheck",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/library": {
+      "get": {
+        "description": "Every show and movie in the library, including ones no channel carries.",
+        "operationId": "adminLibrary",
+        "parameters": [
+          {
+            "description": "Title search",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Title search",
+              "maxLength": 100,
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adminlibrary",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/preview": {
+      "post": {
+        "description": "A week (Sunday to Saturday) of the draft channel's guide, with the draft applied in\nmemory only. The days are empty when the checks fail.",
+        "operationId": "adminPreview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adminpreview",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/state": {
+      "get": {
+        "operationId": "adminState",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Adminstate",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/undo": {
+      "post": {
+        "description": "Revert the last save or delete: the previous inputs, so the same catalog version\nand the same schedules.",
+        "operationId": "adminUndo",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Nothing to undo"
+          }
+        },
+        "summary": "Adminundo",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/channels": {
       "get": {
         "description": "Every channel with its identity on that date; hidden ones have on_air false.",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChannelInfo, TunedSlot } from "../api/client";
 import { Clock } from "../components/Clock";
 import { InfoBanner } from "../components/InfoBanner";
@@ -32,18 +32,24 @@ interface LiveTVProps {
 export function LiveTV(props: LiveTVProps) {
   const { channel, dial, slot, next, now, wallNow, year, timeZone, bannerUntil } = props;
   const [digits, setDigits] = useState("");
+  // The app re-renders every 250 ms for the clock, so the timer must not depend on `props`,
+  // or it restarts on every render and number entry never commits.
+  const onNumber = useRef(props.onNumber);
+  useEffect(() => {
+    onNumber.current = props.onNumber;
+  });
 
   useEffect(() => {
     if (!digits) return;
     const id = window.setTimeout(() => {
       const match = dial.find((c) => c.number === Number(digits));
-      if (match) props.onNumber(match.id);
+      if (match) onNumber.current(match.id);
       setDigits("");
     }, DIGIT_MS);
     return () => {
       window.clearTimeout(id);
     };
-  }, [digits, dial, props]);
+  }, [digits, dial]);
 
   useKeys((event) => {
     const key = event.key;

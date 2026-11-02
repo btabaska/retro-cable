@@ -68,7 +68,7 @@ The first frontend is a browser app with the same TV interface, so agents can te
 - **Demo slate.** Demo feeds are generic color bars, so the player overlays the show, season, episode and title. During bumpers it shows the call sign and "Up next".
 - **Live TV keys.** ▲ / ▼ (or Page Up / Down) change channel, wrapping and skipping channels not on the dial. Space or P goes to the last channel. Digits tune by number. Enter opens the guide, Y opens the year picker, and Esc, I or ◀ / ▶ show the banner. The info banner shows for 4 s on every tune, with the clock and simulated date. The 4 s run on the real wall clock (`Date.now()`), never on simulated time: simulated now is years behind the wall clock, so comparing the two would leave the banner up forever (M1 review bug). Everything shown inside the banner (clock, progress, start and end times) stays on simulated time.
 - **Guide.** One request covers 12 hours from the current half hour. The grid shows 7 rows × 90 minutes. Cells are sized to real run times, and each bumper is folded into the cell before the next program. A cell that started before the window reads "from 7:52". Up and down keep the time anchor. Left and right move by cell and scroll the window by half hours. Enter tunes, Space opens the year picker, and Esc goes back. The details panel shows the focused cell, and the live picture plays as picture-in-picture.
-- **Year picker.** A 7 × 3 grid of years. The panel shows the dial for the focused year, with hidden channels marked "Hidden until …". Enter sets the year, retunes and returns to live TV. The year and channel are remembered in `localStorage`.
+- **Year picker.** A 7 × 3 grid of years. The panel shows the dial for the focused year, with hidden channels marked "Hidden until …". A failed lineup request is retried after 1 s, then 2 s and so on up to 5 s, so the dial never stays empty. Enter sets the year, retunes and returns to live TV. The year and channel are remembered in `localStorage`.
 - **Tests.** Vitest covers guide layout, channel stepping, time formatting and the app flow on a fake API. The Playwright flow `e2e/tv.spec.ts` runs launch → banner → guide → tune → change year, checks that the player is past the offset `/tune` returned, and checks that the banner and clock hide about 4 s after a tune and come back on I. Playwright starts the API through `tools/e2e-api.sh` on the demo database.
 
 ## Implemented (Phase 7: Feel)
@@ -78,3 +78,23 @@ The first frontend is a browser app with the same TV interface, so agents can te
 - **Movies.** The line under the title reads the premiere year and running time ("1998 · 1h 25m") instead of season and episode (`src/lib/program.ts`). Cells keep their true length.
 - **Bumpers without media** show a station ID slate on `color.background`: number and call sign, channel name, and "Up next 8:27 Seinfeld". Bumpers with media play them.
 - **Tests.** `program.test.ts` (kicker and labels), `InfoBanner.test.tsx` (badges, movie line) and `Player.test.tsx` (bumper slate).
+
+## Implemented (Phase 10: /admin)
+
+- **Route.** `/admin` (and anything under it) renders the phone admin (`src/admin/`) instead of the TV. Production Caddy already serves `index.html` for unknown paths.
+- **Tokens.** `design/tokens.json` has an `admin` group, which becomes `--rc-admin-*`. `$`-prefixed keys inside a group are skipped.
+- **Shell.** A 64 px ink header, a scrolling body on `admin.bg` with a 16 px gutter, and a 64 px tab bar. In M1 the tab bar shows only Channels; Holidays, Manager and Build are hidden.
+- **Channel list.** 48 px rows: number, name, and meta ("Network · 12 shows", "Library · 2 shows", "from 2001 · …"). Custom channels have a dashed border and "Custom". A row opens the editor; YAML channels open read-only. Loading shows 6 skeleton rows, and an error shows a card with Retry. "+ New channel" is gold.
+- **Editor.**
+  - While an existing channel loads, the header shows its name from the list and the body shows skeleton fields and rows: no values, no shows message, no footer. A failed load shows a card with Retry. The title never falls back to a placeholder like "Channel".
+  - Fields: number (`inputmode=numeric`, with the next free number as placeholder), call sign (upper case, max 6), name, type, "On the dial from" year, and a Library switch ("Available in every year").
+  - Shows list: tap a row to set from/until years or "Remove from channel".
+  - Sticky footer: "Preview week" and gold Save. Save is enabled once the draft changed and has a number, a name and a show, and reads "Checking…" while the server checks.
+  - Failed checks show a summary card that takes focus and links to each field, plus inline messages tied to the field with `aria-invalid` and `aria-describedby`. Warnings show in a `warn` card.
+  - Delete (custom channels) and leaving with unsaved changes both ask first.
+- **Show picker.** A full-height sheet with an autofocused search. Results are grouped "Not on any channel", then "On other channels" ("on 27 Cartoon Network"). Shows already on the channel show ✓ and are disabled. Empty states: "No shows match '…'" and "Your library is empty. Run an import first."
+- **Week preview.** A sheet with a year select and Sun–Sat day chips (today's date selected). It lists the day's programs with time and title, folds bumpers away, and shows NEW and holiday chips in the TV colors at 11 px. Failed checks show in place of the list.
+- **Undo toast.** After a save or delete, an ink toast appears above the tab bar with a gold Undo. It lasts 10 s, pauses while hovered or focused, and has `role=status`. Undo shows "Restored".
+- **Sheets** trap focus, close on Esc, return focus to the opener, and skip the slide animation under reduced motion. Tap targets are at least 44 px. `:focus-visible` is a 3 px accent outline.
+- **Fix.** Number entry on live TV never committed: the commit timer depended on `props` and restarted on every 250 ms clock render. It now depends only on the digits and the dial.
+- **Tests.** Vitest: `admin/draft.test.ts`, `admin/AdminApp.test.tsx` (list, create with picker, preview, save, undo, inline errors, discard, retry, editor loading and retry), `screens/YearPicker.test.tsx` (dial, lineup retry), and `lib/route.test.ts`. Playwright `e2e/admin.spec.ts` runs at 390 px: create a library channel from two uncarried shows, preview it, save, tune it by number on the TV and find it in the guide, then undo.

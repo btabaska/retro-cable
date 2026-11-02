@@ -3,6 +3,8 @@
 import logging
 import os
 import secrets
+import sqlite3
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -16,7 +18,10 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from retro_cable import __version__, media, tv
-from retro_cable.catalog import load_catalog
+from retro_cable.admin import router as admin
+from retro_cable.admin import store
+from retro_cable.catalog import Catalog, load_catalog
+from retro_cable.catalog.overlay import Overlay, apply_overlay
 from retro_cable.db import connect, migrate
 from retro_cable.scheduler import Library, Scheduler, load_library
 
@@ -58,33 +63,86 @@ class Settings:
 
 
 class _Schedules:
-    """The current Scheduler, rebuilt when the catalog files or the database change."""
+    """The current Scheduler, rebuilt when the catalog files, the database or the admin
+    overlay change. The effective catalog is the YAML plus the head admin overlay.
+
+    The database part of the cache stamp is SQLite's `PRAGMA data_version` on one
+    long-lived connection, which changes only when another connection commits. File
+    mtimes are not used for the database: opening and closing connections (WAL checkpoints,
+    the -wal file coming and going) changed them on plain reads, so every admin read
+    rebuilt the Scheduler and stalled the next TV request. A rebuild runs under a lock, so
+    concurrent requests after a change share one rebuild."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._stamp: tuple[float, ...] | None = None
+        self._stamp: tuple[object, ...] | None = None
         self._scheduler: Scheduler | None = None
+        self._base: Catalog | None = None
+        self._library = Library()
+        self._lock = threading.RLock()
+        self._watch: sqlite3.Connection | None = None
+        self._watch_file: tuple[int, int] | None = None
 
-    def _mtimes(self) -> tuple[float, ...]:
-        paths = sorted(self.settings.catalog_dir.glob("*.yaml"))
-        paths.append(self.settings.db_path)
-        return tuple(p.stat().st_mtime if p.exists() else 0.0 for p in paths)
+    def _db_stamp(self) -> tuple[object, ...]:
+        """(device, inode, data_version) of the database, or () when there is none. Call
+        with the lock held."""
+        try:
+            st = self.settings.db_path.stat()
+        except FileNotFoundError:
+            self._close_watch()
+            return ()
+        ident = (st.st_dev, st.st_ino)
+        if self._watch is None or ident != self._watch_file:
+            self._close_watch()
+            self._watch = connect(self.settings.db_path, check_same_thread=False)
+            migrate(self._watch)
+            self._watch_file = ident
+        (version,) = self._watch.execute("PRAGMA data_version").fetchall()[0]
+        return (*ident, version)
+
+    def _close_watch(self) -> None:
+        if self._watch is not None:
+            self._watch.close()
+        self._watch, self._watch_file = None, None
+
+    def _stamp_now(self) -> tuple[object, ...]:
+        yaml = tuple(
+            (p.name, p.stat().st_mtime) for p in sorted(self.settings.catalog_dir.glob("*.yaml"))
+        )
+        return (yaml, self._db_stamp())
+
+    def invalidate(self) -> None:
+        with self._lock:
+            self._scheduler = None
+
+    @property
+    def base(self) -> Catalog:
+        self()
+        assert self._base is not None
+        return self._base
+
+    @property
+    def library(self) -> Library:
+        self()
+        return self._library
 
     def __call__(self) -> Scheduler:
-        stamp = self._mtimes()
-        if self._scheduler is None or stamp != self._stamp:
+        with self._lock:
+            stamp = self._stamp_now()
+            if self._scheduler is not None and stamp == self._stamp:
+                return self._scheduler
             catalog = load_catalog(self.settings.catalog_dir)
             library = Library()
-            if self.settings.db_path.exists():
-                db = connect(self.settings.db_path)
-                try:
-                    migrate(db)
-                    library = load_library(db)
-                finally:
-                    db.close()
-            self._scheduler = Scheduler(catalog, library, seed=self.settings.seed)
+            overlay = Overlay()
+            if self._watch is not None:
+                library = load_library(self._watch)
+                overlay = store.head(self._watch).overlay
+            self._base, self._library = catalog, library
+            self._scheduler = Scheduler(
+                apply_overlay(catalog, overlay), library, seed=self.settings.seed
+            )
             self._stamp = stamp
-        return self._scheduler
+            return self._scheduler
 
 
 def _operation_id(route: APIRoute) -> str:
@@ -119,6 +177,7 @@ def create_app(
         return media.sign(config.media_secret, path, now=time.time())
 
     app.include_router(tv.router(schedules, clock, sign))
+    app.include_router(admin.router(schedules, clock, config.db_path, config.seed))
 
     @app.get("/media/{path:path}", name="getMedia", include_in_schema=False)
     def get_media(
