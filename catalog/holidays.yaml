@@ -7,7 +7,9 @@
 #   off            nothing is injected
 # The season of a holiday is its window or its month up to the day, whichever is longer.
 # Holiday movies, and tagged episodes of `seasonal` shows in overrides.yaml (the Peanuts
-# specials), air only in season. Titles are tagged by keyword (server catalog/holidays.py);
+# specials), air only in season on every channel, library movie channels included. On the
+# holiday itself, a movie channel (mode not off) runs a marathon of its movies tagged for
+# that holiday, back to back all broadcast day. Titles are tagged by keyword (server catalog/holidays.py);
 # `tagged` adds titles the keywords miss, and overrides.yaml holiday_tags fixes episodes.
 
 holidays:

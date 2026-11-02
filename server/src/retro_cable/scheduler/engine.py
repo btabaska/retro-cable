@@ -21,7 +21,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from retro_cable.catalog import Catalog, effective_dates
-from retro_cable.catalog.holidays import STRENGTH_BOOST, Tagger, mode_for
+from retro_cable.catalog.holidays import STRENGTH_BOOST, Tagger, holiday_date, mode_for
 from retro_cable.catalog.models import Carriage, Channel, DayPart, Identity, Template
 from retro_cable.scheduler.clock import broadcast_day, broadcast_day_bounds
 from retro_cable.scheduler.library import Bumper, Library, Program
@@ -320,12 +320,16 @@ class Scheduler:
         # Tagged episodes are preferred until each has aired once outside prime and once in
         # prime, so Halloween prime time stays themed without looping one episode all day.
         played_prime: set[ProgramKey] = set()
+        marathon = self._marathon(channel, day)
         t = start
         while t < end:
             local = t.astimezone(self.tz)
             sim_date = local.date()
             part, boundary = self._active_part(channel.id, local)
             rng = Random(f"{self.seed}:{channel.id}:{t.isoformat()}")
+            if marathon:
+                t = self._marathon_step(channel, day, marathon, slots, t, end, rng)
+                continue
             candidates = [
                 (s, progs)
                 for s in self._pool(channel.id, part, sim_date)
@@ -388,6 +392,81 @@ class Scheduler:
             )
             t = slot_end
         return tuple(slots)
+
+    def _marathon(self, channel: Channel, day: date) -> tuple[tuple[Program, str], ...]:
+        """On a holiday itself, a movie channel's holiday marathon: every eligible movie it
+        carries tagged for that holiday, in carriage order (the channel's curated order), with
+        the holiday it airs for. Empty on any other day, or for any other kind of channel."""
+        if channel.type != "movie":
+            return ()
+        today = [
+            h
+            for h in self.tagger.on(day).window
+            if holiday_date(h, day.year) == day and mode_for(h, channel.id) != "off"
+        ]
+        found: dict[str, tuple[Program, str]] = {}
+        for c in self._carriage.get(channel.id, []):
+            movie = self.library.movies.get(c.show)
+            if (
+                c.kind != "movie"
+                or movie is None
+                or c.show in found
+                or c.show in self._excluded
+                or not _carried(c, day)
+                or (movie.air_date is not None and movie.air_date > day)
+            ):
+                continue
+            label = next((h.id for h in today if h.id in self.tags(movie)), None)
+            if label:
+                found[c.show] = (movie, label)
+        return tuple(found.values())
+
+    def _marathon_step(
+        self,
+        channel: Channel,
+        day: date,
+        marathon: tuple[tuple[Program, str], ...],
+        slots: list[Slot],
+        t: datetime,
+        end: datetime,
+        rng: Random,
+    ) -> datetime:
+        """Place the next marathon movie (after a bumper) and return the new time. The marathon
+        runs through the whole broadcast day, past midnight to 5 a.m.; each movie airs in full,
+        and time too short for any of them becomes Paid Programming."""
+        room = (end - t).total_seconds()
+        aired = sum(1 for s in slots if s.kind == "movie")
+        order = [marathon[(aired + i) % len(marathon)] for i in range(len(marathon))]
+        last = next((s.show for s in reversed(slots) if s.kind == "movie"), None)
+        fitting = [m for m in order if m[0].seconds <= room]
+        if len(fitting) > 1 and fitting[0][0].show == last:
+            fitting = fitting[1:] + fitting[:1]
+        if not fitting:
+            return self._fill(slots, t, end, PAID_PROGRAMMING)
+        movie, holiday = fitting[0]
+        bumper = self._bumper(channel, rng) if slots and slots[-1].kind != "filler" else None
+        if bumper:
+            gap = timedelta(seconds=min(bumper.seconds, channel.bumper_seconds))
+            if movie.seconds + gap.total_seconds() <= room:
+                slots.append(
+                    Slot(start=t, end=t + gap, kind="bumper", title=channel.name, path=bumper.path)
+                )
+                t += gap
+        slot_end = t + timedelta(seconds=movie.seconds)
+        slots.append(
+            Slot(
+                start=t,
+                end=slot_end,
+                kind="movie",
+                title=movie.title,
+                show=movie.show,
+                air_date=movie.air_date,
+                transplant=self._is_transplant(channel, movie.show),
+                path=movie.path,
+                holiday=holiday,
+            )
+        )
+        return slot_end
 
     def _special(
         self,
