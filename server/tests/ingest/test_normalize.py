@@ -18,9 +18,12 @@ import pytest
 
 from retro_cable.ingest.normalize import (
     Crop,
+    Encoder,
+    Item,
     NormalizeStats,
     Probe,
     Stream,
+    Table,
     build_command,
     merge_crops,
     no_crop,
@@ -29,6 +32,7 @@ from retro_cable.ingest.normalize import (
     parse_cropdetect,
     parse_probe,
     plan,
+    prioritize,
     resolve_source,
     target_path,
 )
@@ -491,3 +495,71 @@ def test_nvenc_is_selectable(db: sqlite3.Connection, fake_library: Path, tmp_pat
     rec = Recorder()
     normalize(db, tmp_path / "media", run=rec, probe=fake_probe, crop=no_crop, encoder="nvenc")
     assert all("h264_nvenc" in cmd for cmd in rec.calls)
+
+
+# --- the rig worker: per-item encoder, priority order, hooks ----------------------------
+
+
+def test_encoder_can_be_chosen_per_item(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    picks: list[Encoder] = ["nvenc", "x264", "nvenc"]
+    rec = Recorder()
+    stats = normalize(
+        db, tmp_path / "media", run=rec, probe=fake_probe, crop=no_crop,
+        encoder=lambda: picks.pop(0),
+    )  # fmt: skip
+    assert ["h264_nvenc" in cmd for cmd in rec.calls] == [True, False, True]
+    assert stats.encoders == {"nvenc": 2, "x264": 1}
+
+
+def test_after_each_encode_the_hook_sees_the_recorded_item(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    seen: list[tuple[str, object]] = []
+
+    def hook(item: Item) -> None:
+        row = db.execute("SELECT media_path FROM episodes WHERE id = ?", (item.rowid,)).fetchone()
+        seen.append((item.target, row["media_path"]))
+
+    normalize(
+        db, tmp_path / "media", run=Recorder(), probe=fake_probe, crop=no_crop, on_encoded=hook
+    )
+    assert seen == [(f"tv/s/s01/s-s01e0{n}.mp4", f"tv/s/s01/s-s01e0{n}.mp4") for n in (1, 2, 3)]
+
+
+def _item(table: Table, key: str, n: int) -> Item:
+    return Item(table, n, f"{key} {n}", f"/src/{key}/{n}.mkv", f"{key}/{n}.mp4", None, None,
+                None, key=key)  # fmt: skip
+
+
+def test_priority_order_carried_first_by_earliest_year_in_waves() -> None:
+    """Carried shows (including /admin channels') first, earliest carriage year first, a
+    wave of episodes per show at a time so every channel gets something to air early; then
+    shows no channel carries, by their own year. Bumpers lead: they are tiny."""
+    items = (
+        [_item("episodes", "early", n) for n in (1, 2, 3)]
+        + [_item("episodes", "late", n) for n in (1, 2, 3)]
+        + [_item("episodes", "loose", n) for n in (1, 2)]
+        + [_item("movies", "film", 1), _item("bumpers", "ktvu", 1)]
+    )
+    ordered = prioritize(
+        items, carried={"late": 2004, "early": 1990, "film": 1998}, years={"loose": 1985}, wave=2
+    )
+    assert [i.label for i in ordered] == [
+        "ktvu 1",
+        "early 1", "early 2", "film 1", "late 1", "late 2",
+        "early 3", "late 3",
+        "loose 1", "loose 2",
+    ]  # fmt: skip
+
+
+def test_normalize_follows_a_given_order(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    rec = Recorder()
+    normalize(
+        db, tmp_path / "media", run=rec, probe=fake_probe, crop=no_crop,
+        order=lambda items: list(reversed(items)),
+    )  # fmt: skip
+    assert ["S01E03" in " ".join(c) for c in rec.calls] == [True, False, False]

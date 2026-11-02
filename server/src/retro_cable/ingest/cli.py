@@ -4,6 +4,8 @@
   tmdb       fill air dates and runtimes from TMDB (TMDB_TOKEN)
   scan       read Plex-named folders off the disk, without Plex (--tv DIR, --movies DIR)
   normalize  encode playable MP4s into the media root (RC_MEDIA_DIR); see ingest/normalize.py
+  manifest   write manifest.json at the media root from this database (ingest/manifest.py)
+  index-media  record a manifest's encodes in this database, without probing (the mini)
 
 Credentials come from the environment and are never printed.
 """
@@ -13,6 +15,9 @@ import json
 import os
 import sqlite3
 import sys
+import time
+import urllib.request
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,11 +26,15 @@ from retro_cable.admin import store
 from retro_cable.catalog import Catalog, CatalogError, load_catalog
 from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.db import connect, migrate
+from retro_cable.ingest import manifest
+from retro_cable.ingest.gpu import choose_encoder, comfy_busy
 from retro_cable.ingest.normalize import (
     ENCODERS,
+    Item,
     detect_crop,
     no_crop,
     normalize,
+    prioritize,
     source_seconds,
 )
 from retro_cable.ingest.plex import PlexClient, import_plex
@@ -54,7 +63,9 @@ def source_maps(values: list[str]) -> list[tuple[str, str]]:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m retro_cable.ingest")
-    parser.add_argument("job", choices=["plex", "tmdb", "scan", "normalize"])
+    parser.add_argument(
+        "job", choices=["plex", "tmdb", "scan", "normalize", "manifest", "index-media"]
+    )
     parser.add_argument("--db", type=Path, default=None)
     parser.add_argument(
         "--catalog", type=Path, default=Path(os.environ.get("RC_CATALOG_DIR", "catalog"))
@@ -68,8 +79,25 @@ def _parser() -> argparse.ArgumentParser:
                       help="where relative source paths live (default RC_SOURCE_ROOT)")  # fmt: skip
     norm.add_argument("--source-map", action="append", default=[], metavar="FROM=TO",
                       help="rewrite a source path prefix, e.g. /data/tv=/volume3/tv")  # fmt: skip
-    norm.add_argument("--encoder", choices=sorted(ENCODERS),
-                      default=os.environ.get("RC_ENCODER", "x264"))  # fmt: skip
+    norm.add_argument("--encoder", choices=[*sorted(ENCODERS), "auto"],
+                      default=os.environ.get("RC_ENCODER", "x264"),
+                      help="auto: NVENC while the GPU is idle, else x264")  # fmt: skip
+    norm.add_argument("--gpu-queue-url", default=os.environ.get("RC_GPU_QUEUE_URL", ""),
+                      help="ComfyUI or its gpu-arbiter, for queued jobs")  # fmt: skip
+    norm.add_argument("--order", choices=["catalog", "priority"],
+                      default=os.environ.get("RC_ORDER", "catalog"),
+                      help="priority: carried shows first, by earliest year")  # fmt: skip
+    norm.add_argument("--priority-url", default=os.environ.get("RC_PRIORITY_URL", ""),
+                      help="the mini's /api/admin/library (/admin channels)")  # fmt: skip
+    norm.add_argument("--manifest", action="store_true",
+                      help="write JSON sidecars and manifest.json (the rig)")  # fmt: skip
+    idx = parser.add_argument_group("index-media")
+    idx.add_argument("--manifest-file", type=Path, default=None,
+                     help="default <media dir>/manifest.json")  # fmt: skip
+    idx.add_argument("--prune", action="store_true",
+                     help="clear encodes the manifest no longer lists")  # fmt: skip
+    idx.add_argument("--watch", type=float, default=None, metavar="SECONDS",
+                     help="keep running: re-index whenever the manifest changes")  # fmt: skip
     norm.add_argument("--limit", type=int, default=None, help="encode at most N items")
     norm.add_argument("--max-seconds", type=float, default=None,
                       help="trials only: keep the first N seconds of each item")  # fmt: skip
@@ -118,6 +146,11 @@ def main(argv: list[str]) -> int:
         except CatalogError as err:
             print(err, file=sys.stderr)
             return 1
+    elif args.job == "normalize" and args.order == "priority":
+        try:  # --all: the catalog only ranks what goes first
+            catalog = load_catalog(args.catalog)
+        except CatalogError as err:
+            print(f"warning: no catalog for --order priority: {err}", file=sys.stderr)
 
     db_path = args.db or default_db()
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,18 +174,114 @@ def main(argv: list[str]) -> int:
         if args.movies:
             out["movies"] = asdict(scan_movies(db, args.movies, catalog, now, probe=measure))
         stats = out
+    elif args.job == "manifest":
+        path = manifest.write_manifest(db, _media_dir(args), now)
+        stats = {"manifest": str(path)}
+    elif args.job == "index-media":
+        return _index_media(db, args)
     else:
         shows = None if args.all or catalog is None else carried_shows(db, catalog)
-        stats = _normalize(db, args, shows)
+        stats = _normalize(db, args, shows, catalog)
     print(json.dumps(stats, indent=2))
     return 0
 
 
-def _normalize(
-    db: sqlite3.Connection, args: argparse.Namespace, shows: frozenset[str] | None
-) -> dict[str, object]:
+def _media_dir(args: argparse.Namespace) -> Path:
+    return Path(args.media_dir or os.environ.get("RC_MEDIA_DIR", "data/media"))
 
-    media = args.media_dir or Path(os.environ.get("RC_MEDIA_DIR", "data/media"))
+
+def _index_media(db: sqlite3.Connection, args: argparse.Namespace) -> int:
+    media = _media_dir(args)
+    if args.watch is not None:
+        manifest.watch(db, media, interval=args.watch, now=lambda: datetime.now(UTC),
+                       prune=args.prune)  # fmt: skip
+        return 0
+    path = args.manifest_file or media / manifest.MANIFEST
+    try:
+        data = manifest.load_manifest(path)
+    except manifest.ManifestError as err:
+        print(err, file=sys.stderr)
+        return 1
+    stats = manifest.index_media(db, data, media, datetime.now(UTC), prune=args.prune)
+    print(json.dumps(asdict(stats), indent=2))
+    return 0
+
+
+def _get_json(url: str) -> object:
+    with urllib.request.urlopen(url, timeout=15) as response:
+        return json.load(response)
+
+
+def priority_years(
+    db: sqlite3.Connection,
+    catalog: Catalog | None,
+    url: str = "",
+    fetch: Callable[[str], object] = _get_json,
+) -> dict[str, int]:
+    """Show and movie id -> the earliest year a channel carries it: the YAML catalog plus
+    this database's /admin overlay, plus (with `url`, the mini's /api/admin/library) the
+    shows on channels made in the mini's /admin. A failed fetch is a warning."""
+    years: dict[str, int] = {}
+    if catalog is not None:
+        effective = apply_overlay(catalog, store.head(db).overlay)
+        for c in effective.carriage.carriage:
+            years[c.show] = min(years.get(c.show, 9999), c.from_.year)
+    if url:
+        try:
+            data = fetch(url)
+            items = data.get("items", []) if isinstance(data, dict) else []
+        except (OSError, ValueError) as err:
+            print(f"warning: can't read {url} for priorities: {err}", file=sys.stderr)
+            items = []
+        for item in items:
+            if isinstance(item, dict) and item.get("channels") and item.get("id"):
+                years.setdefault(str(item["id"]), int(item.get("first_year") or 9999))
+    return years
+
+
+def _rig_hooks(
+    db: sqlite3.Connection, args: argparse.Namespace, media: Path
+) -> Callable[[Item], None]:
+    """After each encode: the item's sidecar, and manifest.json at most every few minutes."""
+    every = float(os.environ.get("RC_MANIFEST_EVERY", "300"))
+    last = [time.monotonic()]
+
+    def after(item: Item) -> None:
+        try:
+            manifest.write_sidecar(db, media, item.table, item.rowid, item.target)
+            if time.monotonic() - last[0] >= every:
+                manifest.write_manifest(db, media, datetime.now(UTC))
+                last[0] = time.monotonic()
+        except OSError as err:  # an SMB blip: the next item or the final write catches up
+            print(f"warning: manifest write failed: {err}", file=sys.stderr)
+
+    return after
+
+
+def _normalize(
+    db: sqlite3.Connection,
+    args: argparse.Namespace,
+    shows: frozenset[str] | None,
+    catalog: Catalog | None = None,
+) -> dict[str, object]:
+    media = _media_dir(args)
+    queue_url = args.gpu_queue_url
+    encoder = (
+        choose_encoder(queue_busy=lambda: comfy_busy(queue_url))
+        if args.encoder == "auto"
+        else ENCODERS[args.encoder]
+    )
+    order = None
+    if args.order == "priority":
+        carried = priority_years(db, catalog, args.priority_url)
+        years = {r["id"]: r["year"] for r in db.execute("SELECT id, year FROM shows")} | {
+            r["id"]: r["year"] for r in db.execute("SELECT id, year FROM movies")
+        }
+
+        def order(items: list[Item]) -> list[Item]:
+            return prioritize(items, carried, years)
+
+    hook = _rig_hooks(db, args, media) if args.manifest and not args.dry_run else None
     root = args.source_root or (
         Path(os.environ["RC_SOURCE_ROOT"]) if os.environ.get("RC_SOURCE_ROOT") else None
     )
@@ -161,7 +290,7 @@ def _normalize(
         media,
         source_root=root,
         source_map=source_maps(args.source_map),
-        encoder=ENCODERS[args.encoder],
+        encoder=encoder,
         max_seconds=args.max_seconds,
         limit=args.limit,
         force=args.force,
@@ -169,7 +298,11 @@ def _normalize(
         crop=detect_crop if args.crop == "auto" else no_crop,
         progress=lambda label: print(f"encoding {label}", file=sys.stderr, flush=True),
         shows=shows,
+        order=order,
+        on_encoded=hook,
     )
+    if hook is not None:
+        manifest.write_manifest(db, media, datetime.now(UTC))
     if args.dry_run:
         for cmd in result.commands:
             print(" ".join(cmd), file=sys.stderr)

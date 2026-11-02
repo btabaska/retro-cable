@@ -18,7 +18,7 @@ import os
 import re
 import sqlite3
 import subprocess
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
@@ -263,6 +263,7 @@ class Item:
     source_size: int | None
     source_mtime_ns: int | None
     runtime_seconds: int | None = None  # the catalog runtime (Plex, TMDB); None for bumpers
+    key: str = ""  # the show, movie or channel id
 
 
 def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[Item]:
@@ -273,7 +274,7 @@ def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[I
              r["file_path"],
              target_path("episodes", r["show_id"], r["season"], r["episode"], r["file_path"]),
              r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
-             r["runtime_seconds"])
+             r["runtime_seconds"], r["show_id"])
         for r in db.execute(
             "SELECT id, show_id, season, episode, file_path, media_path, media_source_size,"
             " media_source_mtime_ns, runtime_seconds FROM episodes WHERE file_path IS NOT NULL"
@@ -285,7 +286,7 @@ def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[I
         Item("movies", r["id"], r["id"], r["file_path"],
              target_path("movies", r["id"], None, None, r["file_path"]),
              r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
-             r["runtime_seconds"])
+             r["runtime_seconds"], r["id"])
         for r in db.execute(
             "SELECT id, file_path, media_path, media_source_size, media_source_mtime_ns,"
             " runtime_seconds FROM movies WHERE file_path IS NOT NULL ORDER BY id"
@@ -295,13 +296,43 @@ def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[I
         Item("bumpers", r["id"], f"{r['channel_id']} {Path(r['file_path']).name}",
              r["file_path"],
              target_path("bumpers", r["channel_id"], None, None, r["file_path"]),
-             r["media_path"], r["media_source_size"], r["media_source_mtime_ns"])
+             r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
+             key=r["channel_id"])
         for r in db.execute(
             "SELECT id, channel_id, file_path, media_path, media_source_size,"
             " media_source_mtime_ns FROM bumpers ORDER BY channel_id, file_path"
         )
     ]  # fmt: skip
     return items
+
+
+WAVE = 13  # episodes per show per pass in priority order (about a season)
+
+
+def prioritize(
+    items: Sequence[Item],
+    carried: Mapping[str, int],
+    years: Mapping[str, int | None],
+    wave: int = WAVE,
+) -> list[Item]:
+    """The rig's order for a long first conversion. Bumpers first (they are tiny), then what
+    some channel carries (`carried`: id -> earliest carriage year, /admin channels included),
+    then the rest by their own year (`years`). Within a tier, shows take turns a `wave` of
+    episodes at a time, earliest year first, so every channel has something to air early."""
+    seen: dict[str, int] = {}
+
+    def rank(pair: tuple[int, Item]) -> tuple[int, int, int, str, int]:
+        n, item = pair
+        if item.table == "bumpers":
+            return (0, 0, 0, item.key, n)
+        index = seen.get(item.key, 0)
+        seen[item.key] = index + 1
+        if item.key in carried:
+            return (1, index // wave, carried[item.key], item.key, n)
+        return (2, index // wave, years.get(item.key) or 9999, item.key, n)
+
+    ranked = [(rank(pair), pair[1]) for pair in enumerate(items)]
+    return [item for _, item in sorted(ranked, key=lambda r: r[0])]
 
 
 def resolve_source(
@@ -339,6 +370,7 @@ class NormalizeStats:
     # trial, a truncated encode): `label (N s of M s)`. They are recorded, and the scheduler
     # leaves them off the air unless RC_ALLOW_SHORT_MEDIA is set.
     short: list[str] = field(default_factory=list)
+    encoders: dict[str, int] = field(default_factory=dict)  # encodes per encoder
     commands: list[list[str]] = field(default_factory=list)  # dry run only
 
 
@@ -371,7 +403,7 @@ def normalize(
     *,
     source_root: Path | None = None,
     source_map: Sequence[tuple[str, str]] = (),
-    encoder: Encoder = "x264",
+    encoder: Encoder | Callable[[], Encoder] = "x264",
     max_seconds: float | None = None,
     limit: int | None = None,
     force: bool = False,
@@ -381,10 +413,19 @@ def normalize(
     crop: CropDetector = detect_crop,
     progress: Callable[[str], None] | None = None,
     shows: Collection[str] | None = None,
+    order: Callable[[list[Item]], list[Item]] | None = None,
+    on_encoded: Callable[[Item], None] | None = None,
 ) -> NormalizeStats:
-    """Encode every item that has no up-to-date output. `limit` caps the encodes in this run."""
+    """Encode every item that has no up-to-date output. `limit` caps the encodes in this run.
+
+    `encoder` is fixed, or asked once per item (the rig's GPU check, see ingest/gpu.py).
+    `order` reorders the plan (see `prioritize`); `on_encoded` runs after each item is
+    recorded (the rig writes its manifest sidecar there)."""
     stats = NormalizeStats()
-    for item in plan(db, shows):
+    items = plan(db, shows)
+    if order is not None:
+        items = order(items)
+    for item in items:
         if limit is not None and stats.encoded >= limit:
             break
         src = resolve_source(item.file_path, source_root, source_map)
@@ -407,12 +448,13 @@ def normalize(
             info = probe(src)
             source = math.floor(info.duration) if info.duration > 0 else None
             bars = crop(src, info, max_seconds)
-            cmd = build_command(src, tmp, info, encoder, max_seconds, crop=bars)
+            chosen = encoder if isinstance(encoder, str) else encoder()
+            cmd = build_command(src, tmp, info, chosen, max_seconds, crop=bars)
             if dry_run:
                 stats.commands.append(cmd)
                 continue
             if progress:
-                progress(item.label)
+                progress(f"{item.label} [{chosen}]")
             dst.parent.mkdir(parents=True, exist_ok=True)
             run(cmd)
             seconds = math.floor(probe(tmp).duration)
@@ -425,6 +467,9 @@ def normalize(
             continue
         _record(db, item, seconds, source, st)
         stats.encoded += 1
+        stats.encoders[chosen] = stats.encoders.get(chosen, 0) + 1
+        if on_encoded is not None:
+            on_encoded(item)
         expected = expected_seconds(item, source)
         if is_short(seconds, expected):
             stats.short.append(f"{item.label} ({seconds} s of {expected} s)")
