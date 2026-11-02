@@ -57,4 +57,7 @@
 
 ## Open assumptions
 
-See "Assumptions to confirm" in `docs/plan.md`. Still blocking: which homelab host runs the stack.
+See "Assumptions to confirm" in `docs/plan.md`.
+
+- Homelab host: **decided by Claude on 2026-11-01 (Brandon asked it to choose): the Mac mini** runs the stack and the NAS stores the media. Reasoning is in `docs/specs/ops.md` (Where it runs).
+- The GHCR packages are private and the mini has no read token, so the mini builds images from its checkout (`RC_IMAGE_SOURCE=build`). To switch to pulling, create a classic PAT with only `read:packages` and run `docker login ghcr.io` on the mini.

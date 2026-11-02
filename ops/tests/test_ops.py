@@ -262,6 +262,43 @@ def test_compose_publishes_only_web_and_only_on_loopback_by_default() -> None:
     assert port.startswith("${RC_WEB_BIND:-127.0.0.1}:")
 
 
+def test_web_joins_the_edge_network_under_a_stable_name() -> None:
+    compose = load("compose.yml")
+    web = compose["services"]["web"]
+    assert web["networks"]["edge"]["aliases"] == ["retro-cable-web"]
+    assert compose["networks"]["edge"] == {"external": True, "name": "${RC_EDGE_NETWORK:-edge}"}
+
+
+def test_web_serves_media_read_only() -> None:
+    web = load("compose.yml")["services"]["web"]
+    assert "${RC_MEDIA_DIR:-./media}:/srv/media:ro" in web["volumes"]
+
+
+def test_test_compose_creates_its_own_edge_network() -> None:
+    assert load("compose.test.yml")["networks"]["edge"]["external"] is False
+
+
+def test_build_compose_builds_both_images_from_source() -> None:
+    services = load("compose.build.yml")["services"]
+    assert services["api"]["build"]["context"] == "../server"
+    assert services["web"]["build"] == {"context": "..", "dockerfile": "web/Dockerfile"}
+
+
+@pytest.mark.skipif(
+    subprocess.run(["docker", "info"], capture_output=True).returncode != 0
+    if shutil.which("docker")
+    else True,
+    reason="docker not available",
+)
+@pytest.mark.parametrize("overlay", ["compose.test.yml", "compose.build.yml"])
+def test_compose_files_are_valid(overlay: str) -> None:
+    subprocess.run(
+        ["docker", "compose", "-f", str(OPS / "compose.yml"), "-f", str(OPS / overlay), "config"],
+        check=True,
+        capture_output=True,
+    )
+
+
 def test_test_compose_builds_from_source_and_mounts_fixtures_read_only() -> None:
     services = load("compose.test.yml")["services"]
     assert "build" in services["api"]
@@ -353,6 +390,12 @@ def test_local_test_fails_if_logs_carry_signed_media_urls() -> None:
     (check,) = [s for s in steps if s.get("name") == "No signed media URLs in the logs"]
     assert names.index("Collect stack logs") < names.index(check["name"])
     assert "sig=" in check["run"] and "stack.log" in check["run"]
+
+
+def test_caddy_snippet_proxies_to_web_by_container_name_with_homelab_tls() -> None:
+    text = (OPS / "caddy" / "retro-cable.caddy").read_text()
+    assert "import local_tls" in text
+    assert "reverse_proxy retro-cable-web:80" in text
 
 
 # --- smoke / deploy / rollback ------------------------------------------------
@@ -498,3 +541,59 @@ def test_rollback_restores_previous_version_and_db(
 def test_rollback_without_previous_fails(tmp_path: Path, fake_docker: tuple[Path, Path]) -> None:
     bin_dir, _ = fake_docker
     assert run("rollback.sh", env=deploy_env(tmp_path, bin_dir, "x")).returncode != 0
+
+
+def head_sha() -> str:
+    return subprocess.run(
+        ["git", "-C", str(OPS), "rev-parse", "--short=7", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_deploy_build_mode_builds_instead_of_pulling(
+    tmp_path: Path, fake_docker: tuple[Path, Path], stack: tuple[str, Path]
+) -> None:
+    bin_dir, log = fake_docker
+    url, root = stack
+    version = f"sha-{head_sha()}"
+    (root / "api" / "version").write_text(f'{{"version":"0.0.0","commit":"{head_sha()}"}}')
+    env = {**deploy_env(tmp_path, bin_dir, url), "RC_IMAGE_SOURCE": "build"}
+
+    result = run("deploy.sh", version, env=env)
+
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text().splitlines()
+    assert not any(" pull" in c for c in calls)
+    assert any("compose.build.yml" in c and c.endswith(" build") for c in calls)
+
+
+def test_deploy_build_mode_refuses_a_checkout_that_does_not_match(
+    tmp_path: Path, fake_docker: tuple[Path, Path]
+) -> None:
+    bin_dir, log = fake_docker
+    env = {**deploy_env(tmp_path, bin_dir, "x"), "RC_IMAGE_SOURCE": "build"}
+    result = run("deploy.sh", "sha-0000000", env=env)
+    assert result.returncode != 0
+    assert "does not match" in result.stderr
+    assert not log.exists()
+
+
+def test_deploy_reads_host_settings_from_env_file(
+    tmp_path: Path, fake_docker: tuple[Path, Path], stack: tuple[str, Path]
+) -> None:
+    bin_dir, log = fake_docker
+    url, root = stack
+    port = url.rsplit(":", 1)[1]
+    (root / "api" / "version").write_text(f'{{"version":"0.0.0","commit":"{head_sha()}"}}')
+    env_file = tmp_path / "host.env"
+    env_file.write_text(f"RC_IMAGE_SOURCE=build\nRC_WEB_PORT={port}\n")
+    env = deploy_env(tmp_path, bin_dir, url)
+    del env["RC_SMOKE_URL"]  # smoke must find the stack through RC_WEB_PORT
+    env["RC_ENV_FILE"] = str(env_file)
+
+    result = run("deploy.sh", f"sha-{head_sha()}", env=env)
+
+    assert result.returncode == 0, result.stderr
+    assert any(c.endswith(" build") for c in log.read_text().splitlines())

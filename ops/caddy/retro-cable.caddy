@@ -1,11 +1,14 @@
-# Retro Cable site block for the homelab Caddy. Add to the host Caddyfile:
-#   import /path/to/retro-cable/ops/caddy/retro-cable.caddy
-# The certificate comes from the DNS-01 challenge configured in the host Caddy's global options.
+# Retro Cable site block for the homelab Caddy (the `caddy` container on the Mac mini, which
+# shares the `edge` Docker network with retro-cable-web). Its Caddyfile defines `local_tls`
+# (Let's Encrypt via Cloudflare DNS-01). The live copy is mirrored in the Home repo at
+# foss-setup/configs/docker-stack/stacks/caddy/caddy/Caddyfile; change both together.
 # LAN only: anything outside private ranges is dropped. Never add a port forward for this site.
 
 tv.home.tabaska.us {
+	import local_tls
+
 	@not_lan not remote_ip private_ranges
 	abort @not_lan
 
-	reverse_proxy 127.0.0.1:{$RC_WEB_PORT:8080}
+	reverse_proxy retro-cable-web:80
 }

@@ -1,0 +1,14 @@
+# Build images from this checkout instead of pulling them from GHCR.
+# Used by `RC_IMAGE_SOURCE=build ops/deploy.sh <version>`, which first checks that the
+# checkout matches <version>. Image names stay the same as compose.yml.
+services:
+  api:
+    build:
+      context: ../server
+      args:
+        RC_GIT_SHA: ${RC_GIT_SHA:-dev}
+
+  web:
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
