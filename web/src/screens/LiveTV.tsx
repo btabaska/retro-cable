@@ -1,0 +1,83 @@
+import { useEffect, useState } from "react";
+import type { ChannelInfo, TunedSlot } from "../api/client";
+import { Clock } from "../components/Clock";
+import { InfoBanner } from "../components/InfoBanner";
+import { useKeys } from "../hooks/useKeys";
+
+export const BANNER_MS = 4000;
+const DIGIT_MS = 1500;
+
+interface LiveTVProps {
+  channel: ChannelInfo;
+  dial: ChannelInfo[];
+  slot: TunedSlot | null;
+  next: TunedSlot | null;
+  now: number;
+  year: number;
+  timeZone: string;
+  /** The banner shows until this time (ms); the app sets it on every tune. */
+  bannerUntil: number;
+  onShowBanner: () => void;
+  onStep: (delta: 1 | -1) => void;
+  onLast: () => void;
+  onNumber: (channelId: string) => void;
+  onGuide: () => void;
+  onYear: () => void;
+}
+
+/** Full-screen TV: channel up/down, last channel, number entry and the info banner. */
+export function LiveTV(props: LiveTVProps) {
+  const { channel, dial, slot, next, now, year, timeZone, bannerUntil } = props;
+  const [digits, setDigits] = useState("");
+
+  useEffect(() => {
+    if (!digits) return;
+    const id = window.setTimeout(() => {
+      const match = dial.find((c) => c.number === Number(digits));
+      if (match) props.onNumber(match.id);
+      setDigits("");
+    }, DIGIT_MS);
+    return () => {
+      window.clearTimeout(id);
+    };
+  }, [digits, dial, props]);
+
+  useKeys((event) => {
+    const key = event.key;
+    if (key === "ArrowUp" || key === "PageUp") props.onStep(1);
+    else if (key === "ArrowDown" || key === "PageDown") props.onStep(-1);
+    else if (key === "Enter") props.onGuide();
+    else if (key === " " || key === "p" || key === "MediaPlayPause") props.onLast();
+    else if (key === "y" || key === "Y") props.onYear();
+    else if (key === "Escape" || key === "i" || key === "ArrowLeft" || key === "ArrowRight")
+      props.onShowBanner();
+    else if (/^\d$/.test(key)) setDigits((d) => (d + key).slice(-3));
+    else return;
+    event.preventDefault();
+  });
+
+  const showBanner = now < bannerUntil;
+  return (
+    <div className="live" data-testid="live">
+      {showBanner && <Clock now={now} timeZone={timeZone} className="clock clock-live" />}
+      {digits && (
+        <div className="digits" data-testid="digits">
+          {digits}
+          <span className="digits-cursor">_</span>
+        </div>
+      )}
+      {showBanner && (
+        <InfoBanner
+          channel={channel}
+          slot={slot}
+          next={next}
+          now={now}
+          year={year}
+          timeZone={timeZone}
+          onGuide={props.onGuide}
+          onYear={props.onYear}
+        />
+      )}
+    </div>
+  );
+}

@@ -33,6 +33,7 @@ jobs:
         run: make lint-web
       - name: Unit tests (Vitest)
         run: make test-web
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: cd web && npx playwright install --with-deps chromium
       - name: End-to-end (Playwright, Chromium)
         run: make e2e
