@@ -60,7 +60,7 @@ Admin routes live under `/admin/*` (`/api/admin/*` behind Caddy) and appear in `
 | --- | --- | --- |
 | `GET /admin/channels` | `adminListChannels` | Every channel by number, with `custom` (editable) and a show count, plus `state` (revision, catalog version, can_undo) |
 | `GET /admin/channels/{id}` | `adminGetChannel` | The channel as a `ChannelDraft` (YAML channels too, read-only) |
-| `GET /admin/library?q=` | `adminLibrary` | Every show and movie in the database, filtered by title. Uncarried items come first. Each has years, playable episodes (normalized, or already under the media root with a runtime; raw `ingest scan` sources count once normalized) and the channels carrying it |
+| `GET /admin/library?q=` | `adminLibrary` | Every show and movie in the database, filtered by title. Uncarried items come first. Each has years, playable episodes (what the schedule can air: normalized, or already under the media root with a runtime, and not shorter than half the expected runtime; raw `ingest scan` sources count once normalized) and the channels carrying it |
 | `POST /admin/check` | `adminCheck` | Runs the save checks on a draft without saving |
 | `POST /admin/preview` | `adminPreview` | The checks plus a Sunday–Saturday week of the draft's guide for `year` (and `date`, default today), with the draft applied in memory only |
 | `POST /admin/channels` | `adminCreateChannel` | Check, then save. Returns 409 with the `CheckResult` when the checks fail |
