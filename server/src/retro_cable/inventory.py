@@ -26,6 +26,7 @@ from retro_cable.catalog.holidays import Tagger
 from retro_cable.catalog.models import Carriage, Channel
 from retro_cable.db import connect, migrate
 from retro_cable.ingest.cli import default_db
+from retro_cable.scheduler.library import EXPECTED_SECONDS, PLAY_SECONDS, SHORT_MEDIA_RATIO
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class Gaps:
     missing_movies: list[str] = field(default_factory=list)
     in_plex_not_carried: list[str] = field(default_factory=list)
     untagged_specials: list[str] = field(default_factory=list)
+    short_media: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -84,9 +86,12 @@ def _episodes(catalog: Catalog, db: sqlite3.Connection) -> dict[str, list[_Episo
     ):
         air = date.fromisoformat(r["air_date"]) if r["air_date"] else None
         by_show[r["show_id"]].append((r["season"], r["episode"], air, bool(r["on_disk"])))
+    years = {r["id"]: r["year"] for r in db.execute("SELECT id, year FROM shows")}
     out: dict[str, list[_Episode]] = {}
     for show, rows in by_show.items():
-        dates = effective_dates(catalog, show, [(s, e, d) for s, e, d, _ in rows])
+        dates = effective_dates(
+            catalog, show, [(s, e, d) for s, e, d, _ in rows], first_year=years.get(show)
+        )
         out[show] = [_Episode(d, row[3]) for d, row in zip(dates, rows, strict=True)]
     return out
 
@@ -117,7 +122,32 @@ def _gaps(catalog: Catalog, db: sqlite3.Connection, episodes: dict[str, list[_Ep
             stats.get("unmatched_shows", []) + stats.get("unmatched_movies", [])
         )
     gaps.untagged_specials = _untagged_specials(catalog, db)
+    gaps.short_media = short_media(db)
     return gaps
+
+
+def short_media(db: sqlite3.Connection) -> list[str]:
+    """Files on disk shorter than half their expected runtime (samples, truncated encodes),
+    as `show S01E02 (120 s of 1320 s)`. load_library leaves them off the air unless short
+    media is allowed (RC_ALLOW_SHORT_MEDIA)."""
+    on_disk = "(media_path IS NOT NULL OR file_path IS NOT NULL)"
+    short = f"seconds > 0 AND seconds < expected * {SHORT_MEDIA_RATIO}"
+    found = [
+        f"{r['show_id']} S{r['season']:02d}E{r['episode']:02d}"
+        f" ({r['seconds']} s of {r['expected']} s)"
+        for r in db.execute(
+            f"SELECT * FROM (SELECT show_id, season, episode, {PLAY_SECONDS} AS seconds,"
+            f" {EXPECTED_SECONDS} AS expected FROM episodes WHERE {on_disk}) WHERE {short}"
+        )
+    ]
+    found += [
+        f"{r['id']} (movie) ({r['seconds']} s of {r['expected']} s)"
+        for r in db.execute(
+            f"SELECT * FROM (SELECT id, {PLAY_SECONDS} AS seconds,"
+            f" {EXPECTED_SECONDS} AS expected FROM movies WHERE {on_disk}) WHERE {short}"
+        )
+    ]
+    return sorted(found)
 
 
 SPECIAL_MAX_SECONDS = 60 * 60  # a "movie" this short is a TV special (Rudolph, Frosty)
@@ -207,6 +237,8 @@ _GAP_TITLES = {
     "missing_movies": "Carried movies not on disk",
     "in_plex_not_carried": "In Plex but not carried (prune or add carriage)",
     "untagged_specials": "Specials without a holiday tag (seasonal shows' episodes never air)",
+    "short_media": "Shorter than half their runtime (samples or truncated; never scheduled"
+    " unless RC_ALLOW_SHORT_MEDIA=1)",
 }
 
 
@@ -263,6 +295,12 @@ def main(argv: list[str]) -> int:
     (args.out / "inventory.md").write_text(render_markdown(inv))
     (args.out / "inventory.json").write_text(to_json(inv))
     print(f"wrote {args.out / 'inventory.md'} and inventory.json")
+    if inv.gaps.short_media:
+        print(
+            f"warning: {len(inv.gaps.short_media)} files are shorter than half their runtime"
+            " and won't be scheduled (see 'Shorter than half their runtime')",
+            file=sys.stderr,
+        )
     return 0
 
 

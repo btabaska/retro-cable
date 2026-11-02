@@ -1,6 +1,7 @@
 """Static and behavioral checks for ops/: compose files, the Caddy snippet and scripts."""
 
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -44,11 +45,56 @@ def test_scripts_pass_shellcheck() -> None:
 # --- compose -----------------------------------------------------------------
 
 
-def test_compose_runs_api_and_web() -> None:
+def test_compose_runs_api_and_web_and_a_worker_on_demand() -> None:
     services = load("compose.yml")["services"]
-    assert set(services) == {"api", "web"}
+    assert set(services) == {"api", "web", "worker"}
     assert services["api"]["image"].startswith("ghcr.io/btabaska/retro-cable-api:")
     assert services["web"]["image"].startswith("ghcr.io/btabaska/retro-cable-web:")
+    # The worker shares the api image (it has ffmpeg) and only runs when asked:
+    #   docker compose --profile jobs run --rm worker python -m retro_cable.ingest normalize
+    worker = services["worker"]
+    assert worker["image"] == services["api"]["image"]
+    assert worker["profiles"] == ["jobs"]
+    assert "ports" not in worker
+
+
+def volumes(service: dict[str, Any]) -> dict[str, str]:
+    """Container path -> mount mode ('ro' or 'rw')."""
+    out = {}
+    for v in service.get("volumes", []):
+        parts = re.sub(r"\$\{[^}]*\}", "SRC", v).split(":")
+        mode = parts[-1] if parts[-1] in ("ro", "rw") else "rw"
+        target = parts[-2] if mode == parts[-1] and len(parts) > 2 else parts[1]
+        out[target] = mode
+    return out
+
+
+def test_compose_mounts_catalog_and_media_and_only_the_worker_writes_media() -> None:
+    services = load("compose.yml")["services"]
+    api, web, worker = (volumes(services[s]) for s in ("api", "web", "worker"))
+    assert api["/catalog"] == "ro" and worker["/catalog"] == "ro"
+    assert api["/media"] == "ro"
+    assert web["/srv/media"] == "ro"
+    assert worker["/media"] == "rw"
+    assert worker["/sources"] == "ro"
+    for name in ("api", "worker"):
+        env = services[name]["environment"]
+        assert env["RC_CATALOG_DIR"] == "/catalog"
+        assert env["RC_MEDIA_DIR"] == "/media"
+    text = (OPS / "compose.yml").read_text()
+    assert "${RC_MEDIA_DIR:-" in text
+
+
+def test_env_example_documents_media_settings() -> None:
+    text = (OPS / ".env.example").read_text()
+    for key in ("RC_MEDIA_DIR", "RC_MEDIA_SECRET", "RC_SOURCE_DIR", "RC_SOURCE_MAP", "RC_ENCODER"):
+        assert key in text
+
+
+def test_server_image_has_ffmpeg_for_the_worker() -> None:
+    text = (OPS.parent / "server" / "Dockerfile").read_text()
+    final_stage = text.rsplit("FROM ", 1)[1]
+    assert "ffmpeg" in final_stage
 
 
 def test_compose_publishes_only_web_and_only_on_loopback_by_default() -> None:
@@ -100,6 +146,55 @@ def test_caddy_snippet_rejects_non_private_clients() -> None:
     assert "tv.home.tabaska.us" in text
     assert "@not_lan not remote_ip private_ranges" in text
     assert "abort @not_lan" in text
+
+
+def _block(text: str, opener: str) -> str:
+    """The body of the first `opener {` block, braces balanced."""
+    start = text.index(opener)
+    # The block's brace ends the line; `{$VAR}` placeholders don't.
+    match = re.compile(r"\{[ \t]*\n").search(text, start)
+    assert match, f"no block after {opener}"
+    depth, at = 0, match.start()
+    for i in range(at, len(text)):
+        depth += {"{": 1, "}": -1}.get(text[i], 0)
+        if depth == 0:
+            return text[at + 1 : i]
+    raise AssertionError(f"unbalanced block {opener}")
+
+
+def test_web_caddy_checks_media_signatures_before_serving_files() -> None:
+    # The web container's Caddy serves /media/*; the host snippet only proxies to it.
+    text = (OPS.parent / "web" / "Caddyfile").read_text()
+    assert "handle_path /media/*" not in text, "stripping first would hide the signed path"
+    media = _block(text, "handle /media/*")
+    route = _block(media, "route")
+    auth = _block(route, "forward_auth")
+    assert "uri /media-auth" in auth
+    lines = [line.strip() for line in route.splitlines() if line.strip()]
+    order = [next(i for i, line in enumerate(lines) if line.startswith(d))
+             for d in ("forward_auth", "uri strip_prefix /media", "file_server")]  # fmt: skip
+    assert order == sorted(order), "auth, then strip /media, then serve"
+    assert "browse" not in media
+    assert "log" not in text.split(), "access logs would record signed URLs"
+
+
+@pytest.mark.skipif(shutil.which("caddy") is None, reason="caddy not installed")
+def test_web_caddyfile_is_valid() -> None:
+    config = str(OPS.parent / "web" / "Caddyfile")
+    subprocess.run(
+        ["caddy", "validate", "--adapter", "caddyfile", "--config", config],
+        check=True,
+        env={**os.environ, "RC_API_UPSTREAM": "127.0.0.1:8000"},
+    )
+
+
+def test_local_test_fails_if_logs_carry_signed_media_urls() -> None:
+    wf = yaml.safe_load((OPS.parent / ".github" / "workflows" / "local-test.yml").read_text())
+    steps = wf["jobs"]["local-test"]["steps"]
+    names = [s.get("name") for s in steps]
+    (check,) = [s for s in steps if s.get("name") == "No signed media URLs in the logs"]
+    assert names.index("Collect stack logs") < names.index(check["name"])
+    assert "sig=" in check["run"] and "stack.log" in check["run"]
 
 
 # --- smoke / deploy / rollback ------------------------------------------------

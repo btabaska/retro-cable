@@ -118,6 +118,31 @@ def test_reports_untagged_specials(db: sqlite3.Connection, make_catalog: MakeCat
     assert gaps.untagged_specials == ["a-special (movie)", "gravity-falls S01E01"]
 
 
+def test_flags_media_shorter_than_half_its_expected_runtime(
+    db: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """`make inventory` lists truncated or sample files, which never reach the schedule unless
+    RC_ALLOW_SHORT_MEDIA is set."""
+    db.executescript(
+        """
+        UPDATE episodes SET runtime_seconds = 1320, media_path = 'tv/a.mp4', media_seconds = 120
+          WHERE show_id = 'the-simpsons' AND season = 10 AND episode = 1;
+        UPDATE episodes SET runtime_seconds = 1320, media_path = 'tv/b.mp4', media_seconds = 1290
+          WHERE show_id = 'the-simpsons' AND season = 10 AND episode = 4;
+        UPDATE episodes SET source_seconds = 1381, media_path = 'tv/c.mp4', media_seconds = 300
+          WHERE show_id = 'gravity-falls' AND episode = 1;
+        UPDATE movies SET runtime_seconds = 5040, media_path = 'movies/h.mp4', media_seconds = 90;
+        """
+    )
+    inv = build_inventory(load_catalog(make_catalog()), db)
+    assert inv.gaps.short_media == [
+        "gravity-falls S01E01 (300 s of 1381 s)",
+        "halloweentown (movie) (90 s of 5040 s)",
+        "the-simpsons S10E01 (120 s of 1320 s)",
+    ]
+    assert "### Shorter than half their runtime" in render_markdown(inv)
+
+
 def test_markdown_has_a_table_per_channel_and_the_gaps(
     db: sqlite3.Connection, make_catalog: MakeCatalog
 ) -> None:

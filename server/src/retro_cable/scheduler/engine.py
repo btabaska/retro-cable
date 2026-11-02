@@ -136,7 +136,10 @@ class Scheduler:
 
     def _effective(self, show: str, eps: tuple[Program, ...]) -> tuple[Program, ...]:
         dates = effective_dates(
-            self.catalog, show, [(p.season or 0, p.episode or 0, p.air_date) for p in eps]
+            self.catalog,
+            show,
+            [(p.season or 0, p.episode or 0, p.air_date) for p in eps],
+            first_year=self.library.show_years.get(show),
         )
         return tuple(replace(p, air_date=d) for p, d in zip(eps, dates, strict=True))
 

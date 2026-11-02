@@ -142,11 +142,14 @@ def library_index(db: sqlite3.Connection, sched: Scheduler) -> dict[str, Library
     items: dict[str, LibraryItem] = {}
     for r in db.execute(
         "SELECT s.id, s.title, MIN(e.air_date) AS first, MAX(e.air_date) AS last,"
-        " COUNT(e.id) AS known,"
-        " SUM(CASE WHEN e.file_path IS NOT NULL AND e.runtime_seconds > 0 THEN 1 ELSE 0 END)"
-        " AS on_disk FROM shows s LEFT JOIN episodes e ON e.show_id = s.id GROUP BY s.id"
+        " COUNT(e.id) AS known"
+        " FROM shows s LEFT JOIN episodes e ON e.show_id = s.id GROUP BY s.id"
     ):
-        dated = [p.air_date for p in sched.programs(r["id"]) if p.air_date]
+        # Playable is what load_library loaded: a normalized file, or one already under the
+        # media root with a runtime, and not a sample shorter than half its runtime. Raw
+        # sources from `ingest scan` count once normalize has run.
+        playable = sched.programs(r["id"])
+        dated = [p.air_date for p in playable if p.air_date]
         first = min(dated) if dated else (date.fromisoformat(r["first"]) if r["first"] else None)
         last = max(dated) if dated else (date.fromisoformat(r["last"]) if r["last"] else None)
         items[r["id"]] = LibraryItem(
@@ -155,12 +158,12 @@ def library_index(db: sqlite3.Connection, sched: Scheduler) -> dict[str, Library
             kind="show",
             first_air=first,
             last_air=last,
-            episodes=r["on_disk"] or 0,
+            episodes=len(playable),
             known=r["known"],
         )
-    for r in db.execute("SELECT id, title, premiere_date, runtime_seconds, file_path FROM movies"):
+    for r in db.execute("SELECT id, title, premiere_date FROM movies"):
         premiere = date.fromisoformat(r["premiere_date"]) if r["premiere_date"] else None
-        on_disk = 1 if r["file_path"] and (r["runtime_seconds"] or 0) > 0 else 0
+        on_disk = 1 if r["id"] in sched.library.movies else 0
         items.setdefault(
             r["id"],
             LibraryItem(r["id"], r["title"], "movie", premiere, premiere, on_disk, 1),

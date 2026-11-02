@@ -1,5 +1,6 @@
 # Inside the web container. TLS and the LAN-only check happen in the host Caddy
 # (ops/caddy/retro-cable.caddy); this serves plain HTTP on the compose network.
+# No access log: media URLs carry signatures and must never be logged.
 {
 	admin off
 	auto_https off
@@ -12,10 +13,18 @@
 		reverse_proxy {$RC_API_UPSTREAM:api:8000}
 	}
 
-	# Phase 4 adds signed-URL checks in front of this.
-	handle_path /media/* {
-		root * /srv/media
-		file_server
+	# Signed media (/media/<path>?exp=&sig=): the API checks the signature of the original
+	# URI (X-Forwarded-Uri) and answers 204 or 403; only then does file_server send bytes,
+	# with byte ranges. `route` keeps this order.
+	handle /media/* {
+		route {
+			forward_auth {$RC_API_UPSTREAM:api:8000} {
+				uri /media-auth
+			}
+			uri strip_prefix /media
+			root * /srv/media
+			file_server
+		}
 	}
 
 	handle {

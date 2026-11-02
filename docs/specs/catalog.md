@@ -173,7 +173,7 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
 - **Effective air dates** (`effective_dates`, shared with the scheduler):
   - per-episode dates from `overrides.yaml` replace the originals (`S1E2` and `S01E02` are equivalent);
   - then a synthetic premiere, or failing that a US debut, shifts the whole show;
-  - undated episodes are never eligible.
+  - undated episodes get a conservative synthesized date (scheduler spec, "Undated episodes"); specials and shows with no debut bound stay undated and are never eligible.
 - **Library rules:**
   - A library *channel* is always on the dial, but its items still respect their air dates (Halloweentown can't air before October 1998).
   - A library *show* (`synthetic.yaml`) has every episode eligible.
@@ -185,6 +185,7 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
   - carried movies not on disk;
   - titles in Plex that aren't carried (from the last Plex import).
   - untagged specials: episodes of `seasonal` shows the tagger can't place (they never air) and movies of an hour or less (TV specials) with no holiday tag. Fix them with `holiday_tags` or a `tagged` entry.
+  - short media: episodes and movies whose file is shorter than half the expected runtime (samples, truncated encodes), as `show S01E02 (120 s of 1320 s)`. They never air unless `RC_ALLOW_SHORT_MEDIA=1`; the command also warns on stderr when there are any.
 
 ## Implemented (Phase 7: holidays)
 
@@ -207,5 +208,41 @@ Custom channels made in `/admin` are **catalog inputs**, not schedules, and neve
   - Each show's carriage runs from Jan 1 of its `from_year` (default: the launch) to Dec 31 of its `until_year` (default: open).
   - Movie channels get a `shuffled` playlist.
   - Custom channels have no bumpers yet (the bumpers table is per channel id).
-- **Library.** Shows and movies come from the database, whether carried or not. The demo seed adds three uncarried shows (Recess, Gravity Falls, Over the Garden Wall). The Plex importer still stores only carried titles; storing uncarried ones is left for the ingest owner.
+- **Library.** Shows and movies come from the database, whether carried or not. The demo seed adds three uncarried shows (Recess, Gravity Falls, Over the Garden Wall). `ingest scan` stores every show folder it can read, carried or not (see Phase 4: media below), so the picker offers the whole NAS library. The Plex importer still stores only carried titles.
 - **Not in M1:** synthetic premieres for transplants (a premiere is global to the show, so it would move the show on every channel), editing YAML channels, holiday modes per custom channel, per-row on/off toggles, and the nightly YAML export.
+
+## Implemented (Phase 4: media)
+
+### Database
+
+- `0004_media` (after `0003_catalog_revisions`) adds `media_path`, `media_seconds`, `media_source_size` and `media_source_mtime_ns` to `episodes`, `movies` and `bumpers`. `media_path` is the normalized MP4, relative to the media root; `media_seconds` is its ffprobe duration, rounded down, and is the runtime the scheduler uses.
+- `0005_source_seconds` adds `source_seconds` to `episodes` and `movies`: the source file's ffprobe duration, rounded down, written by `ingest scan` (and again by `normalize`, which probes the source anyway). NULL until measured. Detaching a file keeps it, so a normalized file whose large source was deleted can still be checked against it.
+- **Real lengths, never a class default** (M1 review, Nov 2 2026: the demo seed's runtime class said 1320 s for Johnny Bravo while the file was a 120 s sample). The length the scheduler uses is `media_seconds` when there is a normalized file, else `source_seconds`, and only else `runtime_seconds` (Plex, TMDB, or the demo seed's runtime class).
+- **Short media.** The expected length of a program is the longer of `runtime_seconds` and `source_seconds`. A playable file shorter than half of it is a sample or a truncated encode, and `load_library` leaves it off the schedule, so a 2-minute clip never airs as an episode. Set `RC_ALLOW_SHORT_MEDIA=1` (API environment) to schedule such files anyway, each at its own measured length, for trials (`normalize --max-seconds`) and demos. `normalize` lists them under `short` and warns on stderr, `make inventory` lists them under "Shorter than half their runtime", and the `/admin` library counts only episodes the schedule can air. Bumpers are not checked.
+
+### Disk scan (`python -m retro_cable.ingest scan --tv DIR [--movies DIR]`)
+
+A stopgap for while there is no Plex token: it reads Plex-named folders straight off the disk.
+
+- **Matching:** each top-level folder is matched to a carried show with the Plex importer's rules (`plex_title` overrides, `exclude`, case- and punctuation-insensitive, without a trailing `(year)`), then also without spaces (`The OC` = `The O.C.`) and with a trailing article moved to the front (`Grim Adventures of Billy and Mandy, The -`). Synology `@eaDir`, `#recycle` and dot-files are skipped.
+- **Episode numbers:** `S01E02` (also `S1E2`, `S01E01-E02`, which records the first number), `1x02`, and inside a `Season N` folder `102 - Title` or `02. Title`. `Specials` is season 0. Files without a number are listed as unparsed; trailers, samples and extras are ignored.
+- **Uncarried shows:** a folder that matches no carried show is stored too, as a show no channel carries, so `/admin` can build channels from it (`--carried-only` turns this off). Its title is the folder name without the year, release tags (`S01E01`, `Complete Season 1`, `720p`, `x265`...) or Synology's private-use stand-in characters, with dots read as spaces when there are no spaces and a trailing article moved to the front (`Office, The (2005)` is `The Office`, `Russian.Doll.S01E01.720p.HEVC.x265-MeGusta` is `Russian Doll`); its id is the title's slug. Folders with the same title and the same `(year)` in the name (or none) are one show, so release folders merge while remakes such as `Doctor Who (1963)` and `Doctor Who (2005)` stay apart. If the slug is taken (by a catalog id, another show, or another folder this run) it takes the year (`doctor-who-1963`, titled `Doctor Who (1963)`), else a number. A re-scan reuses the id an earlier scan gave the folder, so admin channels that carry it keep working. Titles `overrides.yaml` excludes are skipped, and folders with no numbered episode are listed as unmatched. Its air dates follow the undated rules in `scheduler.md`: from Dec 31 of the folder year, or none (library channels only) without one. When a folder later matches a carried show, its files move to the carried id and the old uncarried row keeps no files.
+- **Duplicates:** one file per episode, preferring a copy inside a `Season NN` folder, then the bigger file.
+- **What it stores:** the carriage title, the premiere year (from `(Year)` in the folder, else the commonest `Show (Year) - Sxx` file name), and per episode the title from the file name, the absolute file path and size, and the file's ffprobe length (`source_seconds`). It never writes air dates, and keeps titles, dates and runtimes that Plex or TMDB already set.
+- **Measuring:** each new or changed file (different path or size), or one not measured yet, is read with ffprobe; unchanged files keep their recorded length, so a re-scan of the NAS probes only what changed. A file ffprobe can't read gets no length. `--no-probe` skips measuring.
+- **Re-runs:** files under the scanned root that are gone, or now belong to another show, are detached (`file_path` cleared); rows outside that root are untouched.
+- **Movies:** `<root>/<Title (Year)>/`, the biggest video that isn't a trailer or extra, with the year and no premiere date.
+- Each run is recorded in `import_runs` (`scan`, `scan-movies`).
+- On the NAS (2026-11-02) it matches 21 carried shows in `/volume3/tv` and finds 2,968 episodes. With uncarried shows (checked against a mirror of the NAS file names) it stores 141 shows: 21 carried with 2,980 episodes and 120 uncarried from 123 folders with 5,434 episodes; 3 folders have no numbered episode, and a re-scan keeps every id. `Justice League (Unlimited)` needs a `plex_title` override to match `justice-league`.
+
+### Normalize (`python -m retro_cable.ingest normalize`)
+
+- **What:** by default the episodes of shows some channel carries, in the YAML catalog or on a custom channel in the head `/admin` overlay, plus every movie and bumper with a source file. `--all` also encodes uncarried shows (the whole NAS TV tree is about 3x the carried set). So a show added to a custom channel plays after the next normalize run.
+- **Output:** one MP4 per episode, movie and bumper with a source file, at `tv/<show>/sNN/<show>-sNNeNN.mp4`, `movies/<id>.mp4` or `bumpers/<channel>/<name>.mp4` under `--media-dir` (`RC_MEDIA_DIR`).
+- **Encoding:** H.264 High, yuv420p, CRF 23 capped at 1.5 Mbit/s; AAC stereo 128 kbit/s at 48 kHz from the English audio track if tagged, else the first; no subtitles, data or metadata. A keyframe every second (`-force_key_frames`), and the index at the front (`+faststart`).
+- **Picture:** deinterlaced when frames are flagged interlaced (`bwdif`), at most 480 lines, never upscaled, square pixels with the display aspect kept (anamorphic sources are corrected). A picture within 3% of 4:3 or 16:9 is drawn at exactly that shape. With `--crop auto` (default), black bars baked into the picture are cropped first: cropdetect samples 4 s at 20%, 50% and 80% of the running time, the crop is the union of the three boxes, and bars under 2.5% a side are left alone. This turns 4:3 shows released in 16:9 frames (The Simpsons and Courage web releases) back into 640×480.
+- **Encoders:** `--encoder x264` (libx264 `veryfast`, default) or `--encoder nvenc` (`h264_nvenc`, preset p5, VBR CQ 23, forced IDR keyframes); also `RC_ENCODER`.
+- **Sources:** absolute paths (as Plex or `scan` saw them) go through `--source-map FROM=TO` (or `RC_SOURCE_MAP`, comma-separated); relative ones resolve under `--source-root` (`RC_SOURCE_ROOT`). A missing source is listed and skipped.
+- **Idempotent and resumable:** an item is skipped when its output exists and the source size and mtime match what was recorded; `--force` re-encodes. Each encode goes to `<name>.partial`, is read back with ffprobe, renamed, and committed on its own, so an interrupted run leaves no half files and the next run carries on. A failed item is listed and the run continues.
+- **Trials:** `--limit N` encodes at most N items, `--max-seconds S` keeps the first S seconds, `--dry-run` prints the ffmpeg commands. A `--max-seconds` encode is short media (see Database above): it is recorded but stays off the air unless `RC_ALLOW_SHORT_MEDIA=1`.
+- **Lengths:** each item records the encode's length (`media_seconds`) and the source's (`source_seconds`, episodes and movies). An encode shorter than half the expected runtime is listed in the run's `short` stats as `show S01E02 (120 s of 1320 s)`.

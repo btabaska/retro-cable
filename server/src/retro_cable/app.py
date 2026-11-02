@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
@@ -38,6 +38,10 @@ class Version(BaseModel):
     commit: str
 
 
+def _flag(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 @dataclass(frozen=True)
 class Settings:
     catalog_dir: Path
@@ -45,6 +49,9 @@ class Settings:
     media_dir: Path
     media_secret: str = field(repr=False)
     seed: int = 0
+    # Schedule files shorter than half their expected runtime (samples, trial encodes).
+    # Off by default: a 2-minute clip must never air as a whole episode.
+    allow_short_media: bool = False
 
     @staticmethod
     def from_env() -> "Settings":
@@ -59,6 +66,7 @@ class Settings:
             media_dir=Path(os.environ.get("RC_MEDIA_DIR", data / "media")),
             media_secret=secret,
             seed=int(os.environ.get("RC_SEED", "0")),
+            allow_short_media=_flag(os.environ.get("RC_ALLOW_SHORT_MEDIA", "")),
         )
 
 
@@ -135,7 +143,7 @@ class _Schedules:
             library = Library()
             overlay = Overlay()
             if self._watch is not None:
-                library = load_library(self._watch)
+                library = load_library(self._watch, allow_short=self.settings.allow_short_media)
                 overlay = store.head(self._watch).overlay
             self._base, self._library = catalog, library
             self._scheduler = Scheduler(
@@ -190,6 +198,19 @@ def create_app(
         if target is None:
             raise HTTPException(404, "no such media")
         return FileResponse(target)
+
+    @app.api_route(
+        "/media-auth", methods=["GET", "HEAD"], name="mediaAuth", include_in_schema=False
+    )
+    def media_auth(
+        x_forwarded_uri: Annotated[str | None, Header()] = None,
+    ) -> Response:
+        # Caddy's forward_auth (web/Caddyfile) asks here before file_server answers /media/*.
+        if x_forwarded_uri is None or not media.verify_uri(
+            config.media_secret, x_forwarded_uri, now=time.time()
+        ):
+            return Response(status_code=403)
+        return Response(status_code=204)
 
     return app
 
