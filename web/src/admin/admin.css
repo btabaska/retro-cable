@@ -221,6 +221,28 @@
   opacity: 0.8;
 }
 
+/* Editor placeholders while a channel loads: the shape of the form, no values. */
+.adm-skeleton-title {
+  display: inline-block;
+  width: 10em;
+  height: 1em;
+  border-radius: var(--rc-admin-radius-row);
+  vertical-align: middle;
+}
+
+.adm-skeleton-label {
+  display: block;
+  width: 40%;
+  height: 0.8em;
+  border-radius: var(--rc-admin-radius-row);
+}
+
+.adm-skeleton-input {
+  display: block;
+  min-height: 44px;
+  border-radius: var(--rc-admin-radius-row);
+}
+
 .adm-btn {
   min-height: 44px;
   padding: 0 14px;

@@ -212,6 +212,61 @@ describe("AdminApp", () => {
     expect(await screen.findByTestId("admin-channels")).toBeInTheDocument();
   });
 
+  it("shows a loading state, not an empty channel, while a channel loads", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    let finish: (c: Awaited<ReturnType<AdminApi["getChannel"]>>) => void = () => undefined;
+    vi.mocked(api.getChannel).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    render(<AdminApp api={api} />);
+    await user.click(await screen.findByTestId("admin-channel-disney"));
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Disney Channel");
+    expect(screen.getByLabelText("Loading channel")).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByLabelText("Number")).toBeNull();
+    expect(screen.queryByText(/No shows yet/)).toBeNull();
+    expect(screen.queryByText(/read-only/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+
+    finish({
+      id: "disney",
+      custom: false,
+      draft: {
+        number: 30,
+        call_sign: "DISN",
+        name: "Disney Channel",
+        type: "network",
+        library: false,
+        launch_year: 1990,
+        shows: [{ show: "johnny-bravo", kind: "show" }],
+      },
+    });
+    expect(await screen.findByLabelText("Number")).toHaveValue("30");
+    expect(screen.queryByLabelText("Loading channel")).toBeNull();
+    expect(screen.getByText(/read-only/)).toBeInTheDocument();
+    expect(within(screen.getByTestId("editor-shows")).getByText("Johnny Bravo")).toBeInTheDocument();
+  });
+
+  it("offers a retry when a channel can't load", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    render(<AdminApp api={api} />);
+    await user.click(await screen.findByTestId("admin-channel-disney"));
+    expect(await screen.findByText("Couldn't load this channel.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Disney Channel");
+    expect(screen.queryByLabelText("Number")).toBeNull();
+    vi.mocked(api.getChannel).mockResolvedValueOnce({
+      id: "disney",
+      custom: false,
+      draft: { number: 30, call_sign: "DISN", name: "Disney Channel", type: "network", library: false, launch_year: 1990, shows: [] },
+    });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByLabelText("Number")).toHaveValue("30");
+  });
+
   it("offers a retry when the channels can't load", async () => {
     const user = userEvent.setup();
     const api = fakeApi();

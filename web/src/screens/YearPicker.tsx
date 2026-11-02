@@ -7,6 +7,9 @@ export const FIRST_YEAR = 1990;
 export const LAST_YEAR = 2010;
 const COLS = 7;
 const YEARS = Array.from({ length: LAST_YEAR - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i);
+const FETCH_DELAY_MS = 120;
+const RETRY_MS = 1000;
+const MAX_RETRY_MS = 5000;
 const pad = (n: number) => String(n).padStart(2, "0");
 
 interface YearPickerProps {
@@ -36,23 +39,30 @@ function longDate(lineup: Lineup): string {
 export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
   const [focused, setFocused] = useState(year);
   const [lineups, setLineups] = useState<Record<number, Lineup>>({});
+  const [failures, setFailures] = useState(0);
 
   useEffect(() => {
     if (lineups[focused]) return;
     let live = true;
+    // A failed request is retried with a growing delay, so a busy server never leaves the dial empty.
+    const delay = failures === 0 ? FETCH_DELAY_MS : Math.min(RETRY_MS * failures, MAX_RETRY_MS);
     const id = window.setTimeout(() => {
       api.getLineup(focused).then(
         (lineup) => {
-          if (live) setLineups((all) => ({ ...all, [focused]: lineup }));
+          if (!live) return;
+          setLineups((all) => ({ ...all, [focused]: lineup }));
+          setFailures(0);
         },
-        () => undefined,
+        () => {
+          if (live) setFailures((n) => n + 1);
+        },
       );
-    }, 120);
+    }, delay);
     return () => {
       live = false;
       window.clearTimeout(id);
     };
-  }, [api, focused, lineups]);
+  }, [api, focused, lineups, failures]);
 
   useKeys((event) => {
     const index = focused - FIRST_YEAR;
@@ -60,6 +70,7 @@ export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
     const next = moveFocus({ row: Math.floor(index / COLS), col: index % COLS }, event.key, { rows, cols: COLS });
     if (next) {
       setFocused(Math.min(LAST_YEAR, FIRST_YEAR + next.row * COLS + next.col));
+      setFailures(0);
     } else if (event.key === "Enter") onPick(focused);
     else if (event.key === "Escape" || event.key === "Backspace") onBack();
     else return;
@@ -95,6 +106,7 @@ export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
                 }}
                 onMouseEnter={() => {
                   setFocused(y);
+                  setFailures(0);
                 }}
               >
                 {y}
