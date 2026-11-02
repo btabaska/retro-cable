@@ -61,7 +61,7 @@ carriage:
 
 SYNTHETIC = """
 synthetic:
-  - { show: gravity-falls, premiere: 2004-06-15 }
+  - { show: gravity-falls, channel: cartoon-network, premiere: 2004-06-15 }
 """
 
 OVERRIDES = """

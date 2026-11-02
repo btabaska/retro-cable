@@ -13,6 +13,13 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "shows": {
+            "items": {
+              "$ref": "#/components/schemas/AdminChannelShow"
+            },
+            "title": "Shows",
+            "type": "array"
           }
         },
         "required": [
@@ -111,6 +118,122 @@
         "title": "AdminChannelRow",
         "type": "object"
       },
+      "AdminChannelShow": {
+        "description": "A carried show's dates on one channel, for the pretend premiere control.",
+        "properties": {
+          "airs": {
+            "description": "Something of it can air on this channel by its last day",
+            "title": "Airs",
+            "type": "boolean"
+          },
+          "debut": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Real (or US debut) first air date; no pretend dates",
+            "title": "Debut"
+          },
+          "first_air": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First episode's date on this channel (S1E1)",
+            "title": "First Air"
+          },
+          "kind": {
+            "enum": [
+              "show",
+              "movie"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_air": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last episode's date on this channel",
+            "title": "Last Air"
+          },
+          "on_air_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last day the channel carries it (None: open-ended, through 2010)",
+            "title": "On Air Until"
+          },
+          "premiere": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pretend premiere on this channel, if any",
+            "title": "Premiere"
+          },
+          "premiere_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "admin",
+                  "catalog"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the premiere is set: /admin (editable) or catalog/synthetic.yaml",
+            "title": "Premiere Source"
+          },
+          "show": {
+            "title": "Show",
+            "type": "string"
+          }
+        },
+        "required": [
+          "show",
+          "kind",
+          "debut",
+          "premiere",
+          "premiere_source",
+          "first_air",
+          "last_air",
+          "on_air_until",
+          "airs"
+        ],
+        "title": "AdminChannelShow",
+        "type": "object"
+      },
       "AdminState": {
         "properties": {
           "can_undo": {
@@ -172,7 +295,7 @@
           },
           "library": {
             "default": false,
-            "description": "Always on the dial, every episode eligible",
+            "description": "On the dial in every year; episodes still wait for their dates",
             "title": "Library",
             "type": "boolean"
           },
@@ -294,7 +417,7 @@
                 "type": "null"
               }
             ],
-            "description": "Form field: number, call_sign, name, launch_year, shows or shows.<i>",
+            "description": "Form field: number, call_sign, name, launch_year, shows, shows.<i> or shows.<i>.premiere",
             "title": "Field"
           },
           "message": {
@@ -418,6 +541,19 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "premiere": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pretend premiere on this channel only (1990-01-01 to 2010-12-31)",
+            "title": "Premiere"
           },
           "show": {
             "description": "Library id (catalog slug) of a show or movie",
@@ -697,6 +833,19 @@
             "title": "Channels",
             "type": "array"
           },
+          "debut": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Real (or US debut) first air date",
+            "title": "Debut"
+          },
           "episodes": {
             "description": "Episodes (or the movie) on disk",
             "title": "Episodes",
@@ -810,6 +959,57 @@
           "channels"
         ],
         "title": "Lineup",
+        "type": "object"
+      },
+      "PremiereRequest": {
+        "properties": {
+          "premiere": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pretend premiere; null clears it",
+            "title": "Premiere"
+          }
+        },
+        "required": [
+          "premiere"
+        ],
+        "title": "PremiereRequest",
+        "type": "object"
+      },
+      "PremiereResult": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "show": {
+            "$ref": "#/components/schemas/AdminChannelShow"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AdminState"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/CheckIssue"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "message",
+          "show",
+          "warnings",
+          "state"
+        ],
+        "title": "PremiereResult",
         "type": "object"
       },
       "Preview": {
@@ -1370,6 +1570,81 @@
           }
         },
         "summary": "Adminupdatechannel",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/channels/{channel_id}/premieres/{show}": {
+      "put": {
+        "description": "Set or clear the pretend premiere of one carried show on one channel (YAML or\ncustom). It changes inputs only: an overlay revision, undoable like any save. Other\nchannels keep the show's real dates.",
+        "operationId": "adminSetPremiere",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "title": "Channel Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "show",
+            "required": true,
+            "schema": {
+              "title": "Show",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PremiereRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PremiereResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            },
+            "description": "Not saved"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adminsetpremiere",
         "tags": [
           "admin"
         ]

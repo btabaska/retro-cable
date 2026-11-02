@@ -259,112 +259,134 @@
 09:04:10    10s [bumper] Cartoon Network
 09:04:20   660s [episode halloween] Looney Tunes S6E6 Episode 116: Halloween
 09:15:20    10s [bumper] Cartoon Network
-09:15:30  1320s [episode] The Powerpuff Girls S1E17 Episode 17
+09:15:30  1320s [episode] Johnny Bravo S2E1 Episode 23: New Year's Eve
 09:37:30    10s [bumper] Cartoon Network
-09:37:40  1320s [episode] The Powerpuff Girls S1E18 Episode 18
+09:37:40  1320s [episode] The Powerpuff Girls S1E17 Episode 17
 09:59:40    10s [bumper] Cartoon Network
 09:59:50   660s [episode halloween] Looney Tunes S3E5 Episode 49: Halloween
 10:10:50    10s [bumper] Cartoon Network
 10:11:00  1320s [episode] Dexter's Laboratory S2E1 Episode 23: New Year's Eve
 10:33:00    10s [bumper] Cartoon Network
-10:33:10  1320s [episode] The Powerpuff Girls S1E19 Episode 19
+10:33:10  1320s [episode] The Powerpuff Girls S1E18 Episode 18
 10:55:10    10s [bumper] Cartoon Network
 10:55:20  1320s [episode] Dexter's Laboratory S2E2 Episode 24
 11:17:20    10s [bumper] Cartoon Network
-11:17:30  1320s [episode] The Powerpuff Girls S1E20 Episode 20
+11:17:30  1320s [episode] The Powerpuff Girls S1E19 Episode 19
 11:39:30    10s [bumper] Cartoon Network
 11:39:40  1320s [episode] Dexter's Laboratory S2E3 Episode 25
 12:01:40    10s [bumper] Cartoon Network
-12:01:50  1320s [episode] The Powerpuff Girls S1E21 Episode 21
+12:01:50  1320s [episode] The Powerpuff Girls S1E20 Episode 20
 12:23:50    10s [bumper] Cartoon Network
-12:24:00  1320s [episode] The Powerpuff Girls S1E22 Episode 22
+12:24:00  1320s [episode] Johnny Bravo S2E2 Episode 24
 12:46:00    10s [bumper] Cartoon Network
 12:46:10  1320s [episode] Dexter's Laboratory S2E4 Episode 26
 13:08:10    10s [bumper] Cartoon Network
 13:08:20  1320s [episode] Dexter's Laboratory S2E5 Episode 27
 13:30:20    10s [bumper] Cartoon Network
-13:30:30  1320s [episode] The Powerpuff Girls S1E1 Episode 1
+13:30:30  1320s [episode] Johnny Bravo S2E3 Episode 25
 13:52:30    10s [bumper] Cartoon Network
-13:52:40  1320s [episode] Dexter's Laboratory S2E6 Episode 28
+13:52:40  1320s [episode] The Powerpuff Girls S1E21 Episode 21
 14:14:40    10s [bumper] Cartoon Network
 14:14:50   660s [episode] Looney Tunes S1E16 Episode 16
 14:25:50    10s [bumper] Cartoon Network
-14:26:00  1320s [episode] Dexter's Laboratory S2E7 Episode 29: Valentine's Day
+14:26:00  1320s [episode] Dexter's Laboratory S2E6 Episode 28
 14:48:00    10s [bumper] Cartoon Network
-14:48:10  1320s [episode] The Powerpuff Girls S1E2 Episode 2
+14:48:10  1320s [episode] Johnny Bravo S2E4 Episode 26
 15:10:10    10s [bumper] Cartoon Network
-15:10:20  1320s [episode] Dexter's Laboratory S2E8 Episode 30
+15:10:20  1320s [episode] The Powerpuff Girls S1E22 Episode 22
 15:32:20    10s [bumper] Cartoon Network
-15:32:30  1320s [episode] The Powerpuff Girls S1E3 Episode 3
+15:32:30  1320s [episode] Johnny Bravo S2E5 Episode 27
 15:54:30    10s [bumper] Cartoon Network
-15:54:40  1320s [episode] Dexter's Laboratory S2E9 Episode 31
+15:54:40  1320s [episode] Dexter's Laboratory S2E7 Episode 29: Valentine's Day
 16:16:40    10s [bumper] Cartoon Network
-16:16:50  1320s [episode] The Powerpuff Girls S1E4 Episode 4
+16:16:50  1320s [episode] The Powerpuff Girls S1E1 Episode 1
 16:38:50    10s [bumper] Cartoon Network
-16:39:00  1320s [episode] Dexter's Laboratory S2E10 Episode 32
+16:39:00  1320s [episode] Dexter's Laboratory S2E8 Episode 30
 17:01:00    10s [bumper] Cartoon Network
-17:01:10  1320s [episode] The Powerpuff Girls S1E5 Episode 5
+17:01:10  1320s [episode] The Powerpuff Girls S1E2 Episode 2
 17:23:10    10s [bumper] Cartoon Network
-17:23:20  1320s [episode] Dexter's Laboratory S2E11 Episode 33
+17:23:20  1320s [episode] Dexter's Laboratory S2E9 Episode 31
 17:45:20    10s [bumper] Cartoon Network
 17:45:30   660s [episode] Looney Tunes S1E17 Episode 17
 17:56:30    10s [bumper] Cartoon Network
-17:56:40  1320s [episode] Dexter's Laboratory S2E12 Episode 34: St. Patrick's Day
+17:56:40  1320s [episode] Dexter's Laboratory S2E10 Episode 32
 18:18:40    10s [bumper] Cartoon Network
-18:18:50  1320s [episode] The Powerpuff Girls S1E6 Episode 6
+18:18:50  1320s [episode] Johnny Bravo S2E6 Episode 28
 18:40:50    10s [bumper] Cartoon Network
 18:41:00   660s [episode] Looney Tunes S1E18 Episode 18
 18:52:00    10s [bumper] Cartoon Network
-18:52:10  1320s [episode] The Powerpuff Girls S1E7 Episode 7: Valentine's Day
+18:52:10  1320s [episode] The Powerpuff Girls S1E3 Episode 3
 19:14:10    10s [bumper] Cartoon Network
-19:14:20  1320s [episode] Dexter's Laboratory S2E13 Episode 35
+19:14:20  1320s [episode] Dexter's Laboratory S2E11 Episode 33
 19:36:20    10s [bumper] Cartoon Network
 19:36:30   660s [episode] Looney Tunes S1E19 Episode 19
 19:47:30    10s [bumper] Cartoon Network
-19:47:40  1320s [episode] The Powerpuff Girls S1E8 Episode 8
-20:09:40 13820s [filler] Off Air
-00:00:00   660s [episode] Tom and Jerry S2E21 Episode 43
-00:11:00    10s [bumper] Cartoon Network
-00:11:10   660s [episode] Looney Tunes S1E20 Episode 20: Valentine's Day
-00:22:10    10s [bumper] Cartoon Network
-00:22:20   660s [episode] Looney Tunes S1E21 Episode 21
-00:33:20    10s [bumper] Cartoon Network
-00:33:30   660s [episode] Tom and Jerry S2E22 Episode 44
-00:44:30    10s [bumper] Cartoon Network
-00:44:40   660s [episode] Looney Tunes S1E22 Episode 22
-00:55:40    10s [bumper] Cartoon Network
-00:55:50   660s [episode] Looney Tunes S2E1 Episode 23
-01:06:50    10s [bumper] Cartoon Network
-01:07:00  1320s [episode] Scooby-Doo, Where Are You! S2E7 Episode 29
-01:29:00    10s [bumper] Cartoon Network
-01:29:10   660s [episode] Looney Tunes S2E2 Episode 24
-01:40:10    10s [bumper] Cartoon Network
-01:40:20   660s [episode] Looney Tunes S2E3 Episode 25
-01:51:20    10s [bumper] Cartoon Network
-01:51:30   660s [episode] Looney Tunes S2E4 Episode 26
-02:02:30    10s [bumper] Cartoon Network
-02:02:40   660s [episode] Looney Tunes S2E5 Episode 27: Halloween
-02:13:40    10s [bumper] Cartoon Network
-02:13:50  1320s [episode] Scooby-Doo, Where Are You! S2E8 Episode 30
-02:35:50    10s [bumper] Cartoon Network
-02:36:00   660s [episode] Looney Tunes S2E6 Episode 28
-02:47:00    10s [bumper] Cartoon Network
-02:47:10   660s [episode] Tom and Jerry S3E1 Episode 45
-02:58:10    10s [bumper] Cartoon Network
-02:58:20  1320s [episode] Scooby-Doo, Where Are You! S2E9 Episode 31: Thanksgiving
-03:20:20    10s [bumper] Cartoon Network
-03:20:30   660s [episode] Looney Tunes S2E7 Episode 29
-03:31:30    10s [bumper] Cartoon Network
-03:31:40  1320s [episode] Scooby-Doo, Where Are You! S2E10 Episode 32
-03:53:40    10s [bumper] Cartoon Network
-03:53:50   660s [episode] Looney Tunes S2E8 Episode 30
-04:04:50    10s [bumper] Cartoon Network
-04:05:00   660s [episode] Tom and Jerry S3E2 Episode 46
-04:16:00    10s [bumper] Cartoon Network
-04:16:10  1320s [episode] Scooby-Doo, Where Are You! S2E11 Episode 33
-04:38:10    10s [bumper] Cartoon Network
-04:38:20   660s [episode] Tom and Jerry S3E3 Episode 47
-04:49:20   640s [filler] Paid Programming
+19:47:40  1320s [episode] The Powerpuff Girls S1E4 Episode 4
+20:09:40    10s [bumper] Cartoon Network
+20:09:50  1320s [episode] The Powerpuff Girls S1E5 Episode 5
+20:31:50    10s [bumper] Cartoon Network
+20:32:00  1320s [episode] Dexter's Laboratory S2E12 Episode 34: St. Patrick's Day
+20:54:00    10s [bumper] Cartoon Network
+20:54:10  1320s [episode] Dexter's Laboratory S2E13 Episode 35
+21:16:10    10s [bumper] Cartoon Network
+21:16:20  1320s [episode] Johnny Bravo S2E7 Episode 29: Valentine's Day
+21:38:20    10s [bumper] Cartoon Network
+21:38:30  1320s [episode] The Powerpuff Girls S1E6 Episode 6
+22:00:30    10s [bumper] Cartoon Network
+22:00:40  1320s [episode] The Powerpuff Girls S1E7 Episode 7: Valentine's Day
+22:22:40    10s [bumper] Cartoon Network
+22:22:50  1320s [episode] Dexter's Laboratory S2E14 Episode 36
+22:44:50    10s [bumper] Cartoon Network
+22:45:00  1320s [episode] The Powerpuff Girls S1E8 Episode 8
+23:07:00    10s [bumper] Cartoon Network
+23:07:10  1320s [episode] Dexter's Laboratory S2E15 Episode 37
+23:29:10    10s [bumper] Cartoon Network
+23:29:20  1320s [episode] The Powerpuff Girls S1E9 Episode 9
+23:51:20    10s [bumper] Cartoon Network
+23:51:30  1320s [episode] Johnny Bravo S2E8 Episode 30
+00:13:30    10s [bumper] Cartoon Network
+00:13:40   660s [episode] Looney Tunes S1E20 Episode 20: Valentine's Day
+00:24:40    10s [bumper] Cartoon Network
+00:24:50  1320s [episode] Scooby-Doo, Where Are You! S2E7 Episode 29
+00:46:50    10s [bumper] Cartoon Network
+00:47:00   660s [episode] Looney Tunes S1E21 Episode 21
+00:58:00    10s [bumper] Cartoon Network
+00:58:10   660s [episode] Tom and Jerry S2E21 Episode 43
+01:09:10    10s [bumper] Cartoon Network
+01:09:20   660s [episode] Looney Tunes S1E22 Episode 22
+01:20:20    10s [bumper] Cartoon Network
+01:20:30  1320s [episode] Scooby-Doo, Where Are You! S2E8 Episode 30
+01:42:30    10s [bumper] Cartoon Network
+01:42:40   660s [episode] Looney Tunes S2E1 Episode 23
+01:53:40    10s [bumper] Cartoon Network
+01:53:50   660s [episode] Tom and Jerry S2E22 Episode 44
+02:04:50    10s [bumper] Cartoon Network
+02:05:00   660s [episode] Looney Tunes S2E2 Episode 24
+02:16:00    10s [bumper] Cartoon Network
+02:16:10   660s [episode] Looney Tunes S2E3 Episode 25
+02:27:10    10s [bumper] Cartoon Network
+02:27:20   660s [episode] Tom and Jerry S3E1 Episode 45
+02:38:20    10s [bumper] Cartoon Network
+02:38:30  1320s [episode] Scooby-Doo, Where Are You! S2E9 Episode 31: Thanksgiving
+03:00:30    10s [bumper] Cartoon Network
+03:00:40   660s [episode] Tom and Jerry S3E2 Episode 46
+03:11:40    10s [bumper] Cartoon Network
+03:11:50   660s [episode] Tom and Jerry S3E3 Episode 47
+03:22:50    10s [bumper] Cartoon Network
+03:23:00   660s [episode] Looney Tunes S2E4 Episode 26
+03:34:00    10s [bumper] Cartoon Network
+03:34:10   660s [episode] Tom and Jerry S3E4 Episode 48
+03:45:10    10s [bumper] Cartoon Network
+03:45:20  1320s [episode] Scooby-Doo, Where Are You! S2E10 Episode 32
+04:07:20    10s [bumper] Cartoon Network
+04:07:30   660s [episode] Tom and Jerry S3E5 Episode 49: Halloween
+04:18:30    10s [bumper] Cartoon Network
+04:18:40   660s [episode] Tom and Jerry S3E6 Episode 50
+04:29:40    10s [bumper] Cartoon Network
+04:29:50   660s [episode] Looney Tunes S2E5 Episode 27: Halloween
+04:40:50    10s [bumper] Cartoon Network
+04:41:00   660s [episode] Tom and Jerry S3E7 Episode 51
+04:52:00   480s [filler] Paid Programming
 
 ## kpix
 05:00:00  1320s [episode halloween] Murphy Brown S7E8 Episode 140: Halloween

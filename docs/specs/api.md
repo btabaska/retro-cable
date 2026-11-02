@@ -59,8 +59,9 @@ Admin routes live under `/admin/*` (`/api/admin/*` behind Caddy) and appear in `
 | Route | Operation | Does |
 | --- | --- | --- |
 | `GET /admin/channels` | `adminListChannels` | Every channel by number, with `custom` (editable) and a show count, plus `state` (revision, catalog version, can_undo) |
-| `GET /admin/channels/{id}` | `adminGetChannel` | The channel as a `ChannelDraft` (YAML channels too, read-only) |
-| `GET /admin/library?q=` | `adminLibrary` | Every show and movie in the database, filtered by title. Uncarried items come first. Each has years, playable episodes (what the schedule can air: normalized, or already under the media root with a runtime, and not shorter than half the expected runtime; raw `ingest scan` sources count once normalized) and the channels carrying it |
+| `GET /admin/channels/{id}` | `adminGetChannel` | The channel as a `ChannelDraft` (YAML channels too, read-only), with each show's `premiere`, plus `shows[]`: per carried show its real `debut`, the `premiere` on this channel and where it is set (`premiere_source`: `admin` or `catalog`), the resulting `first_air` (S1E1) and `last_air` on this channel, `on_air_until` and `airs` |
+| `PUT /admin/channels/{id}/premieres/{show}` | `adminSetPremiere` | Body `{premiere: date or null}`. Sets or clears the pretend premiere of one carried show on one channel, YAML or custom (M2). Inputs only: an undoable overlay revision; the guide follows on the next read. 404 when the channel doesn't carry the show; 409 with a `CheckResult` (field `premiere`) for a date outside 1990-01-01..2010-12-31, a date after the show leaves the channel, or clearing a premiere that is set in `synthetic.yaml`. Returns the updated row, warnings and `state` |
+| `GET /admin/library?q=` | `adminLibrary` | Every show and movie in the database, filtered by title. Uncarried items come first. Each has years, its real `debut` date (M2), playable episodes (what the schedule can air: normalized, or already under the media root with a runtime, and not shorter than half the expected runtime; raw `ingest scan` sources count once normalized) and the channels carrying it |
 | `POST /admin/check` | `adminCheck` | Runs the save checks on a draft without saving |
 | `POST /admin/preview` | `adminPreview` | The checks plus a Sunday–Saturday week of the draft's guide for `year` (and `date`, default today), with the draft applied in memory only |
 | `POST /admin/channels` | `adminCreateChannel` | Check, then save. Returns 409 with the `CheckResult` when the checks fail |
@@ -69,12 +70,30 @@ Admin routes live under `/admin/*` (`/api/admin/*` behind Caddy) and appear in `
 | `POST /admin/undo` | `adminUndo` | Reverts the last save or delete. Returns 409 when there is nothing to undo |
 | `GET /admin/state` | `adminState` | Revision, catalog version and can_undo |
 
-**Checks before save** each have a `field` (`number`, `call_sign`, `name`, `launch_year`, `shows`, `shows.<i>` or null) and a plain-words message. Errors block saving:
+**Checks before save** each have a `field` (`number`, `call_sign`, `name`, `launch_year`, `shows`, `shows.<i>`, `shows.<i>.premiere` or null) and a plain-words message. Errors block saving:
 - The name or call sign is empty, or the call sign is longer than 6 letters or digits.
 - The number is outside 1–999, or is already used by another channel's identity on any date the new channel is on the dial ("Number 30 is already Disney Channel.").
 - The launch year is missing or outside 1990–2010, unless the channel is library.
 - There are no shows, a show is not in the library, a show is listed twice, or its years are out of range or reversed.
+- A show's pretend premiere is outside 1990-01-01..2010-12-31 ("Pick a date from 1990 to 2010.") or after its until year ("This is after the show leaves the channel, so it would never air.").
 - The catalog's own cross-file validation fails.
-- The one-week invariant smoke test on the same engine fails: every day runs 5 a.m. to 5 a.m. with no gaps or overlaps, and nothing airs before its date on a non-library channel.
+- The one-week invariant smoke test on the same engine fails: every day runs 5 a.m. to 5 a.m. with no gaps or overlaps, and nothing airs before its date, on any channel (M2: library channels included).
 
-Warnings don't block saving: a show with no playable files yet, a show with no air dates on a channel that isn't library (it airs only on library channels), or a show whose debut comes after its carriage start ("Kim Possible won't air before its 2002 debut.").
+Warnings don't block saving: a show with no playable files yet; a show with no air dates and no pretend premiere ("… has no air dates yet, so it won't air. Set a pretend premiere."); a show whose debut comes after its carriage start ("Kim Possible won't air before its 2002 debut.") or after its last carried year ("… debuts Jun 2012, so it won't air here. Set a pretend premiere."); a pretend premiere before the channel is on the dial ("the channel isn't on the dial until 1998. The show starts then.") or later than the real debut ("this is later than its real premiere, so it will air later than it did."). Library channels get the same warnings now (M2).
+
+### Proposed: conversion progress (owned by eng-media, M2 B13)
+
+Not in `openapi.json` yet; the `/admin` Media tab is built against this shape and says "Conversion status isn't available on this server yet" while the route returns 404.
+
+`GET /admin/media/progress` →
+
+```json
+{
+  "done": 1240, "total": 2000, "failed": 2,
+  "encoder": "gpu | cpu | paused", "gpu_busy": true,
+  "recent_seconds": [31.2, 29.8],
+  "shows": [{ "title": "Dexter's Laboratory", "done": 38, "total": 52, "failed": 2, "state": "converting | queued | done" }]
+}
+```
+
+`recent_seconds` is the wall-clock time of the most recent finished files (newest last, up to 20); the client shows "Estimating…" until 10 files are done, then averages the last 20 and rounds the ETA to 10 minutes. `shows` is in conversion order. No paths, hosts, URLs or tokens.

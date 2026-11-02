@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Lineup, liveApi, type TvApi } from "./api/client";
 import { Player, type PlayerMode } from "./components/Player";
 import { useNow } from "./hooks/useNow";
@@ -97,6 +97,26 @@ export function App({ api = liveApi }: AppProps) {
     [tunedId, showBanner],
   );
 
+  // The year picker hands focus back to whatever opened it (M2 D23). The screens swap whole,
+  // so the opener is found again by its data-focus-key once the old screen is back.
+  const yearOpener = useRef<string | null>(null);
+  const openYear = () => {
+    const el = document.activeElement;
+    yearOpener.current = el instanceof HTMLElement ? (el.dataset.focusKey ?? null) : null;
+    setScreen("year");
+  };
+  useEffect(() => {
+    if (screen === "year" || !yearOpener.current) return;
+    const key = yearOpener.current;
+    yearOpener.current = null;
+    document.querySelector<HTMLElement>(`[data-focus-key="${key}"]`)?.focus();
+  }, [screen]);
+  const closeYear = () => {
+    // The banner's Year button only exists while the banner shows, so bring it back with it.
+    if (yearOpener.current === "banner-year") showBanner();
+    setScreen("live");
+  };
+
   const pickYear = (y: number) => {
     setYear(y);
     save("rc.year", String(y));
@@ -133,9 +153,7 @@ export function App({ api = liveApi }: AppProps) {
         api={api}
         year={year}
         onPick={pickYear}
-        onBack={() => {
-          setScreen("live");
-        }}
+        onBack={closeYear}
       />
     );
   } else if (screen === "guide" && tunedId) {
@@ -150,9 +168,7 @@ export function App({ api = liveApi }: AppProps) {
           tuneTo(id);
           setScreen("live");
         }}
-        onYear={() => {
-          setScreen("year");
-        }}
+        onYear={openYear}
         onBack={() => {
           setScreen("live");
         }}
@@ -181,9 +197,7 @@ export function App({ api = liveApi }: AppProps) {
         onGuide={() => {
           setScreen("guide");
         }}
-        onYear={() => {
-          setScreen("year");
-        }}
+        onYear={openYear}
       />
     );
   } else {

@@ -1,10 +1,12 @@
-"""Effective air dates for shows that use a US debut or a synthetic premiere."""
+"""Effective air dates: the imported dates with overrides, a US debut, or a channel's synthetic
+("pretend") premiere applied. A synthetic premiere belongs to one (show, channel) pair, so the
+dates depend on the channel; every other channel keeps the real or US debut dates."""
 
 from collections.abc import Sequence
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
-from retro_cable.catalog.models import CUSTOM_PREFIX
+from retro_cable.catalog.models import CUSTOM_PREFIX, Synthetic
 
 if TYPE_CHECKING:
     from retro_cable.catalog.load import Catalog
@@ -29,18 +31,22 @@ def episode_key(key: str) -> tuple[int, int]:
 
 
 def _anchor(catalog: "Catalog", show: str) -> date | None:
-    for s in catalog.synthetic.synthetic:
-        if s.show == show and s.premiere:
-            return s.premiere
     for o in catalog.overrides.shows:
         if o.show == show:
             return o.us_debut
     return None
 
 
-def is_library_show(catalog: "Catalog", show: str) -> bool:
-    """Library shows have every episode eligible whenever their channel is on."""
-    return any(s.show == show and s.library for s in catalog.synthetic.synthetic)
+def premiere_for(catalog: "Catalog", show: str, channel: str | None) -> Synthetic | None:
+    """The synthetic premiere of `show` on `channel`, if one is set. The last entry wins, so a
+    premiere set in /admin (merged after the YAML) replaces one in synthetic.yaml."""
+    if channel is None:
+        return None
+    found = None
+    for s in catalog.synthetic.synthetic:
+        if s.show == show and s.channel == channel:
+            found = s
+    return found
 
 
 SEASON_DAYS = 365  # an undated season N starts N-1 years after the bound
@@ -76,7 +82,7 @@ def synthesize_undated(
 
 
 def _debut_bound(catalog: "Catalog", show: str, first_year: int | None) -> date | None:
-    """A date the show had certainly debuted by: its synthetic premiere or US debut, else Dec 31
+    """A date the show had certainly debuted by: its US debut, else Dec 31
     of its premiere year, else Dec 31 of the year it was first carried on a network channel
     (library channels carry shows long after their debut, so they say nothing; nor do custom
     channels made in /admin, whose carriage is Brandon's choice, not broadcast history)."""
@@ -94,23 +100,56 @@ def _debut_bound(catalog: "Catalog", show: str, first_year: int | None) -> date 
     return date(min(starts).year, 12, 31) if starts else None
 
 
+PREMIERE_CADENCE = timedelta(weeks=1)  # undated episodes after a synthetic premiere
+
+
+def premiere_dates(
+    keys: Sequence[tuple[int, int]], dates: Sequence[date | None], premiere: date
+) -> list[date | None]:
+    """Dates on a channel with a synthetic premiere.
+
+    The earliest dated episode moves to `premiere` and every other dated episode keeps its
+    spacing from it (shift_air_dates). Each undated episode airs one week after the episode
+    before it in (season, episode) order, or on the premiere if none comes before it, so a
+    show with no dates at all runs weekly from the premiere. Specials (season 0 or episode 0)
+    stay undated, as everywhere.
+    """
+    out = shift_air_dates(dates, premiere)
+    previous: date | None = None
+    for i in sorted(range(len(keys)), key=lambda i: keys[i]):
+        season, episode = keys[i]
+        current = out[i]
+        if current is None and season >= 1 and episode >= 1:
+            current = previous + PREMIERE_CADENCE if previous else premiere
+            out[i] = current
+        if current is not None and (previous is None or current > previous):
+            previous = current
+    return out
+
+
 def effective_dates(
     catalog: "Catalog",
     show: str,
     episodes: Sequence[tuple[int, int, date | None]],
     first_year: int | None = None,
+    channel: str | None = None,
 ) -> list[date | None]:
-    """Air dates the scheduler uses for (season, episode, original date) rows, in the same order.
+    """Air dates the scheduler uses for (season, episode, original date) rows, in the same order,
+    on `channel` (None: a channel with no synthetic premiere for this show).
 
-    Per-episode dates from overrides.yaml replace the originals first; then a synthetic premiere
-    or US debut shifts the whole show (see shift_air_dates). Episodes still without a date get a
-    conservative one (see synthesize_undated); `first_year` is the show's premiere year.
+    Per-episode dates from overrides.yaml replace the originals first. Then the channel's
+    synthetic premiere, if it has one for this show, shifts the whole show (premiere_dates);
+    otherwise a US debut does (shift_air_dates), and episodes still without a date get a
+    conservative one (synthesize_undated); `first_year` is the show's premiere year.
     """
     fixes: dict[tuple[int, int], date] = {}
     for o in catalog.overrides.shows:
         if o.show == show:
             fixes = {episode_key(k): d for k, d in o.episodes.items()}
     dates = [fixes.get((s, e), d) for s, e, d in episodes]
-    shifted = shift_air_dates(dates, _anchor(catalog, show))
     keys = [(s, e) for s, e, _ in episodes]
+    synthetic = premiere_for(catalog, show, channel)
+    if synthetic is not None:
+        return premiere_dates(keys, dates, synthetic.premiere)
+    shifted = shift_air_dates(dates, _anchor(catalog, show))
     return synthesize_undated(keys, shifted, _debut_bound(catalog, show, first_year))

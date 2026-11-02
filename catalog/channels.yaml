@@ -64,7 +64,7 @@ channels:
   - id: boomerang
     name: Boomerang
     type: network
-    library: true            # always on the dial, all episodes eligible
+    library: true            # always on the dial; episodes still wait for their dates
     identity:
       - { from: 1990-01-01, number: 29, call_sign: BOOM }   # number invented
     authenticity: 50

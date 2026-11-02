@@ -82,26 +82,44 @@ button {
   border: 2px solid var(--rc-color-text-muted);
 }
 
-/* Holiday: the mockup's outlined chip, in the holiday color (about 5:1 on the cell). */
+/* Holiday: the mockup's outlined chip, in the reduced-saturation holiday color (about 5:1 on
+   the cell), so it sits beside NEW without shouting (M2 D29). */
 .badge-holiday {
-  border: 2px solid var(--rc-color-holiday);
-  color: var(--rc-color-holiday);
+  border: 2px solid var(--rc-color-holiday-muted);
+  color: var(--rc-color-holiday-muted);
   background: transparent;
 }
 
-/* Guide cell kicker: "8:00 · NEW · HALLOWEEN". */
+/* Pretend premiere ("transplant"): a hollow diamond drawn in CSS, not a "◇" glyph, so it looks
+   the same on every platform (tvOS too). */
+.transplant-mark {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin: 0 10px 2px 3px;
+  border: 2px solid var(--rc-color-transplant);
+  transform: rotate(45deg);
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.cell-focused .transplant-mark {
+  border-color: var(--rc-color-on-focus);
+}
+
+.badge-transplant {
+  border-color: var(--rc-color-transplant);
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Guide cell kicker: "8:00 · NEW · MOVIE". */
 .kicker-new {
   color: var(--rc-color-focus);
   font-weight: 700;
 }
 
-.kicker-holiday {
-  color: var(--rc-color-holiday);
-  font-weight: 700;
-}
-
-.cell-focused .kicker-new,
-.cell-focused .kicker-holiday {
+.cell-focused .kicker-new {
   color: var(--rc-color-on-focus);
 }
 
@@ -642,6 +660,25 @@ button {
 
 .cell-focused .time {
   color: var(--rc-color-on-focus);
+}
+
+/* A holiday program: a 3px bar inside the cell's left edge (the name is in the details). */
+.cell-holiday {
+  box-shadow: inset 3px 0 0 var(--rc-color-holiday-muted);
+}
+
+.cell-focused.cell-holiday {
+  box-shadow: inset 3px 0 0 var(--rc-color-on-focus);
+}
+
+/* Too narrow for the time: only the ellipsised title. Thinner still: no text at all. */
+.cell-narrow {
+  padding-left: 8px;
+  padding-right: 4px;
+}
+
+.cell-sliver {
+  padding: 0;
 }
 
 .footer {

@@ -24,10 +24,9 @@ describe("kicker", () => {
     expect(kicker(base)).toEqual([]);
   });
 
-  it("orders NEW then the holiday, holiday in capitals", () => {
+  it("marks NEW; the holiday goes to the cell's bar, not the kicker (M2 D29)", () => {
     expect(kicker({ ...base, new: true, holiday: "halloween", holiday_name: "Halloween" })).toEqual([
       { text: "NEW", tone: "new" },
-      { text: "HALLOWEEN", tone: "holiday" },
     ]);
   });
 
@@ -36,7 +35,6 @@ describe("kicker", () => {
     expect(kicker(movie)).toEqual([{ text: "MOVIE", tone: "plain" }]);
     expect(kicker({ ...movie, holiday: "halloween", holiday_name: "Halloween" })).toEqual([
       { text: "MOVIE", tone: "plain" },
-      { text: "HALLOWEEN", tone: "holiday" },
     ]);
   });
 

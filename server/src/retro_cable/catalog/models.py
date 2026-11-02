@@ -44,7 +44,10 @@ class Channel(Model):
     name: str
     type: Literal["network", "marathon", "movie"]
     launch: date | None = Field(default=None, description="Hidden before this date unless library")
-    library: bool = Field(default=False, description="Always on the dial, every item eligible")
+    library: bool = Field(
+        default=False,
+        description="Always on the dial; episodes and movies still wait for their air dates",
+    )
     playlist: Literal["ordered", "shuffled"] | None = Field(
         default=None, description="Movie channels only"
     )
@@ -129,11 +132,13 @@ class CarriageFile(Model):
 
 
 class Synthetic(Model):
-    """A transplanted show: a made-up premiere inside 1990-2010, or library (always eligible)."""
+    """A transplant: a show (or movie) given a made-up premiere inside 1990-2010 on one
+    channel. Its earliest episode airs on that channel from `premiere`, the rest keep their
+    spacing; every other channel keeps the real (or US debut) dates."""
 
     show: Slug
-    premiere: date | None = None
-    library: bool = False
+    channel: Slug = Field(description="The one channel the pretend premiere applies to")
+    premiere: date = Field(description="The pretend first air date on that channel")
     mark: bool | None = Field(default=None, description="Override the channel's transplant_mark")
 
 

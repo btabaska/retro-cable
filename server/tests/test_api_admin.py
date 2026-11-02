@@ -336,7 +336,7 @@ def test_short_samples_dont_count_as_playable_episodes(catalog_dir: Path, tmp_pa
     assert count(allow=True) == 3
 
 
-def test_an_undated_show_warns_on_a_channel_that_is_not_library(
+def test_an_undated_show_warns_on_every_channel_until_it_has_a_pretend_premiere(
     catalog_dir: Path, tmp_path: Path
 ) -> None:
     client = scanned_client(catalog_dir, tmp_path, normalized=True, year=None)
@@ -345,6 +345,10 @@ def test_an_undated_show_warns_on_a_channel_that_is_not_library(
     assert any(w["field"] == "shows.0" and "no air dates" in w["message"] for w in warnings), (
         warnings
     )
-    # On a library channel every episode is eligible, so it airs without a warning.
+    # Library channels no longer lift air dates (M2), so it warns there too...
     library = toons(shows=[{"show": "ed-edd-n-eddy"}])
-    assert client.post("/admin/check", json={"draft": library}).json()["warnings"] == []
+    warnings = client.post("/admin/check", json={"draft": library}).json()["warnings"]
+    assert any(w["field"] == "shows.0" and "no air dates" in w["message"] for w in warnings)
+    # ...until a pretend premiere dates it on this channel.
+    dated = toons(shows=[{"show": "ed-edd-n-eddy", "premiere": "1999-01-04"}])
+    assert client.post("/admin/check", json={"draft": dated}).json()["warnings"] == []

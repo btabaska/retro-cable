@@ -110,15 +110,19 @@ class Scheduler:
         self.seed = seed
         self.tz = ZoneInfo(catalog.channels.timezone)
         self._excluded = {o.show for o in catalog.overrides.shows if o.exclude}
-        self._library_shows = {s.show for s in catalog.synthetic.synthetic if s.library}
-        self._transplants = {
-            s.show: s.mark for s in catalog.synthetic.synthetic if s.premiere or s.library
-        }
+        # Synthetic premieres by (channel, show); the last entry wins (admin over YAML).
+        self._premieres = {(s.channel, s.show): s for s in catalog.synthetic.synthetic}
         self._carriage: dict[str, list[Carriage]] = {}
         for c in catalog.carriage.carriage:
             self._carriage.setdefault(c.channel, []).append(c)
         self._programs = {
-            show: self._effective(show, eps) for show, eps in library.episodes.items()
+            show: self._effective(show, eps, None) for show, eps in library.episodes.items()
+        }
+        # A show with a synthetic premiere on a channel has its own dates there, and only there.
+        self._channel_programs = {
+            (channel, show): self._effective(show, library.episodes[show], channel)
+            for channel, show in self._premieres
+            if show in library.episodes
         }
         self.tagger = Tagger(catalog)
         self._tags: dict[ProgramKey, frozenset[str]] = {}
@@ -134,18 +138,37 @@ class Scheduler:
 
     # --- catalog lookups ------------------------------------------------------------------
 
-    def _effective(self, show: str, eps: tuple[Program, ...]) -> tuple[Program, ...]:
+    def _effective(
+        self, show: str, eps: tuple[Program, ...], channel: str | None
+    ) -> tuple[Program, ...]:
         dates = effective_dates(
             self.catalog,
             show,
             [(p.season or 0, p.episode or 0, p.air_date) for p in eps],
             first_year=self.library.show_years.get(show),
+            channel=channel,
         )
         return tuple(replace(p, air_date=d) for p, d in zip(eps, dates, strict=True))
 
-    def programs(self, show: str) -> tuple[Program, ...]:
-        """A show's on-disk episodes in air order, with effective air dates."""
+    def programs(self, show: str, channel: str | None = None) -> tuple[Program, ...]:
+        """A show's on-disk episodes in air order, with effective air dates on `channel`
+        (its synthetic premiere there, if any; None for the real or US debut dates)."""
+        if channel is not None and (channel, show) in self._channel_programs:
+            return self._channel_programs[(channel, show)]
         return self._programs.get(show, ())
+
+    def movie(self, show: str, channel: str | None = None) -> Program | None:
+        """A movie on disk, premiering on `channel`'s synthetic premiere if it has one."""
+        found = self.library.movies.get(show)
+        synthetic = self._premieres.get((channel, show)) if channel else None
+        if found is not None and synthetic is not None:
+            return replace(found, air_date=synthetic.premiere)
+        return found
+
+    def premiere(self, channel_id: str, show: str) -> date | None:
+        """The synthetic premiere of a show on a channel, if one is set."""
+        synthetic = self._premieres.get((channel_id, show))
+        return synthetic.premiere if synthetic else None
 
     def on_air(self, channel: Channel, day: date) -> bool:
         return channel.library or channel.launch is None or channel.launch <= day
@@ -235,7 +258,7 @@ class Scheduler:
 
     def _eligible(self, channel: Channel, source: _Source, day: date) -> list[Program]:
         if source.kind == "movie":
-            movie = self.library.movies.get(source.show)
+            movie = self.movie(source.show, channel.id)
             if (
                 movie
                 and (movie.air_date is None or movie.air_date <= day)
@@ -243,11 +266,11 @@ class Scheduler:
             ):
                 return [movie]
             return []
-        programs = self.programs(source.show)
-        if channel.library or source.show in self._library_shows:
-            found = list(programs)
-        else:
-            found = [p for p in programs if p.air_date is not None and p.air_date <= day]
+        # The debut rule holds on every channel, library and custom ones too: `library` only
+        # keeps a channel on the dial before its launch (Brandon, M2). To air a show early on
+        # purpose, give it a synthetic premiere on that channel.
+        programs = self.programs(source.show, channel.id)
+        found = [p for p in programs if p.air_date is not None and p.air_date <= day]
         if self._seasonal:
             found = [p for p in found if self._in_season(p, day)]
         return found
@@ -409,7 +432,7 @@ class Scheduler:
         ]
         found: dict[str, tuple[Program, str]] = {}
         for c in self._carriage.get(channel.id, []):
-            movie = self.library.movies.get(c.show)
+            movie = self.movie(c.show, channel.id)
             if (
                 c.kind != "movie"
                 or movie is None
@@ -527,10 +550,12 @@ class Scheduler:
         return options[rng.randrange(len(options))]
 
     def _is_transplant(self, channel: Channel, show: str) -> bool:
-        if show not in self._transplants:
+        """A show with a synthetic premiere on this channel, where the channel (or the entry's
+        own `mark`) shows the transplant mark."""
+        synthetic = self._premieres.get((channel.id, show))
+        if synthetic is None:
             return False
-        mark = self._transplants[show]
-        return channel.transplant_mark if mark is None else mark
+        return channel.transplant_mark if synthetic.mark is None else synthetic.mark
 
     def _pick(
         self,
@@ -561,10 +586,7 @@ class Scheduler:
                         return p, True
 
         if channel.type == "movie" and channel.playlist == "ordered":
-            movies = [progs[0] for _, progs in fitting]
-            per_day = max(1, 86400 // max(1, sum(m.seconds for m in movies) // len(movies)))
-            index = ((day - EPOCH).days * per_day + sum(aired.values())) % len(movies)
-            return movies[index], False
+            return self._next_in_order([progs[0] for _, progs in fitting], day, aired, slots), False
 
         # Inside an "on" window, a show's tagged episodes not yet aired today come first, and
         # shows that have some get a boost by the holiday's strength.
@@ -594,6 +616,23 @@ class Scheduler:
         offset = _stable_int(self.seed, channel.id, source.show) % len(progs)
         index = (offset + (day - EPOCH).days * RERUN_STRIDE + aired[source.show]) % len(progs)
         return progs[index], False
+
+    def _next_in_order(
+        self, movies: list[Program], day: date, aired: Counter[str], slots: list[Slot]
+    ) -> Program:
+        """The next movie of an ordered playlist (carriage order). Each day starts further along
+        the list, by about a day's worth of movies. A movie that has not aired yet this broadcast
+        day comes first, so with enough titles nothing repeats within the day, even when
+        the fitting titles change near 5 a.m. or around holiday specials; once all have aired,
+        the one aired longest ago comes next."""
+        per_day = max(1, 86400 // max(1, sum(m.seconds for m in movies) // len(movies)))
+        start = ((day - EPOCH).days * per_day + sum(aired.values())) % len(movies)
+        order = movies[start:] + movies[:start]
+        last_aired = {s.show: i for i, s in enumerate(slots) if s.kind == "movie"}
+        fresh = [m for m in order if m.show not in last_aired]
+        if fresh:
+            return fresh[0]
+        return min(order, key=lambda m: last_aired[m.show])
 
     # --- queries --------------------------------------------------------------------------
 

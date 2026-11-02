@@ -1,11 +1,14 @@
 import itertools
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from retro_cable.catalog import Catalog
-from retro_cable.scheduler import ChannelOffAir, Scheduler, Slot
+from retro_cable.catalog.models import Carriage, Channel
+from retro_cable.catalog.overlay import Overlay, apply_overlay, with_channel
+from retro_cable.scheduler import ChannelOffAir, Library, Program, Scheduler, Slot
 from tests.conftest import MakeCatalog
 from tests.scheduler.conftest import make_library
 
@@ -88,7 +91,10 @@ def test_imports_count_from_their_us_debut(catalog: Catalog) -> None:
 
 def test_transplants_are_marked(catalog: Catalog) -> None:
     sched = Scheduler(catalog, make_library(), seed=1)
-    assert sched.programs("gravity-falls")[0].air_date == date(2004, 6, 15)
+    assert sched.programs("gravity-falls", "cartoon-network")[0].air_date == date(2004, 6, 15)
+    # The premiere belongs to Cartoon Network; anywhere else Gravity Falls keeps 2012.
+    assert sched.programs("gravity-falls")[0].air_date == date(2012, 6, 15)
+    assert sched.programs("gravity-falls", "ktvu")[0].air_date == date(2012, 6, 15)
     slots = sched.between("cartoon-network", at(2005, 1, 7, 5), at(2005, 1, 9, 5))
     gf = [s for s in slots if s.show == "gravity-falls"]
     assert gf and all(s.transplant for s in gf)
@@ -167,3 +173,38 @@ def test_identity_follows_the_date(make_catalog: MakeCatalog) -> None:
     slots = sched.day("nbc", date(2002, 1, 1))
     assert all(s.kind == "filler" for s in slots)
     assert_back_to_back(list(slots), at(2002, 1, 1, 5), at(2002, 1, 2, 5))
+
+
+def test_an_ordered_movie_channel_repeats_nothing_within_a_day_given_enough_titles(
+    catalog: Catalog,
+) -> None:
+    """M2 D22: with more titles than a day holds, no movie airs twice in a broadcast day, and
+    the next day picks up further along the list. Lengths vary, so the fitting titles change
+    near 5 a.m."""
+    titles = [f"movie-{i:02d}" for i in range(24)]
+    flix = Channel.model_validate(
+        {"id": "custom-flix", "name": "Flix", "type": "movie", "playlist": "ordered",
+         "library": True, "identity": [{"from": "1990-01-01", "number": 70, "call_sign": "FLIX"}]}
+    )  # fmt: skip
+    carriage = [
+        Carriage.model_validate(
+            {"show": t, "title": t, "channel": "custom-flix", "from": "1990-01-01", "kind": "movie"}
+        )
+        for t in titles
+    ]
+    base = make_library()
+    movies = {
+        t: Program(show=t, kind="movie", title=t, season=None, episode=None, episode_title="",
+                   air_date=date(1985, 1, 1), seconds=(80 + 7 * (i % 5)) * 60, path=f"{t}.mp4")
+        for i, t in enumerate(titles)
+    }  # fmt: skip
+    library = replace(base, movies={**base.movies, **movies})
+    assert isinstance(library, Library)
+    sched = Scheduler(apply_overlay(catalog, with_channel(Overlay(), flix, carriage)), library)
+    firsts = []
+    for offset in range(10):
+        day = date(1999, 3, 1) + timedelta(days=offset)
+        aired = [s.show for s in sched.day("custom-flix", day) if s.kind == "movie"]
+        assert len(aired) == len(set(aired)) > 10, (day, aired)
+        firsts.append(aired[0])
+    assert len(set(firsts)) > 1  # each day starts somewhere new

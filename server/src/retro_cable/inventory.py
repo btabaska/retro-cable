@@ -19,8 +19,8 @@ from retro_cable.catalog import (
     Catalog,
     CatalogError,
     effective_dates,
-    is_library_show,
     load_catalog,
+    premiere_for,
 )
 from retro_cable.catalog.holidays import Tagger
 from retro_cable.catalog.models import Carriage, Channel
@@ -78,7 +78,12 @@ def _carried_in(c: Carriage, year: int) -> bool:
     return c.from_ <= date(year, 12, 31) and (c.until is None or c.until >= date(year, 1, 1))
 
 
-def _episodes(catalog: Catalog, db: sqlite3.Connection) -> dict[str, list[_Episode]]:
+EpisodeIndex = dict[tuple[str, str | None], list[_Episode]]
+
+
+def _episodes(catalog: Catalog, db: sqlite3.Connection) -> EpisodeIndex:
+    """Episodes by (show, channel): channel None holds the real or US debut dates, and each
+    (show, channel) with a synthetic premiere gets its own entry with the shifted dates."""
     by_show: dict[str, list[tuple[int, int, date | None, bool]]] = defaultdict(list)
     for r in db.execute(
         "SELECT show_id, season, episode, air_date, file_path IS NOT NULL AS on_disk"
@@ -87,16 +92,31 @@ def _episodes(catalog: Catalog, db: sqlite3.Connection) -> dict[str, list[_Episo
         air = date.fromisoformat(r["air_date"]) if r["air_date"] else None
         by_show[r["show_id"]].append((r["season"], r["episode"], air, bool(r["on_disk"])))
     years = {r["id"]: r["year"] for r in db.execute("SELECT id, year FROM shows")}
-    out: dict[str, list[_Episode]] = {}
+    out: EpisodeIndex = {}
+    channels: list[str | None] = [None]
+    channels += [s.channel for s in catalog.synthetic.synthetic]
     for show, rows in by_show.items():
-        dates = effective_dates(
-            catalog, show, [(s, e, d) for s, e, d, _ in rows], first_year=years.get(show)
-        )
-        out[show] = [_Episode(d, row[3]) for d, row in zip(dates, rows, strict=True)]
+        for channel in channels:
+            if channel is not None and not any(
+                s.show == show and s.channel == channel for s in catalog.synthetic.synthetic
+            ):
+                continue
+            dates = effective_dates(
+                catalog,
+                show,
+                [(s, e, d) for s, e, d, _ in rows],
+                first_year=years.get(show),
+                channel=channel,
+            )
+            out[(show, channel)] = [_Episode(d, row[3]) for d, row in zip(dates, rows, strict=True)]
     return out
 
 
-def _gaps(catalog: Catalog, db: sqlite3.Connection, episodes: dict[str, list[_Episode]]) -> Gaps:
+def _for_channel(episodes: EpisodeIndex, show: str, channel: str) -> list[_Episode]:
+    return episodes.get((show, channel)) or episodes.get((show, None), [])
+
+
+def _gaps(catalog: Catalog, db: sqlite3.Connection, episodes: EpisodeIndex) -> Gaps:
     gaps = Gaps()
     shows = {c.show for c in catalog.carriage.carriage if c.kind == "show"}
     movies = {c.show for c in catalog.carriage.carriage if c.kind == "movie"}
@@ -104,7 +124,7 @@ def _gaps(catalog: Catalog, db: sqlite3.Connection, episodes: dict[str, list[_Ep
     movie_files = {r["id"]: r["file_path"] for r in db.execute("SELECT id, file_path FROM movies")}
     gaps.missing_shows = sorted(shows - in_db.keys())
     gaps.shows_without_files = sorted(
-        s for s in shows & in_db.keys() if not any(e.on_disk for e in episodes.get(s, []))
+        s for s in shows & in_db.keys() if not any(e.on_disk for e in episodes.get((s, None), []))
     )
     gaps.shows_without_tmdb_id = sorted(s for s in shows & in_db.keys() if in_db[s] is None)
     gaps.missing_movies = sorted(m for m in movies if not movie_files.get(m))
@@ -195,17 +215,21 @@ def build_inventory(catalog: Catalog, db: sqlite3.Connection) -> Inventory:
             end = date(year, 12, 31)
             carried = [c for c in carriage if _carried_in(c, year)]
             shows = {c.show for c in carried if c.kind == "show"}
+            # The debut rule holds on every channel, library ones too.
             eligible = [
                 e
                 for s in shows
-                for e in episodes.get(s, [])
-                if is_library_show(catalog, s) or (e.effective is not None and e.effective <= end)
+                for e in _for_channel(episodes, s, channel.id)
+                if e.effective is not None and e.effective <= end
             ]
             movies_expected = movies_on_disk = 0
             for c in carried:
                 if c.kind != "movie":
                     continue
                 premiere, has_file = premieres.get(c.show, (None, False))
+                synthetic = premiere_for(catalog, c.show, channel.id)
+                if synthetic is not None:
+                    premiere = synthetic.premiere
                 if premiere is not None and premiere > end:
                     continue  # carried, but not out yet (Halloweentown before Oct 1998)
                 movies_expected += 1
