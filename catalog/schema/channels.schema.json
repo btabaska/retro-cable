@@ -102,7 +102,7 @@
         },
         "library": {
           "default": false,
-          "description": "Always on the dial, every item eligible",
+          "description": "Always on the dial; episodes and movies still wait for their air dates",
           "title": "Library",
           "type": "boolean"
         },

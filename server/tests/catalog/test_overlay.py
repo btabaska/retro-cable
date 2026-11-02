@@ -5,13 +5,14 @@ import pytest
 
 from retro_cable.admin import store
 from retro_cable.catalog import load_catalog, validate
-from retro_cable.catalog.models import Carriage, Channel
+from retro_cable.catalog.models import Carriage, Channel, Synthetic
 from retro_cable.catalog.overlay import (
     Overlay,
     apply_overlay,
     canonical,
     parse,
     with_channel,
+    with_premiere,
     without_channel,
 )
 from retro_cable.db import connect, migrate
@@ -106,3 +107,52 @@ def test_store_appends_and_undo_never_rewrites(db) -> None:  # type: ignore[no-u
     assert ids == sorted(ids) and len(ids) == 5  # start, two saves, two undos
     assert store.get(db, first.id).overlay == one  # history is intact
     assert date.fromisoformat(store.head(db).created_at[:10]) == NOW.date()
+
+
+# --- pretend premieres in the overlay (M2 A) -------------------------------------------
+
+
+def test_an_overlay_without_premieres_keeps_its_text_and_version(make_catalog: MakeCatalog) -> None:
+    # Overlays saved before premieres existed must hash the same, so their schedules stay put.
+    overlay = with_channel(Overlay(), *toons())
+    assert "premieres" not in canonical(overlay)
+    catalog = load_catalog(make_catalog())
+    old = apply_overlay(catalog, parse(canonical(overlay)))
+    assert old.version == apply_overlay(catalog, overlay).version
+
+
+def test_premieres_change_the_version_and_replace_a_yaml_entry(make_catalog: MakeCatalog) -> None:
+    catalog = load_catalog(make_catalog())
+    overlay = with_premiere(Overlay(), "gravity-falls", "cartoon-network", date(2005, 1, 7))
+    merged = apply_overlay(catalog, overlay)
+    assert merged.version != catalog.version
+    assert [(s.show, s.channel, s.premiere) for s in merged.synthetic.synthetic] == [
+        ("gravity-falls", "cartoon-network", date(2005, 1, 7))
+    ]
+    assert validate(merged) == []
+    # Canonical text sorts premieres, so the order they were set in doesn't matter.
+    a = with_premiere(with_premiere(Overlay(), "x-men", "ktvu", date(1993, 1, 1)),
+                      "the-simpsons", "ktvu", date(1990, 2, 2))  # fmt: skip
+    b = with_premiere(with_premiere(Overlay(), "the-simpsons", "ktvu", date(1990, 2, 2)),
+                      "x-men", "ktvu", date(1993, 1, 1))  # fmt: skip
+    assert canonical(a) == canonical(b)
+    # Clearing removes the overlay entry only.
+    assert with_premiere(overlay, "gravity-falls", "cartoon-network", None).empty
+
+
+def test_deleting_a_custom_channel_drops_its_premieres() -> None:
+    channel, carriage = toons()
+    premiere = Synthetic(show="the-simpsons", channel="custom-toons", premiere=date(1991, 1, 1))
+    overlay = with_channel(Overlay(), channel, carriage, [premiere])
+    overlay = with_premiere(overlay, "x-men", "ktvu", date(1993, 1, 1))
+    rest = without_channel(overlay, "custom-toons")
+    assert [(p.show, p.channel) for p in rest.premieres] == [("x-men", "ktvu")]
+
+
+def test_a_premiere_for_a_show_the_channel_does_not_carry_fails_validation(
+    make_catalog: MakeCatalog,
+) -> None:
+    catalog = load_catalog(make_catalog())
+    overlay = with_premiere(Overlay(), "x-men", "cartoon-network", date(1995, 1, 1))
+    errors = validate(apply_overlay(catalog, overlay))
+    assert any("'x-men' is not carried on cartoon-network" in e for e in errors)

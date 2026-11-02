@@ -7,7 +7,7 @@ diff in the PR.
 
 import itertools
 import os
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -17,6 +17,7 @@ from retro_cable.catalog import load_catalog
 from retro_cable.db import connect
 from retro_cable.demo import seed_demo
 from retro_cable.scheduler import Scheduler, Slot, load_library
+from retro_cable.scheduler.engine import OFF_AIR
 from tests.test_demo import write_manifest
 
 REPO_CATALOG = Path(__file__).resolve().parents[3] / "catalog"
@@ -130,3 +131,38 @@ def test_oct_24_1998_in_season_but_not_the_holiday_is_no_marathon(sched: Schedul
     runs the usual rotation."""
     movies = [s for s in sched.day("disney-movies", date(1998, 10, 24)) if s.kind == "movie"]
     assert any(s.show not in HALLOWEEN_MOVIES for s in movies)
+
+
+# --- M1 rough edges (M2 D21, D22) -------------------------------------------------------
+
+
+def evening(sched: Scheduler, channel: str, day: date) -> list[Slot]:
+    start = datetime.combine(day, time(18), NY)
+    return sched.between(channel, start, start + timedelta(hours=6))
+
+
+def test_cartoon_network_1998_prime_time_never_goes_off_air(sched: Scheduler) -> None:
+    """18:00-24:00 every day of a 1998 week, and Halloween (a Saturday), runs real programs."""
+    days = [date(1998, 6, 1) + timedelta(days=i) for i in range(7)] + [OCT31]
+    for day in days:
+        slots = evening(sched, "cartoon-network", day)
+        assert not [s for s in slots if s.title == OFF_AIR], day
+        assert all(s.kind in ("episode", "movie", "bumper") for s in slots), day
+
+
+@pytest.mark.parametrize("year", range(1993, 2011))
+def test_cartoon_network_evenings_stay_on_the_air_in_every_era(sched: Scheduler, year: int) -> None:
+    for day in (date(year, 3, 2), date(year, 6, 6), date(year, 9, 12)):
+        for offset in range(0, 7, 3):  # three weekdays a week apart in the day-part sense
+            d = day + timedelta(days=offset)
+            assert not [s for s in evening(sched, "cartoon-network", d) if s.title == OFF_AIR], d
+
+
+def test_disney_movies_cycles_through_every_title_before_repeating(sched: Scheduler) -> None:
+    """The ordered rotation airs each eligible title once before any repeats, and never the
+    same movie twice in a row (the demo seed has fewer titles than a day holds)."""
+    for day in (date(2006, 6, 3), date(2008, 6, 3), date(2010, 6, 3), date(2004, 3, 3)):
+        movies = [s.show for s in sched.day("disney-movies", day) if s.kind == "movie"]
+        titles = len(set(movies))
+        assert len(set(movies[:titles])) == titles, (day, movies)
+        assert all(a != b for a, b in itertools.pairwise(movies)), (day, movies)
