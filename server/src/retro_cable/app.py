@@ -18,6 +18,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from retro_cable import __version__, media, tv
+from retro_cable.admin import media as admin_media
 from retro_cable.admin import router as admin
 from retro_cable.admin import store
 from retro_cable.catalog import Catalog, load_catalog
@@ -153,6 +154,16 @@ class _Schedules:
             return self._scheduler
 
 
+def _data_writable(db_path: Path) -> bool:
+    """False when the database, or the folder it lives in, exists but this process can't
+    write it (a host data dir owned by another uid). A folder not made yet is fine: the
+    first write makes it."""
+    folder = db_path.parent
+    if db_path.exists() and not os.access(db_path, os.W_OK):
+        return False
+    return not folder.exists() or os.access(folder, os.W_OK | os.X_OK)
+
+
 def _operation_id(route: APIRoute) -> str:
     # The generated web and tvOS clients use these names, so keep them stable.
     return route.name
@@ -173,8 +184,15 @@ def create_app(
     config = settings or Settings.from_env()
     schedules = _Schedules(config)
 
-    @app.get("/health", name="getHealth")
-    def get_health() -> Health:
+    @app.get(
+        "/health",
+        name="getHealth",
+        responses={503: {"model": Health, "description": "The data dir is not writable"}},
+    )
+    def get_health(response: Response) -> Health:
+        if not _data_writable(config.db_path):
+            response.status_code = 503
+            return Health(status="data dir not writable")
         return Health(status="ok")
 
     @app.get("/version", name="getVersion")
@@ -186,6 +204,7 @@ def create_app(
 
     app.include_router(tv.router(schedules, clock, sign))
     app.include_router(admin.router(schedules, clock, config.db_path, config.seed))
+    app.include_router(admin_media.router(config.media_dir, clock))
 
     @app.get("/media/{path:path}", name="getMedia", include_in_schema=False)
     def get_media(

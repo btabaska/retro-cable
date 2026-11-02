@@ -812,6 +812,103 @@
         "title": "Lineup",
         "type": "object"
       },
+      "MediaProgress": {
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "encoder": {
+            "description": "paused: the worker is between passes or hasn't reported for 30 minutes",
+            "enum": [
+              "gpu",
+              "cpu",
+              "paused"
+            ],
+            "title": "Encoder",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "gpu_busy": {
+            "description": "The CPU was chosen because the GPU was in use",
+            "title": "Gpu Busy",
+            "type": "boolean"
+          },
+          "recent_seconds": {
+            "description": "Wall-clock seconds of the most recent finished files, newest last (<= 20)",
+            "items": {
+              "type": "number"
+            },
+            "title": "Recent Seconds",
+            "type": "array"
+          },
+          "shows": {
+            "description": "In conversion order",
+            "items": {
+              "$ref": "#/components/schemas/MediaShowProgress"
+            },
+            "title": "Shows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "done",
+          "total",
+          "failed",
+          "encoder",
+          "gpu_busy",
+          "recent_seconds",
+          "shows"
+        ],
+        "title": "MediaProgress",
+        "type": "object"
+      },
+      "MediaShowProgress": {
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Failed in the current or last pass; retried on the next",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "converting",
+              "queued",
+              "done"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "title",
+          "done",
+          "total",
+          "failed",
+          "state"
+        ],
+        "title": "MediaShowProgress",
+        "type": "object"
+      },
       "Preview": {
         "properties": {
           "channel": {
@@ -1464,6 +1561,30 @@
         ]
       }
     },
+    "/admin/media/progress": {
+      "get": {
+        "operationId": "adminMediaProgress",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaProgress"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "The rig hasn't reported any progress"
+          }
+        },
+        "summary": "Adminmediaprogress",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/admin/preview": {
       "post": {
         "description": "A week (Sunday to Saturday) of the draft channel's guide, with the draft applied in\nmemory only. The days are empty when the checks fail.",
@@ -1716,6 +1837,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "The data dir is not writable"
           }
         },
         "summary": "Gethealth"

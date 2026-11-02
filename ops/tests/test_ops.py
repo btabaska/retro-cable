@@ -98,6 +98,16 @@ def test_media_index_records_the_rigs_encodes_without_writing_media() -> None:
     assert index["depends_on"]["api"]["condition"] == "service_healthy"
 
 
+def test_media_index_is_unhealthy_until_it_can_write_the_database() -> None:
+    """A data dir the api user can't write (it was uid 1000 on the mini) made media-index
+    crash-loop while `up --wait` and the smoke test passed. With a healthcheck, `up --wait`
+    fails and deploy.sh rolls back."""
+    index = load("compose.yml")["services"]["media-index"]
+    check = " ".join(index["healthcheck"]["test"])
+    assert "/data/retro-cable.db" in check and "W_OK" in check
+    assert index["healthcheck"]["start_period"]
+
+
 # --- the rig worker ----------------------------------------------------------
 
 
@@ -318,6 +328,19 @@ def _block(text: str, opener: str) -> str:
         if depth == 0:
             return text[at + 1 : i]
     raise AssertionError(f"unbalanced block {opener}")
+
+
+def test_web_caddy_also_rejects_non_private_clients() -> None:
+    """The web port is loopback by default, but RC_WEB_BIND can put it on the LAN (mini:8095
+    when the host Caddy can't be used). The container then needs its own LAN-only check,
+    before any route."""
+    text = (OPS.parent / "web" / "Caddyfile").read_text()
+    site = _block(text, ":80")
+    lines = [
+        ln.strip() for ln in site.splitlines() if ln.strip() and not ln.strip().startswith("#")
+    ]
+    assert lines[0] == "@not_lan not remote_ip private_ranges"
+    assert lines[1] == "abort @not_lan"
 
 
 def test_web_caddy_checks_media_signatures_before_serving_files() -> None:

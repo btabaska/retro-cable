@@ -5,9 +5,12 @@ media root, at most 480 lines with its display aspect kept (4:3 stays 4:3, 16:9 
 the index at the front (faststart) and a keyframe every second, so playback can start at any
 offset `/tune` returns. The output path is a slug of the item, never the source name.
 
-The job is idempotent and resumable: an item whose output exists and whose source size and
-mtime match what was recorded is skipped, each finished item is committed on its own, and an
-encode writes to `<name>.partial` and is renamed only once ffprobe reads it back.
+The job is idempotent and resumable: an item whose output exists, whose source size and
+mtime match what was recorded and whose recorded length is whole is skipped, each finished
+item is committed on its own, and an encode writes to `<name>.partial` and is renamed only
+once ffprobe reads it back whole: a video stream, an audio stream when the source has one,
+and a length within 2% of the source's (or of `--max-seconds` for a trial). Anything else
+is a failure, leaves no file and is tried again on the next run.
 
 Encoders: libx264 on the CPU (default) or h264_nvenc on an NVIDIA GPU (`--encoder nvenc`).
 """
@@ -22,7 +25,7 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from retro_cable.db import transaction
 from retro_cable.scheduler.library import is_short
@@ -40,6 +43,8 @@ MAX_LINES = 480
 KEYFRAME_SECONDS = 1
 VIDEO_MAXRATE = "1500k"
 VIDEO_BUFSIZE = "3000k"
+LENGTH_TOLERANCE = 0.02  # an encode within 2% of its source's length is whole
+LENGTH_SLACK = 1.0  # seconds; container rounding on very short items such as bumpers
 
 
 @dataclass(frozen=True)
@@ -264,6 +269,32 @@ class Item:
     source_mtime_ns: int | None
     runtime_seconds: int | None = None  # the catalog runtime (Plex, TMDB); None for bumpers
     key: str = ""  # the show, movie or channel id
+    media_seconds: int | None = None  # the recorded encode's length
+    source_seconds: int | None = None  # the source's length when it was encoded
+
+    def up_to_date_in_db(self, max_seconds: float | None = None) -> bool:
+        """The database says this item's encode is in place and whole (no file checks)."""
+        return (
+            self.media_path is not None
+            and self.media_path == self.target
+            and recorded_whole(self.media_seconds, self.source_seconds, max_seconds)
+        )
+
+
+def length_ok(encoded: float, source: float) -> bool:
+    """`encoded` is within 2% (and at least a second) of `source`."""
+    return abs(encoded - source) <= max(source * LENGTH_TOLERANCE, LENGTH_SLACK)
+
+
+def recorded_whole(
+    media_seconds: int | None, source_seconds: int | None, max_seconds: float | None = None
+) -> bool:
+    """A recorded encode's length against its source's, both floored to whole seconds (so
+    one more second of slack). Unknown lengths can't be checked and pass."""
+    if media_seconds is None or source_seconds is None or source_seconds <= 0:
+        return media_seconds is None or media_seconds > 0
+    expected = min(source_seconds, max_seconds) if max_seconds else source_seconds
+    return abs(media_seconds - expected) <= max(expected * LENGTH_TOLERANCE, LENGTH_SLACK) + 1
 
 
 def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[Item]:
@@ -274,11 +305,11 @@ def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[I
              r["file_path"],
              target_path("episodes", r["show_id"], r["season"], r["episode"], r["file_path"]),
              r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
-             r["runtime_seconds"], r["show_id"])
+             r["runtime_seconds"], r["show_id"], r["media_seconds"], r["source_seconds"])
         for r in db.execute(
             "SELECT id, show_id, season, episode, file_path, media_path, media_source_size,"
-            " media_source_mtime_ns, runtime_seconds FROM episodes WHERE file_path IS NOT NULL"
-            " ORDER BY show_id, season, episode"
+            " media_source_mtime_ns, runtime_seconds, media_seconds, source_seconds"
+            " FROM episodes WHERE file_path IS NOT NULL ORDER BY show_id, season, episode"
         )
         if shows is None or r["show_id"] in shows
     ]  # fmt: skip
@@ -286,10 +317,11 @@ def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[I
         Item("movies", r["id"], r["id"], r["file_path"],
              target_path("movies", r["id"], None, None, r["file_path"]),
              r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
-             r["runtime_seconds"], r["id"])
+             r["runtime_seconds"], r["id"], r["media_seconds"], r["source_seconds"])
         for r in db.execute(
             "SELECT id, file_path, media_path, media_source_size, media_source_mtime_ns,"
-            " runtime_seconds FROM movies WHERE file_path IS NOT NULL ORDER BY id"
+            " runtime_seconds, media_seconds, source_seconds FROM movies"
+            " WHERE file_path IS NOT NULL ORDER BY id"
         )
     ]  # fmt: skip
     items += [
@@ -297,10 +329,10 @@ def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[I
              r["file_path"],
              target_path("bumpers", r["channel_id"], None, None, r["file_path"]),
              r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
-             key=r["channel_id"])
+             key=r["channel_id"], media_seconds=r["media_seconds"])
         for r in db.execute(
             "SELECT id, channel_id, file_path, media_path, media_source_size,"
-            " media_source_mtime_ns FROM bumpers ORDER BY channel_id, file_path"
+            " media_source_mtime_ns, media_seconds FROM bumpers ORDER BY channel_id, file_path"
         )
     ]  # fmt: skip
     return items
@@ -354,6 +386,16 @@ def resolve_source(
 
 Runner = Callable[[list[str]], None]
 Prober = Callable[[Path], Probe]
+Outcome = Literal["encoded", "failed", "missing", "skipped"]
+
+
+class Watcher(Protocol):
+    """Told about the pass as it goes (the rig's progress.json, ingest/progress.py)."""
+
+    def planned(self, items: Sequence[Item]) -> None: ...
+    def started(self, item: Item, encoder: Encoder) -> None: ...
+    def finished(self, item: Item, outcome: Outcome) -> None: ...
+    def close(self) -> None: ...
 
 
 def run_ffmpeg(cmd: list[str]) -> None:
@@ -389,6 +431,21 @@ def _record(
         )
 
 
+def check_encode(out: Probe, info: Probe, max_seconds: float | None) -> None:
+    """Raise ValueError unless the encode `out` of source `info` is whole: playable video,
+    audio when the source had some, and the source's length (or the trial's) within 2%."""
+    if out.video is None:
+        raise ValueError("encoded file has no video stream")
+    if info.audio_index is not None and out.audio_index is None:
+        raise ValueError("encoded file lost the audio")
+    if out.duration <= 0:
+        raise ValueError("encoded file has no duration")
+    if info.duration > 0:
+        expected = min(info.duration, max_seconds) if max_seconds else info.duration
+        if not length_ok(out.duration, expected):
+            raise ValueError(f"encoded {out.duration:.1f} s of a {expected:.1f} s source")
+
+
 def expected_seconds(item: Item, source: int | None) -> int:
     """What the whole program should last: its catalog runtime or its source's measured
     length, whichever is longer (bumpers have no expectation)."""
@@ -415,62 +472,111 @@ def normalize(
     shows: Collection[str] | None = None,
     order: Callable[[list[Item]], list[Item]] | None = None,
     on_encoded: Callable[[Item], None] | None = None,
+    watch: Watcher | None = None,
 ) -> NormalizeStats:
     """Encode every item that has no up-to-date output. `limit` caps the encodes in this run.
 
     `encoder` is fixed, or asked once per item (the rig's GPU check, see ingest/gpu.py).
     `order` reorders the plan (see `prioritize`); `on_encoded` runs after each item is
-    recorded (the rig writes its manifest sidecar there)."""
+    recorded (the rig writes its manifest sidecar there); `watch` hears about every item
+    (the rig's progress file, ingest/progress.py)."""
     stats = NormalizeStats()
     items = plan(db, shows)
     if order is not None:
         items = order(items)
-    for item in items:
-        if limit is not None and stats.encoded >= limit:
-            break
-        src = resolve_source(item.file_path, source_root, source_map)
-        if src is None or not src.is_file():
-            stats.missing.append(item.label)
-            continue
-        st = src.stat()
-        dst = media_dir / item.target
-        if (
-            not force
-            and item.media_path == item.target
-            and item.source_size == st.st_size
-            and item.source_mtime_ns == st.st_mtime_ns
-            and dst.is_file()
-        ):
-            stats.skipped += 1
-            continue
-        tmp = dst.with_name(dst.name + ".partial")
-        try:
-            info = probe(src)
-            source = math.floor(info.duration) if info.duration > 0 else None
-            bars = crop(src, info, max_seconds)
-            chosen = encoder if isinstance(encoder, str) else encoder()
-            cmd = build_command(src, tmp, info, chosen, max_seconds, crop=bars)
-            if dry_run:
-                stats.commands.append(cmd)
+    if dry_run:
+        watch = None
+    if watch is not None:
+        watch.planned(items)
+
+    def done(item: Item, outcome: Outcome) -> None:
+        if watch is not None:
+            watch.finished(item, outcome)
+
+    try:
+        for item in items:
+            if limit is not None and stats.encoded >= limit:
+                break
+            src = resolve_source(item.file_path, source_root, source_map)
+            if src is None or not src.is_file():
+                stats.missing.append(item.label)
+                done(item, "missing")
                 continue
-            if progress:
-                progress(f"{item.label} [{chosen}]")
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            run(cmd)
-            seconds = math.floor(probe(tmp).duration)
-            if seconds <= 0:
-                raise ValueError("encoded file has no duration")
-            os.replace(tmp, dst)
-        except (subprocess.CalledProcessError, ValueError, KeyError, OSError):
-            tmp.unlink(missing_ok=True)
-            stats.failed.append(item.label)
-            continue
-        _record(db, item, seconds, source, st)
-        stats.encoded += 1
-        stats.encoders[chosen] = stats.encoders.get(chosen, 0) + 1
-        if on_encoded is not None:
-            on_encoded(item)
-        expected = expected_seconds(item, source)
-        if is_short(seconds, expected):
-            stats.short.append(f"{item.label} ({seconds} s of {expected} s)")
+            st = src.stat()
+            if (
+                not force
+                and item.up_to_date_in_db(max_seconds)
+                and item.source_size == st.st_size
+                and item.source_mtime_ns == st.st_mtime_ns
+                and (media_dir / item.target).is_file()
+            ):
+                stats.skipped += 1
+                done(item, "skipped")
+                continue
+            outcome = _encode(
+                db, media_dir, item, src, st, stats, encoder=encoder, max_seconds=max_seconds,
+                dry_run=dry_run, run=run, probe=probe, crop=crop, progress=progress,
+                watch=watch,
+            )  # fmt: skip
+            if outcome == "encoded" and on_encoded is not None:
+                on_encoded(item)
+            if outcome is not None:
+                done(item, outcome)
+    finally:
+        if watch is not None:
+            watch.close()
     return stats
+
+
+def _encode(
+    db: sqlite3.Connection,
+    media_dir: Path,
+    item: Item,
+    src: Path,
+    st: os.stat_result,
+    stats: NormalizeStats,
+    *,
+    encoder: Encoder | Callable[[], Encoder],
+    max_seconds: float | None,
+    dry_run: bool,
+    run: Runner,
+    probe: Prober,
+    crop: CropDetector,
+    progress: Callable[[str], None] | None,
+    watch: Watcher | None,
+) -> Outcome | None:
+    """Encode one item, check it and record it. None for a dry run."""
+    dst = media_dir / item.target
+    tmp = dst.with_name(dst.name + ".partial")
+    try:
+        info = probe(src)
+        source = math.floor(info.duration) if info.duration > 0 else None
+        bars = crop(src, info, max_seconds)
+        chosen = encoder if isinstance(encoder, str) else encoder()
+        cmd = build_command(src, tmp, info, chosen, max_seconds, crop=bars)
+        if dry_run:
+            stats.commands.append(cmd)
+            return None
+        if progress:
+            progress(f"{item.label} [{chosen}]")
+        if watch is not None:
+            watch.started(item, chosen)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        run(cmd)
+        out = probe(tmp)
+        check_encode(out, info, max_seconds)
+        seconds = math.floor(out.duration)
+        os.replace(tmp, dst)
+    except (subprocess.CalledProcessError, ValueError, KeyError, OSError) as err:
+        tmp.unlink(missing_ok=True)
+        stats.failed.append(item.label)
+        if progress is not None and isinstance(err, ValueError):
+            progress(f"{item.label} failed: {err}")
+        return "failed"
+    _record(db, item, seconds, source, st)
+    stats.encoded += 1
+    stats.encoders[chosen] = stats.encoders.get(chosen, 0) + 1
+    expected = expected_seconds(item, source)
+    if is_short(seconds, expected):
+        stats.short.append(f"{item.label} ({seconds} s of {expected} s)")
+    return "encoded"
