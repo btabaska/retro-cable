@@ -35,8 +35,17 @@ test("launch, banner, guide, tune and change year", async ({ page, request }) =>
   await shot(page, "2-live-banner");
 
   // Channel up.
+  const shownAt = Date.now();
   await page.keyboard.press("ArrowUp");
   await expect(page.getByTestId("banner-number")).toHaveText("04");
+
+  // The banner and clock hide after ~4 s of real time, even though the clock reads 1998.
+  await expect(banner).toBeHidden({ timeout: 8_000 });
+  await expect(page.getByTestId("clock")).toBeHidden();
+  expect(Date.now() - shownAt).toBeGreaterThan(3_000);
+  await page.keyboard.press("i");
+  await expect(banner).toBeVisible();
+  await expect(banner).toBeHidden({ timeout: 8_000 });
 
   // Guide: opens on the current channel; down one row and tune.
   await page.keyboard.press("Enter");
