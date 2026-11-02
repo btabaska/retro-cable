@@ -143,6 +143,7 @@ def test_normalize_codec_comes_from_the_flag_or_rc_codec(
     monkeypatch.setattr(cli, "normalize", lambda db, media, **kw: _capture(kw))
     args = ["normalize", "--db", str(tmp_path / "rc.db"), "--catalog", str(make_catalog()),
             "--media-dir", str(tmp_path / "media")]  # fmt: skip
+
     def codec(argv: list[str]) -> object:
         assert cli.main(argv) == 0
         return CAPTURED["codec"]
