@@ -193,21 +193,31 @@ When a job fails in a way its runbook doesn't cover, Hermes opens a GitHub issue
 
 ## Implemented (Phase 1)
 
+### Where it runs
+
+- **Stack:** the Ubuntu Mac mini (`mini`, 192.168.10.2), the homelab's Docker host. It has 4 cores, 7.6 GB RAM and about 2 GB free, which is plenty for api + web. The NAS has Docker but is the media store, the rig is the gaming/AI PC the plan rules out, and the mini already runs the homelab Caddy.
+- **Media:** stored on the NAS (Synology, 192.168.10.4) and mounted on the mini over SMB, like the mini's other NAS shares. It is bind-mounted read-only into `web` at `/srv/media` (`RC_MEDIA_DIR`).
+- **Checkout:** `/opt/retro-cable` on the mini, cloned with a read-only deploy key.
+- **Reverse proxy:** the `caddy` container in `/opt/stacks/caddy`, on the external `edge` network. The live site block mirrors `ops/caddy/retro-cable.caddy`, and the Home repo (`foss-setup/configs/docker-stack/stacks/caddy/`) tracks it.
+- **DNS:** the homelab wildcard already resolves `tv.home.tabaska.us` to the mini on the LAN.
+
 ### Images and compose
 
 - Two images on GHCR: `ghcr.io/btabaska/retro-cable-api` (`server/Dockerfile`) and `ghcr.io/btabaska/retro-cable-web` (`web/Dockerfile`, Caddy serving the static build).
-- `ops/compose.yml` runs `api` and `web`. Only `web` publishes a port, bound to `${RC_WEB_BIND:-127.0.0.1}:${RC_WEB_PORT:-8080}`. Inside the web container, Caddy serves the app, proxies `/api/*` to `api:8000` with the prefix stripped, and serves `/media/*` from `/srv/media`.
-- The host Caddy imports `ops/caddy/retro-cable.caddy`, which drops any client outside `private_ranges` and proxies to the web port. TLS (DNS-01) is configured in the host Caddy's global options.
-- `ops/compose.test.yml` overrides the stack to build both images from source, use a throwaway data volume and mount `.fixtures/` read-only at `/srv/media`. `make stack-up` and `make stack-down` start and stop it.
+- `ops/compose.yml` runs `api` and `web`. `web` joins the external `edge` network under the alias `retro-cable-web`, so the homelab Caddy proxies to `retro-cable-web:80`. Its only published port is on loopback (`${RC_WEB_BIND:-127.0.0.1}:${RC_WEB_PORT:-8080}`), for `smoke.sh`. Inside the web container, Caddy serves the app, proxies `/api/*` to `api:8000` with the prefix stripped, and serves `/media/*` from `/srv/media`.
+- `ops/caddy/retro-cable.caddy` imports the homelab's `local_tls` snippet (Let's Encrypt via Cloudflare DNS-01), drops any client outside `private_ranges`, and proxies to `retro-cable-web:80`. The homelab Caddy is in Docker, so `remote_ip` sees the client as Docker NAT sees it. The real LAN boundary is that no port is forwarded, and DNS answers only inside the house.
+- `ops/compose.test.yml` overrides the stack to build both images from source, use a throwaway data volume, create a private `retro-cable-test-edge` network and mount `.fixtures/` read-only at `/srv/media`. `make stack-up` and `make stack-down` start and stop it.
+- `ops/compose.build.yml` adds build contexts with the same image names, for `RC_IMAGE_SOURCE=build`.
 - Host settings and secrets go in `ops/.env` (see `ops/.env.example`); compose reads it if present.
 
 ### Deploy scripts
 
 All use `set -euo pipefail` and are covered by `ops/tests/`.
 
-- `ops/deploy.sh <version>` accepts only `x.y.z` or `sha-<hex>`. It records the running version as previous, snapshots `retro-cable.db` from the data directory, pulls and starts the stack, and runs `smoke.sh`. On failure it calls `rollback.sh` and exits non-zero.
+- `ops/deploy.sh <version>` accepts only `x.y.z` or `sha-<hex>`. With `RC_IMAGE_SOURCE=pull` (the default) it pulls that version from GHCR. With `RC_IMAGE_SOURCE=build` it builds from the checkout, and refuses unless HEAD is that commit or carries tag `v<version>`. Build mode is used on the mini until it has a read-only GHCR token, because the packages are private. It records the running version as previous, snapshots `retro-cable.db` from the data directory, pulls and starts the stack, and runs `smoke.sh`. On failure it calls `rollback.sh` and exits non-zero.
 - `ops/rollback.sh` restores the previous version and its DB snapshot, then runs `smoke.sh`.
-- `ops/smoke.sh` checks the web app, `/api/health` and `/api/version` (and the expected version, when given), with retries. Tuning, media ranges and Grafana join in later phases.
+- `ops/smoke.sh` checks the web app, `/api/health` and `/api/version`. When an expected version is given, it checks the version for `x.y.z` and the commit for `sha-<hex>`, with retries. Tuning, media ranges and Grafana join in later phases.
+- `deploy.sh` and `rollback.sh` read `RC_*` keys from `ops/.env` (or the file named by `RC_ENV_FILE`), and variables already in the environment win. `smoke.sh` defaults to `http://127.0.0.1:$RC_WEB_PORT`.
 - State lives in `.deploy/` at the repo root (`current`, `previous`, `db-<version>.sqlite`); override with `RC_STATE_DIR`. The data directory defaults to `ops/data`; override with `RC_DATA_DIR`.
 
 ### CI/CD
@@ -228,3 +238,42 @@ All use `set -euo pipefail` and are covered by `ops/tests/`.
 - **Mounts.** `catalog/` (or `RC_CATALOG_SRC`) is mounted read-only at `/catalog` in api and worker. `RC_MEDIA_DIR` is mounted read-only in api (`/media`) and web (`/srv/media`) and read-write only in the worker. Raw sources (`RC_SOURCE_DIR`) are read-only in the worker at `/sources`; `RC_SOURCE_MAP` rewrites recorded source paths to them. `ops/.env.example` documents these and `RC_MEDIA_SECRET`.
 - **Media signatures.** The web container's Caddy (`web/Caddyfile`) serves `/media/*` with `route { forward_auth api /media-auth; uri strip_prefix /media; file_server }`, so nothing is served before the API accepts the signature. It keeps no access log. The host snippet (`ops/caddy/retro-cable.caddy`) is unchanged: it only proxies to the web port.
 - **local-test** fails when the stack logs contain `sig=`.
+
+## Media worker (rig) and media index (mini) (M2)
+
+Brandon's decision (Nov 2 2026): originals stay where they are; the library is converted once, on the rig, into the hidden folder `/volume3/tv/.retro-cable/` of the NAS tv share (it holds a `.plexignore` of `*`, so Plex never sees it). The mini serves that folder read-only.
+
+### On the rig (`ops/rig/`)
+
+- **Mounts (host fstab automounts, already on the rig):** `/mnt/nas-tv-ro` (`//192.168.10.4/tv`, ro), `/mnt/nas-movies-ro` (ro), `/mnt/nas-retro-cable` (`//192.168.10.4/tv/.retro-cable`, rw, that folder only).
+- **Container:** `ops/rig/compose.yml` builds the api image (`server/Dockerfile`, Debian ffmpeg with `h264_nvenc`) as `retro-cable-rig-worker:local` and runs `ops/rig/worker.sh` as uid 1000 (the CIFS owner), `restart: unless-stopped`, GPU through the NVIDIA CDI spec (`devices: nvidia.com/gpu=all`), no ports. Sources are bound read-only at `/sources/tv` and `/sources/movies`; the media root at `/media` is the only NAS path it can write; its own SQLite database lives in `ops/rig/data/` on the rig's local disk (SQLite over SMB is unsafe). Settings: `ops/rig/.env` (see `ops/rig/.env.example`).
+- **Start/update:** `cd ~/retro-cable-worker && git pull && ops/rig/up.sh`. `up.sh` refuses to start unless both sources are read-only CIFS mounts and the media root is a read-write CIFS mount of `…/.retro-cable` with its `.plexignore`. Stop: `docker compose -f ops/rig/compose.yml down`. Logs: `docker logs -f retro-cable-rig-worker-1`.
+- **Loop (`worker.sh`):** `ingest scan --tv /sources/tv --movies /sources/movies --no-probe` (normalize probes each source anyway), then `ingest normalize --all --order priority --encoder auto --manifest`, then sleep `RC_WORKER_INTERVAL` (6 h) and look again for new files. Stats go to `ops/rig/data/last-scan.json` and `last-normalize.json`; progress lines (`encoding <show> S01E02 [nvenc]`) go to the container log. It writes nothing when `/media/.plexignore` is missing (share not mounted) and skips the cycle when the TV tree is empty (an unmounted share would otherwise detach every file).
+- **Resumable:** normalize commits each finished item and writes `<name>.partial` until ffprobe reads it back whole (video, audio if the source has it, length within 2% of the source; see `catalog.md`), so a stop or reboot loses at most the item in flight and a truncated encode is never recorded.
+- **Progress (`ingest/progress.py`):** with `--manifest` the worker also keeps `progress.json` at the media root: per show in conversion order (movies and bumpers as one row each) how many files are done, how many there are and how many failed this pass, the encoder of the file in progress and whether the GPU was busy, and the wall-clock seconds of the last 20 files. It is rewritten (temporary name, then rename) when an encode starts or ends, at most every 2 s while skipping done items, and as `idle` at the end of a pass. The mini's `GET /api/admin/media/progress` (`api.md`) serves it to the `/admin` Media tab, which shows the percentage, per-show bars and an ETA. Counts and titles only: no paths.
+- **Priority (`--order priority`):** bumpers first; then everything a channel carries (YAML carriage plus the `/admin` overlay in the worker's database, plus, with `RC_PRIORITY_URL` set to the mini's `/api/admin/library`, shows on channels made in the mini's `/admin`); then uncarried shows. Within a tier, earliest carriage year first (uncarried: the show's own year), and shows take turns 13 episodes at a time, so every channel has something to air early instead of one long show finishing first.
+- **Sharing the GPU (`--encoder auto`, `ingest/gpu.py`):** before each item the worker samples `nvidia-smi` three times a second apart and asks ComfyUI's queue through the gpu-arbiter (`RC_GPU_QUEUE_URL`, default `http://host.docker.internal:8189/queue`; the arbiter only proxies ComfyUI and has no reservation API). NVENC only when every sample shows at most 10% utilization, at least 1.5 GiB of free VRAM, and no queued image job; otherwise libx264. An unreadable GPU means x264. NVENC uses the card's separate encoder block and a few hundred MiB, so an encode already running doesn't slow a model that loads later.
+- **Low priority:** each job runs under `nice -n 19 ionice -c 3`, and the container has `cpu_shares: 128` (a low cgroup CPU weight). On CachyOS, ananicy-cpp renices processes named `ffmpeg` to its own level (9) whatever the worker asked; the cgroup weight is what keeps the worker behind interactive work and the local models when the CPU is contended.
+- **Writes nothing else:** sources are read-only twice (CIFS `ro` on the host, `:ro` in the container); the only writable binds are `/media` (the `.retro-cable` share) and `/data` (the worker's local database).
+
+### The manifest (`ingest/manifest.py`)
+
+- After each encode the worker writes a JSON sidecar next to the MP4 (`tv/<show>/s01/<show>-s01e02.json`), and at most every `RC_MANIFEST_EVERY` seconds (300) and at the end of each pass it rewrites `manifest.json` at the media root. Both are written to a temporary name, flushed and renamed, so a reader sees the old file or the new one.
+- Format `retro-cable-media/1`: `generated_at` and lists of `shows` (id, title, year), `episodes` (show, season, episode, title, air date and source, runtime, source path, size and measured length, and the encode: `media_path`, `media_seconds`, `media_source_size`, `media_source_mtime_ns`), `movies` and `bumpers`. It lists everything the rig scanned, encoded or not, so the mini's `/admin` library knows the uncarried shows too; unencoded rows have no `media_path` and never reach the schedule.
+- `python -m retro_cable.ingest manifest --media-dir DIR` rewrites it from the database on demand.
+
+### On the mini
+
+- **Mount:** a read-only automount of the same folder, using the mini's existing NAS credentials file (`/etc/samba/cred-nas`, the same account its other NAS mounts use), in `/etc/fstab`:
+  `//192.168.10.4/tv/.retro-cable /mnt/nas-retro-cable cifs credentials=/etc/samba/cred-nas,uid=1000,gid=1000,ro,iocharset=utf8,vers=3.0,nofail,_netdev,x-systemd.automount,x-systemd.mount-timeout=30 0 0`
+- **ops/.env:** `RC_MEDIA_DIR=/mnt/nas-retro-cable` (read-only into api and web as before) and `COMPOSE_PROFILES=media-index`.
+- **`media-index` service (`ops/compose.yml`, profile `media-index`):** on the api image, `restart: unless-stopped`, after the api is healthy; runs `python -m retro_cable.ingest index-media --watch ${RC_INDEX_EVERY:-300}`. Every interval it stats `manifest.json`; when it changed it reads it (one file, about 3.4 MB for 8,400 episodes, indexed in about a second) and updates the database. No probing and no media writes: the media mount is read-only. Because `deploy.sh` runs `docker compose up`, the profile in `ops/.env` starts it with every deploy; elsewhere it stays off. Its healthcheck passes once `/data/retro-cable.db` exists and is writable, so `up --wait` fails (and `deploy.sh` rolls back) when it can't make the database.
+- **Data dir owner:** the api image runs as uid 10001, so `RC_DATA_DIR` (`/opt/retro-cable-data` on the mini) must be writable by it: `sudo chown 10001 /opt/retro-cable-data` (done on Nov 2 2026; it was uid 1000 and no database was ever written). The api's `/health` returns 503 when it can't write the data dir, so this now fails the deploy instead of passing the smoke test.
+- **LAN access:** `https://tv.home.tabaska.us` through the homelab Caddy (the block in `/opt/stacks/caddy/caddy/Caddyfile`, committed there on Nov 1 2026, matches `ops/caddy/retro-cable.caddy`); the web port stays on `127.0.0.1:8095`. Fallback if the host Caddy can't be used: set `RC_WEB_BIND=192.168.10.2` in `ops/.env` and redeploy, then use `http://mini:8095`. That is safe because the web container's own Caddy (`web/Caddyfile`) now aborts any client outside `private_ranges` before any route (Docker keeps the client address on a published port; the host Caddy, the healthcheck and loopback are private).
+- **`index-media` rules:** rows are matched by show/season/episode, movie id, and bumper channel/path. New rows are inserted; for existing ones, file facts (source path, size, measured length) and the encode are updated, while titles, air dates and runtimes the mini already has (a Plex or TMDB fill) are kept and only filled where empty. A new or changed encode is recorded only if its MP4 is in the media root (one `stat`). `media_path` must be a relative `.mp4` path inside the media root; anything else is rejected. An unchanged manifest writes nothing, so the api's schedule cache (keyed on SQLite's `data_version`) stays warm; a changed one is one transaction plus an `import_runs` row. `--prune` clears encodes the manifest no longer lists (off by default). `--manifest-file` reads another file.
+
+### First run (Nov 2 2026)
+
+- Rig scan: 141 shows, 8,414 episodes with files (21 carried shows with 2,980 episodes; 120 uncarried); 7.7 TB of sources; no carried movie matched in the movies share.
+- NVENC output: 640×480 4:3 H.264 + AAC stereo, a keyframe every second, about 1.2–1.4 Mbit/s (around 215 MB per 22-minute episode, so roughly 1.8 TB for the whole TV tree; the NAS had 7.8 TB free).
+- Throughput: CPU-bound (decode, deinterlace and Lanczos scaling run on the CPU; NVENC only encodes), about 50 s per 1080p episode. See the PR for the measured rate and ETA.

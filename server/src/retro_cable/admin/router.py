@@ -20,24 +20,28 @@ from retro_cable.admin import store
 from retro_cable.admin.drafts import (
     ChannelDraft,
     Checked,
+    CheckIssue,
     CheckResult,
     LibraryItem,
     check_draft,
     new_channel_id,
+    premiere_issues,
     preview_week,
     to_draft,
 )
-from retro_cable.catalog import Catalog
+from retro_cable.catalog import Catalog, validate
 from retro_cable.catalog.overlay import (
     CUSTOM_PREFIX,
     Overlay,
     apply_overlay,
+    with_premiere,
     without_channel,
 )
 from retro_cable.db import connect, migrate
 from retro_cable.scheduler import ChannelOffAir, Library, Scheduler
 
 DEFAULT_YEAR = 2000
+LAST_DAY = date(2010, 12, 31)
 MonthDay = Annotated[str | None, Field(pattern=r"^\d{2}-\d{2}$")]
 
 
@@ -64,10 +68,40 @@ class AdminChannelList(BaseModel):
     channels: list[AdminChannelRow]
 
 
+class AdminChannelShow(BaseModel):
+    """A carried show's dates on one channel, for the pretend premiere control."""
+
+    show: str
+    kind: Literal["show", "movie"]
+    debut: date | None = Field(description="Real (or US debut) first air date; no pretend dates")
+    premiere: date | None = Field(description="Pretend premiere on this channel, if any")
+    premiere_source: Literal["admin", "catalog"] | None = Field(
+        description="Where the premiere is set: /admin (editable) or catalog/synthetic.yaml"
+    )
+    first_air: date | None = Field(description="First episode's date on this channel (S1E1)")
+    last_air: date | None = Field(description="Last episode's date on this channel")
+    on_air_until: date | None = Field(
+        description="Last day the channel carries it (None: open-ended, through 2010)"
+    )
+    airs: bool = Field(description="Something of it can air on this channel by its last day")
+
+
 class AdminChannel(BaseModel):
     id: str
     custom: bool
     draft: ChannelDraft
+    shows: list[AdminChannelShow] = Field(default_factory=list)
+
+
+class PremiereRequest(BaseModel):
+    premiere: date | None = Field(description="The pretend premiere; null clears it")
+
+
+class PremiereResult(BaseModel):
+    message: str
+    show: AdminChannelShow
+    warnings: list[CheckIssue]
+    state: AdminState
 
 
 class DraftRequest(BaseModel):
@@ -114,6 +148,7 @@ class LibraryEntry(BaseModel):
     kind: Literal["show", "movie"]
     first_year: int | None
     last_year: int | None
+    debut: date | None = Field(default=None, description="Real (or US debut) first air date")
     episodes: int = Field(description="Episodes (or the movie) on disk")
     channels: list[LibraryChannel] = Field(description="Channels that carry it, in any year")
 
@@ -256,6 +291,41 @@ def router(
         rows.sort(key=lambda r: (r.number, r.name))
         return AdminChannelList(state=current, channels=rows)
 
+    def channel_show(
+        sched: Scheduler, overlay: Overlay, channel_id: str, show: str, kind: str
+    ) -> AdminChannelShow:
+        windows = [
+            c for c in sched.catalog.carriage.carriage if c.channel == channel_id and c.show == show
+        ]
+        ends = [c.until for c in windows]
+        until = None if None in ends else max(e for e in ends if e is not None)
+        if kind == "movie":
+            real = sched.library.movies.get(show)
+            mine = sched.movie(show, channel_id)
+            debut = real.air_date if real else None
+            first = last = mine.air_date if mine else None
+        else:
+            real_dates = [p.air_date for p in sched.programs(show) if p.air_date]
+            dated = [p.air_date for p in sched.programs(show, channel_id) if p.air_date]
+            debut = min(real_dates) if real_dates else None
+            first, last = (min(dated), max(dated)) if dated else (None, None)
+        premiere = sched.premiere(channel_id, show)
+        source: Literal["admin", "catalog"] | None = None
+        if premiere is not None:
+            mine_admin = any(p.show == show and p.channel == channel_id for p in overlay.premieres)
+            source = "admin" if mine_admin else "catalog"
+        return AdminChannelShow(
+            show=show,
+            kind="movie" if kind == "movie" else "show",
+            debut=debut,
+            premiere=premiere,
+            premiere_source=source,
+            first_air=first,
+            last_air=last,
+            on_air_until=until,
+            airs=first is not None and first <= (until or LAST_DAY),
+        )
+
     @api.get("/channels/{channel_id}", name="adminGetChannel", responses={404: {}})
     def get_channel(channel_id: str) -> AdminChannel:
         sched = schedules()
@@ -263,8 +333,79 @@ def router(
             channel = sched.catalog.channel(channel_id)
         except KeyError as e:
             raise HTTPException(404, f"no channel {channel_id}") from e
-        draft = to_draft(channel, sched.catalog.carriage.carriage)
-        return AdminChannel(id=channel_id, custom=channel_id.startswith(CUSTOM_PREFIX), draft=draft)
+        with database() as db:
+            overlay = store.head(db).overlay
+        draft = to_draft(
+            channel, sched.catalog.carriage.carriage, sched.catalog.synthetic.synthetic
+        )
+        shows = [channel_show(sched, overlay, channel_id, s.show, s.kind) for s in draft.shows]
+        return AdminChannel(
+            id=channel_id, custom=channel_id.startswith(CUSTOM_PREFIX), draft=draft, shows=shows
+        )
+
+    @api.put(
+        "/channels/{channel_id}/premieres/{show}",
+        name="adminSetPremiere",
+        responses={404: {}, 409: {"model": CheckResult, "description": "Not saved"}},
+    )
+    def set_premiere(channel_id: str, show: str, req: PremiereRequest) -> PremiereResult:
+        """Set or clear the pretend premiere of one carried show on one channel (YAML or
+        custom). It changes inputs only: an overlay revision, undoable like any save. Other
+        channels keep the show's real dates."""
+        sched = schedules()
+        try:
+            channel = sched.catalog.channel(channel_id)
+        except KeyError as e:
+            raise HTTPException(404, f"no channel {channel_id}") from e
+        windows = [
+            c for c in sched.catalog.carriage.carriage if c.channel == channel_id and c.show == show
+        ]
+        if not windows:
+            raise HTTPException(404, f"{show} is not carried on {channel_id}")
+
+        def refuse(message: str) -> JSONResponse:
+            issue = CheckIssue(field="premiere", message=message)
+            result = CheckResult(ok=False, errors=[issue], warnings=[], catalog_version=None)
+            return JSONResponse(status_code=409, content=result.model_dump(mode="json"))
+
+        with database() as db:
+            overlay = store.head(db).overlay
+            title = windows[0].title
+            warnings: list[CheckIssue] = []
+            mine = any(p.show == show and p.channel == channel_id for p in overlay.premieres)
+            if req.premiere is None:
+                if not mine and sched.premiere(channel_id, show) is not None:
+                    return refuse(  # type: ignore[return-value]
+                        "This pretend premiere is set in the catalog files, so it can't be"
+                        " cleared here."
+                    )
+            else:
+                current = channel_show(sched, overlay, channel_id, show, windows[0].kind)
+                dial = None if channel.library else channel.launch
+                starts = min(c.from_ for c in windows)
+                if not channel.library:
+                    dial = max(starts, dial) if dial else starts
+                errors, notes = premiere_issues(
+                    title, req.premiere, current.debut, dial, current.on_air_until
+                )
+                if errors:
+                    return refuse(errors[0])  # type: ignore[return-value]
+                warnings = [CheckIssue(field="premiere", message=m) for m in notes]
+            updated = with_premiere(overlay, show, channel_id, req.premiere)
+            problems = validate(apply_overlay(schedules.base, updated))
+            if problems:
+                return refuse(problems[0])  # type: ignore[return-value]
+            verb = "Cleared" if req.premiere is None else "Set"
+            store.save(db, updated, f"premiere {show} on {channel_id}", clock())
+            schedules.invalidate()
+            fresh = schedules()
+            row = channel_show(fresh, updated, channel_id, show, windows[0].kind)
+            return PremiereResult(
+                message=f"{verb} the pretend premiere of {title}",
+                show=row,
+                warnings=warnings,
+                state=state(db),
+            )
 
     @api.get("/library", name="adminLibrary")
     def get_library(
@@ -289,6 +430,7 @@ def router(
                 kind=item.kind,
                 first_year=item.first_air.year if item.first_air else None,
                 last_year=item.last_air.year if item.last_air else None,
+                debut=item.first_air,
                 episodes=item.episodes,
                 channels=sorted(carriers.get(item.id, {}).values(), key=lambda c: c.number),
             )

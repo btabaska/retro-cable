@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChannelInfo, Lineup, TvApi } from "../api/client";
 import { useKeys } from "../hooks/useKeys";
 import { moveFocus } from "../lib/focus";
@@ -40,6 +40,7 @@ export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
   const [focused, setFocused] = useState(year);
   const [lineups, setLineups] = useState<Record<number, Lineup>>({});
   const [failures, setFailures] = useState(0);
+  const grid = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (lineups[focused]) return;
@@ -77,6 +78,11 @@ export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
     event.preventDefault();
   });
 
+  // Focus starts on the current year; closing hands it back to the opener (App.tsx).
+  useEffect(() => {
+    grid.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+  }, []);
+
   const lineup = lineups[focused];
   return (
     <div className="year-picker" data-testid="year-picker">
@@ -93,7 +99,7 @@ export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
             {lineup ? longDate(lineup) : `${focused}`}
           </div>
           <div className="year-sub">Each channel plays what had aired by this date, new episodes and reruns mixed.</div>
-          <div className="year-grid" role="grid" aria-label="Years">
+          <div className="year-grid" role="grid" aria-label="Years" ref={grid}>
             {YEARS.map((y) => (
               <button
                 type="button"

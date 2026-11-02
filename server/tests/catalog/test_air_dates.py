@@ -3,8 +3,8 @@ from datetime import date
 from hypothesis import given
 from hypothesis import strategies as st
 
-from retro_cable.catalog import effective_dates, is_library_show, load_catalog, shift_air_dates
-from retro_cable.catalog.air_dates import synthesize_undated
+from retro_cable.catalog import effective_dates, load_catalog, premiere_for, shift_air_dates
+from retro_cable.catalog.air_dates import premiere_dates, synthesize_undated
 from retro_cable.catalog.models import Carriage, Channel
 from retro_cable.catalog.overlay import Overlay, apply_overlay
 from tests.conftest import OVERRIDES, SYNTHETIC, MakeCatalog
@@ -47,14 +47,100 @@ def test_effective_dates_use_us_debut_and_synthetic_premiere(make_catalog: MakeC
     dbz = [(1, 1, date(1989, 4, 26)), (1, 2, date(1989, 5, 3))]
     assert effective_dates(catalog, "dragon-ball-z", dbz) == [date(1996, 9, 13), date(1996, 9, 20)]
     gf = [(1, 1, date(2012, 6, 15))]
-    assert effective_dates(catalog, "gravity-falls", gf) == [date(2004, 6, 15)]
+    assert effective_dates(catalog, "gravity-falls", gf, channel="cartoon-network") == [
+        date(2004, 6, 15)
+    ]
 
 
-def test_library_shows(make_catalog: MakeCatalog) -> None:
-    synthetic = SYNTHETIC + "  - { show: dexters-laboratory, library: true }\n"
+# --- synthetic premieres belong to one (show, channel) pair (M2 A3, A4) -----------------
+
+
+def test_a_synthetic_premiere_applies_only_on_its_channel(make_catalog: MakeCatalog) -> None:
+    catalog = load_catalog(make_catalog())
+    gf = [(1, 1, date(2012, 6, 15)), (1, 2, date(2012, 6, 29))]
+    assert premiere_for(catalog, "gravity-falls", "cartoon-network") is not None
+    assert premiere_for(catalog, "gravity-falls", "ktvu") is None
+    assert premiere_for(catalog, "gravity-falls", None) is None
+    # Every other channel (and no channel) keeps the real dates.
+    for channel in (None, "ktvu", "disney-movies", "custom-toons"):
+        assert effective_dates(catalog, "gravity-falls", gf, channel=channel) == [
+            date(2012, 6, 15),
+            date(2012, 6, 29),
+        ]
+    assert effective_dates(catalog, "gravity-falls", gf, channel="cartoon-network") == [
+        date(2004, 6, 15),
+        date(2004, 6, 29),
+    ]
+
+
+def test_a_premiere_on_one_channel_keeps_the_us_debut_elsewhere(make_catalog: MakeCatalog) -> None:
+    # DBZ has a US debut (1996-09-13) in the overrides; a pretend premiere on Cartoon Network
+    # replaces it there only.
+    synthetic = (
+        SYNTHETIC + "  - { show: dragon-ball-z, channel: cartoon-network, premiere: 1993-01-04 }\n"
+    )
     catalog = load_catalog(make_catalog(synthetic=synthetic))
-    assert is_library_show(catalog, "dexters-laboratory")
-    assert not is_library_show(catalog, "gravity-falls")
+    dbz = [(1, 1, date(1989, 4, 26)), (1, 2, date(1989, 5, 3))]
+    assert effective_dates(catalog, "dragon-ball-z", dbz, channel="cartoon-network") == [
+        date(1993, 1, 4),
+        date(1993, 1, 11),
+    ]
+    assert effective_dates(catalog, "dragon-ball-z", dbz, channel="ktvu") == [
+        date(1996, 9, 13),
+        date(1996, 9, 20),
+    ]
+
+
+def test_premiere_moves_s1e1_and_keeps_the_spacing() -> None:
+    keys = [(1, 1), (1, 2), (2, 1)]
+    dates = [date(2012, 6, 15), date(2012, 6, 29), date(2013, 8, 2)]
+    assert premiere_dates(keys, dates, date(2004, 6, 15)) == [
+        date(2004, 6, 15),
+        date(2004, 6, 29),
+        date(2005, 8, 2),
+    ]
+
+
+def test_premiere_gives_undated_episodes_a_weekly_cadence_after_the_last_dated_one() -> None:
+    keys = [(1, 1), (1, 2), (1, 3), (1, 4), (2, 1)]
+    dates = [date(2012, 6, 15), date(2012, 6, 29), None, None, None]
+    assert premiere_dates(keys, dates, date(2004, 6, 15)) == [
+        date(2004, 6, 15),
+        date(2004, 6, 29),
+        date(2004, 7, 6),
+        date(2004, 7, 13),
+        date(2004, 7, 20),
+    ]
+
+
+def test_premiere_on_a_show_with_no_dates_runs_weekly_from_the_premiere() -> None:
+    keys = [(2, 1), (1, 1), (1, 2), (0, 1)]  # not in air order; a special stays undated
+    assert premiere_dates(keys, [None] * 4, date(2004, 6, 15)) == [
+        date(2004, 6, 29),
+        date(2004, 6, 15),
+        date(2004, 6, 22),
+        None,
+    ]
+
+
+@given(
+    episodes=st.lists(
+        st.tuples(st.integers(1, 9), st.integers(1, 40), st.none() | st.dates(
+            min_value=date(1960, 1, 1), max_value=date(2025, 12, 31))),
+        min_size=1, max_size=40, unique_by=lambda e: (e[0], e[1]),
+    ),
+    premiere=st.dates(min_value=date(1990, 1, 1), max_value=date(2010, 12, 31)),
+)  # fmt: skip
+def test_premiere_dates_never_precede_the_premiere(
+    episodes: list[tuple[int, int, date | None]], premiere: date
+) -> None:
+    keys = [(s, e) for s, e, _ in episodes]
+    out = premiere_dates(keys, [d for _, _, d in episodes], premiere)
+    assert all(d is not None and d >= premiere for d in out)
+    dated = [d for _, _, d in episodes if d is not None]
+    if dated:  # the earliest dated episode lands on the premiere
+        first = min(range(len(episodes)), key=lambda i: episodes[i][2] or date.max)
+        assert out[first] == premiere
 
 
 # --- undated episodes (`ingest scan` without Plex or TMDB dates) ------------------------

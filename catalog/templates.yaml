@@ -71,61 +71,94 @@ templates:
       - { weekday: sunday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
       - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: the-x-files, weight: 2 }, { show: house, weight: 2 }] }
 
-  # Cartoon Network: the classics era leans on the library; originals take over from 1997.
+  # Cartoon Network: the classics era leans on the library; originals take over from 1997, and
+  # the 2002 era turns to the newer originals. Every part also lists shows from the edges of
+  # its era, so an evening never goes Off Air while one show waits for its debut (M1 review:
+  # 1998 prime time had a Saturday with nothing eligible).
   - id: cn-classics-era
     channel: cartoon-network
     from: 1992-10-01
     until: 1996-12-31
     parts:
       - { weekday: monday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: monday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
-      - { weekday: monday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: monday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }, { show: looney-tunes }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: monday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }, { show: looney-tunes, weight: 2 }, { show: scooby-doo-where-are-you }, { show: tom-and-jerry }] }
       - { weekday: tuesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: tuesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
-      - { weekday: tuesday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: tuesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }, { show: looney-tunes }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: tuesday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }, { show: looney-tunes, weight: 2 }, { show: scooby-doo-where-are-you }, { show: tom-and-jerry }] }
       - { weekday: wednesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: wednesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
-      - { weekday: wednesday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: wednesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }, { show: looney-tunes }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: wednesday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }, { show: looney-tunes, weight: 2 }, { show: scooby-doo-where-are-you }, { show: tom-and-jerry }] }
       - { weekday: thursday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: thursday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
-      - { weekday: thursday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: thursday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }, { show: looney-tunes }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: thursday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }, { show: looney-tunes, weight: 2 }, { show: scooby-doo-where-are-you }, { show: tom-and-jerry }] }
       - { weekday: friday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: friday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
-      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: friday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }, { show: looney-tunes }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }, { show: looney-tunes, weight: 2 }, { show: scooby-doo-where-are-you }, { show: tom-and-jerry }] }
       - { weekday: saturday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
       - { weekday: saturday, start: "08:00", pool: [{ show: looney-tunes, weight: 3 }, { show: tom-and-jerry, weight: 2 }, { show: scooby-doo-where-are-you, weight: 2 }] }
-      - { weekday: saturday, start: "20:00", primetime: true, pool: [{ show: dexters-laboratory, weight: 2 }, { show: space-ghost-coast-to-coast }] }
+      - { weekday: saturday, start: "20:00", primetime: true, pool: [{ show: dexters-laboratory, weight: 2 }, { show: space-ghost-coast-to-coast }, { show: looney-tunes, weight: 2 }, { show: scooby-doo-where-are-you }] }
       - { weekday: sunday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: scooby-doo-where-are-you, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: scooby-doo-where-are-you, weight: 2 }, { show: dexters-laboratory }, { show: looney-tunes }] }
   - id: cn-originals-era
     channel: cartoon-network
     from: 1997-01-01
+    until: 2001-12-31
     parts:
       - { weekday: monday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: monday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
-      - { weekday: monday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
-      - { weekday: monday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: monday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }, { show: i-am-weasel }] }
+      - { weekday: monday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: monday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: courage-the-cowardly-dog }, { show: i-am-weasel }] }
       - { weekday: tuesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: tuesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
-      - { weekday: tuesday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
-      - { weekday: tuesday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: tuesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }, { show: i-am-weasel }] }
+      - { weekday: tuesday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: tuesday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: courage-the-cowardly-dog }, { show: i-am-weasel }] }
       - { weekday: wednesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: wednesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
-      - { weekday: wednesday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
-      - { weekday: wednesday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: wednesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }, { show: i-am-weasel }] }
+      - { weekday: wednesday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: wednesday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: courage-the-cowardly-dog }, { show: i-am-weasel }] }
       - { weekday: thursday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: thursday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
-      - { weekday: thursday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
-      - { weekday: thursday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: thursday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }, { show: i-am-weasel }] }
+      - { weekday: thursday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: thursday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: courage-the-cowardly-dog }, { show: i-am-weasel }] }
       - { weekday: friday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: friday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
-      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
-      - { weekday: friday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: friday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }, { show: i-am-weasel }] }
+      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: friday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: courage-the-cowardly-dog }, { show: i-am-weasel }] }
       - { weekday: saturday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: saturday, start: "08:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy, weight: 2 }, { show: looney-tunes }] }
-      - { weekday: saturday, start: "20:00", primetime: true, pool: [{ show: teen-titans, weight: 2 }, { show: justice-league, weight: 2 }, { show: the-grim-adventures-of-billy-and-mandy }] }
+      - { weekday: saturday, start: "08:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy, weight: 2 }, { show: johnny-bravo }, { show: looney-tunes }] }
+      - { weekday: saturday, start: "20:00", primetime: true, pool: [{ show: dexters-laboratory, weight: 2 }, { show: the-powerpuff-girls, weight: 2 }, { show: johnny-bravo }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
       - { weekday: sunday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
-      - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: scooby-doo-where-are-you, weight: 2 }, { show: ed-edd-n-eddy }, { show: courage-the-cowardly-dog }] }
+      - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: scooby-doo-where-are-you, weight: 2 }, { show: ed-edd-n-eddy }, { show: courage-the-cowardly-dog }, { show: johnny-bravo }] }
+  - id: cn-2002-era
+    channel: cartoon-network
+    from: 2002-01-01
+    parts:
+      - { weekday: monday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: monday, start: "16:00", pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy, weight: 2 }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: camp-lazlo }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: regular-show }] }
+      - { weekday: monday, start: "20:00", primetime: true, pool: [{ show: samurai-jack, weight: 2 }, { show: justice-league, weight: 2 }, { show: teen-titans }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: adventure-time }, { show: regular-show }] }
+      - { weekday: monday, start: "22:30", pool: [{ show: the-grim-adventures-of-billy-and-mandy }, { show: ed-edd-n-eddy }, { show: codename-kids-next-door }, { show: fosters-home-for-imaginary-friends }, { show: courage-the-cowardly-dog }, { show: chowder }, { show: regular-show }] }
+      - { weekday: tuesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: tuesday, start: "16:00", pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy, weight: 2 }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: camp-lazlo }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: regular-show }] }
+      - { weekday: tuesday, start: "20:00", primetime: true, pool: [{ show: samurai-jack, weight: 2 }, { show: justice-league, weight: 2 }, { show: teen-titans }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: adventure-time }, { show: regular-show }] }
+      - { weekday: tuesday, start: "22:30", pool: [{ show: the-grim-adventures-of-billy-and-mandy }, { show: ed-edd-n-eddy }, { show: codename-kids-next-door }, { show: fosters-home-for-imaginary-friends }, { show: courage-the-cowardly-dog }, { show: chowder }, { show: regular-show }] }
+      - { weekday: wednesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: wednesday, start: "16:00", pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy, weight: 2 }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: camp-lazlo }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: regular-show }] }
+      - { weekday: wednesday, start: "20:00", primetime: true, pool: [{ show: samurai-jack, weight: 2 }, { show: justice-league, weight: 2 }, { show: teen-titans }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: adventure-time }, { show: regular-show }] }
+      - { weekday: wednesday, start: "22:30", pool: [{ show: the-grim-adventures-of-billy-and-mandy }, { show: ed-edd-n-eddy }, { show: codename-kids-next-door }, { show: fosters-home-for-imaginary-friends }, { show: courage-the-cowardly-dog }, { show: chowder }, { show: regular-show }] }
+      - { weekday: thursday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: thursday, start: "16:00", pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy, weight: 2 }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: camp-lazlo }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: regular-show }] }
+      - { weekday: thursday, start: "20:00", primetime: true, pool: [{ show: samurai-jack, weight: 2 }, { show: justice-league, weight: 2 }, { show: teen-titans }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: adventure-time }, { show: regular-show }] }
+      - { weekday: thursday, start: "22:30", pool: [{ show: the-grim-adventures-of-billy-and-mandy }, { show: ed-edd-n-eddy }, { show: codename-kids-next-door }, { show: fosters-home-for-imaginary-friends }, { show: courage-the-cowardly-dog }, { show: chowder }, { show: regular-show }] }
+      - { weekday: friday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: friday, start: "16:00", pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy, weight: 2 }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: camp-lazlo }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: dexters-laboratory }, { show: johnny-bravo }, { show: regular-show }] }
+      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: samurai-jack, weight: 2 }, { show: justice-league, weight: 2 }, { show: teen-titans }, { show: codename-kids-next-door }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: ben-10 }, { show: chowder }, { show: the-marvelous-misadventures-of-flapjack }, { show: adventure-time }, { show: regular-show }] }
+      - { weekday: friday, start: "22:30", pool: [{ show: the-grim-adventures-of-billy-and-mandy }, { show: ed-edd-n-eddy }, { show: codename-kids-next-door }, { show: fosters-home-for-imaginary-friends }, { show: courage-the-cowardly-dog }, { show: chowder }, { show: regular-show }] }
+      - { weekday: saturday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: saturday, start: "08:00", pool: [{ show: codename-kids-next-door, weight: 2 }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }, { show: the-grim-adventures-of-billy-and-mandy }, { show: fosters-home-for-imaginary-friends }, { show: ben-10 }, { show: chowder }, { show: looney-tunes }] }
+      - { weekday: saturday, start: "20:00", primetime: true, pool: [{ show: teen-titans, weight: 2 }, { show: justice-league, weight: 2 }, { show: the-grim-adventures-of-billy-and-mandy }, { show: star-wars-clone-wars }, { show: ben-10 }, { show: the-marvelous-misadventures-of-flapjack }, { show: adventure-time }] }
+      - { weekday: sunday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: scooby-doo-where-are-you, weight: 2 }, { show: ed-edd-n-eddy }, { show: courage-the-cowardly-dog }, { show: the-grim-adventures-of-billy-and-mandy }, { show: camp-lazlo }, { show: fosters-home-for-imaginary-friends }, { show: chowder }] }
 
   # Adult Swim: late night only from launch; other weekdays fall back to the channel default.
   - id: adult-swim-launch

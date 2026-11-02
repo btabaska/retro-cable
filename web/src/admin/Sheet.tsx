@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { focusTitle } from "./focus";
 
 interface SheetProps {
   title: string;
@@ -18,8 +19,11 @@ export function Sheet({ title, onClose, children, compact = false }: SheetProps)
     close.current = onClose;
   });
 
+  // The opener is read while rendering, before an autofocused child (the picker's search box)
+  // takes focus during the commit; an effect would see that child instead.
+  const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const el = panel.current;
     const first = el?.querySelector<HTMLElement>("[autofocus], input, " + FOCUSABLE);
     (first ?? el)?.focus();
@@ -44,9 +48,11 @@ export function Sheet({ title, onClose, children, compact = false }: SheetProps)
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      opener?.focus();
+      // Back to the opener; if it's gone (the screen changed), to the screen's title.
+      if (opener?.isConnected) opener.focus();
+      else focusTitle();
     };
-  }, []);
+  }, [opener]);
 
   return (
     <div className="adm-scrim" onClick={onClose}>

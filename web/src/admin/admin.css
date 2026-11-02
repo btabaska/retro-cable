@@ -182,8 +182,65 @@
   min-height: 50px;
 }
 
+/* A saved custom channel: a solid border plus its "Custom ·" meta. The dashed border is only
+   for drafts that aren't saved yet (M2 D25). */
 .adm-row-custom {
+  border: 1px solid var(--rc-admin-border);
+}
+
+.adm-row-draft {
   border: 2px dashed var(--rc-admin-draft-border);
+}
+
+/* A read-only show row (YAML channel): no chevron, not a button. */
+.adm-row-static {
+  min-height: 50px;
+  padding: 6px 12px;
+  flex-wrap: wrap;
+}
+
+/* A show whose real debut is after the channel's last year: it won't air without a pretend
+   premiere. */
+.adm-show-flag > .adm-row {
+  box-shadow: inset 4px 0 0 var(--rc-admin-warn);
+}
+
+.adm-meta-warn {
+  color: var(--rc-admin-warn);
+}
+
+.adm-mark {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0 6px 1px 2px;
+  border: 2px solid var(--rc-admin-transplant);
+  transform: rotate(45deg);
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+.adm-mark-warn {
+  border-color: var(--rc-admin-warn);
+}
+
+.adm-premiere {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.adm-premiere .adm-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.adm-premiere-static {
+  width: 100%;
+  padding: 4px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .adm-row-number {
@@ -562,18 +619,26 @@
   width: auto;
 }
 
+/* Seven day chips always fit, down to 360 px wide: a grid of equal columns, two-line labels
+   (M2 D27). */
 .adm-chips {
   flex-shrink: 0;
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  overflow: visible;
   padding-bottom: 4px;
 }
 
 .adm-chip {
-  min-height: 44px;
-  padding: 0 10px;
-  flex-shrink: 0;
+  min-height: 52px;
+  min-width: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.15;
   border-radius: var(--rc-admin-radius-row);
   border: 2px solid var(--rc-admin-accent);
   background: var(--rc-admin-surface);
@@ -631,7 +696,63 @@
 
 .adm-tv-holiday {
   background: var(--rc-admin-ink);
-  color: var(--rc-color-holiday);
+  color: var(--rc-color-holiday-muted);
+}
+
+.adm-chip-day {
+  font-size: var(--rc-admin-font-caption);
+  font-weight: 400;
+}
+
+.adm-chip-date {
+  font-size: var(--rc-admin-font-value);
+}
+
+/* The Media tab: conversion progress on the rig (M2 B13). */
+.adm-big {
+  font-size: var(--rc-admin-font-heading);
+  font-weight: 700;
+}
+
+.adm-bar {
+  height: 8px;
+  border-radius: var(--rc-admin-radius-row);
+  background: var(--rc-admin-border);
+  overflow: hidden;
+}
+
+.adm-bar-mini {
+  height: 4px;
+  width: 64px;
+  flex-shrink: 0;
+}
+
+.adm-bar-fill {
+  height: 100%;
+  background: var(--rc-admin-accent);
+}
+
+.adm-row-done {
+  color: var(--rc-admin-ink-muted);
+}
+
+.adm-count {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: var(--rc-admin-font-meta);
+}
+
+.adm-fail {
+  flex-shrink: 0;
+  color: var(--rc-admin-error);
+  font-size: var(--rc-admin-font-meta);
+}
+
+.adm-tab-button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 
 .adm-visually-hidden {

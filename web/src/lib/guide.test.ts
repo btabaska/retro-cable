@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { GuideSlot } from "../api/client";
-import { cellIndexAt, layoutRow, windowStartFor } from "./guide";
+import { CELLS_PX, cellIndexAt, cellSize, layoutRow, windowStartFor } from "./guide";
+
+describe("cellSize (M2 D28)", () => {
+  it("drops text as cells get narrow", () => {
+    expect(cellSize(1 / 3)).toBe("full"); // a half hour of the 90-minute window
+    expect(cellSize(100 / CELLS_PX)).toBe("narrow");
+    expect(cellSize(119.9 / CELLS_PX)).toBe("narrow");
+    expect(cellSize(120 / CELLS_PX)).toBe("full");
+    expect(cellSize(39 / CELLS_PX)).toBe("sliver");
+    expect(cellSize(0.5 / 90)).toBe("sliver"); // a 30-second tail of a program
+  });
+});
 
 const slot = (kind: GuideSlot["kind"], start: string, end: string, title: string = kind): GuideSlot => ({
   kind,

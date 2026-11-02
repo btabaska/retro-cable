@@ -53,6 +53,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/channels/{channel_id}/premieres/{show}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Adminsetpremiere
+         * @description Set or clear the pretend premiere of one carried show on one channel (YAML or
+         *     custom). It changes inputs only: an overlay revision, undoable like any save. Other
+         *     channels keep the show's real dates.
+         */
+        put: operations["adminSetPremiere"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/check": {
         parameters: {
             query?: never;
@@ -85,6 +107,23 @@ export interface paths {
          * @description Every show and movie in the library, including ones no channel carries.
          */
         get: operations["adminLibrary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/media/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Adminmediaprogress */
+        get: operations["adminMediaProgress"];
         put?: never;
         post?: never;
         delete?: never;
@@ -257,6 +296,8 @@ export interface components {
             draft: components["schemas"]["ChannelDraft"];
             /** Id */
             id: string;
+            /** Shows */
+            shows?: components["schemas"]["AdminChannelShow"][];
         };
         /** AdminChannelList */
         AdminChannelList: {
@@ -294,6 +335,54 @@ export interface components {
              */
             type: "network" | "marathon" | "movie";
         };
+        /**
+         * AdminChannelShow
+         * @description A carried show's dates on one channel, for the pretend premiere control.
+         */
+        AdminChannelShow: {
+            /**
+             * Airs
+             * @description Something of it can air on this channel by its last day
+             */
+            airs: boolean;
+            /**
+             * Debut
+             * @description Real (or US debut) first air date; no pretend dates
+             */
+            debut: string | null;
+            /**
+             * First Air
+             * @description First episode's date on this channel (S1E1)
+             */
+            first_air: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "show" | "movie";
+            /**
+             * Last Air
+             * @description Last episode's date on this channel
+             */
+            last_air: string | null;
+            /**
+             * On Air Until
+             * @description Last day the channel carries it (None: open-ended, through 2010)
+             */
+            on_air_until: string | null;
+            /**
+             * Premiere
+             * @description Pretend premiere on this channel, if any
+             */
+            premiere: string | null;
+            /**
+             * Premiere Source
+             * @description Where the premiere is set: /admin (editable) or catalog/synthetic.yaml
+             */
+            premiere_source: ("admin" | "catalog") | null;
+            /** Show */
+            show: string;
+        };
         /** AdminState */
         AdminState: {
             /** Can Undo */
@@ -323,7 +412,7 @@ export interface components {
             launch_year?: number | null;
             /**
              * Library
-             * @description Always on the dial, every episode eligible
+             * @description On the dial in every year; episodes still wait for their dates
              * @default false
              */
             library: boolean;
@@ -368,7 +457,7 @@ export interface components {
         CheckIssue: {
             /**
              * Field
-             * @description Form field: number, call_sign, name, launch_year, shows or shows.<i>
+             * @description Form field: number, call_sign, name, launch_year, shows, shows.<i> or shows.<i>.premiere
              */
             field: string | null;
             /** Message */
@@ -421,6 +510,11 @@ export interface components {
              * @enum {string}
              */
             kind: "show" | "movie";
+            /**
+             * Premiere
+             * @description Pretend premiere on this channel only (1990-01-01 to 2010-12-31)
+             */
+            premiere?: string | null;
             /**
              * Show
              * @description Library id (catalog slug) of a show or movie
@@ -535,6 +629,11 @@ export interface components {
              */
             channels: components["schemas"]["LibraryChannel"][];
             /**
+             * Debut
+             * @description Real (or US debut) first air date
+             */
+            debut?: string | null;
+            /**
              * Episodes
              * @description Episodes (or the movie) on disk
              */
@@ -578,6 +677,72 @@ export interface components {
             weekday: string;
             /** Year */
             year: number;
+        };
+        /** MediaProgress */
+        MediaProgress: {
+            /** Done */
+            done: number;
+            /**
+             * Encoder
+             * @description paused: the worker is between passes or hasn't reported for 30 minutes
+             * @enum {string}
+             */
+            encoder: "gpu" | "cpu" | "paused";
+            /** Failed */
+            failed: number;
+            /**
+             * Gpu Busy
+             * @description The CPU was chosen because the GPU was in use
+             */
+            gpu_busy: boolean;
+            /**
+             * Recent Seconds
+             * @description Wall-clock seconds of the most recent finished files, newest last (<= 20)
+             */
+            recent_seconds: number[];
+            /**
+             * Shows
+             * @description In conversion order
+             */
+            shows: components["schemas"]["MediaShowProgress"][];
+            /** Total */
+            total: number;
+        };
+        /** MediaShowProgress */
+        MediaShowProgress: {
+            /** Done */
+            done: number;
+            /**
+             * Failed
+             * @description Failed in the current or last pass; retried on the next
+             */
+            failed: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "converting" | "queued" | "done";
+            /** Title */
+            title: string;
+            /** Total */
+            total: number;
+        };
+        /** PremiereRequest */
+        PremiereRequest: {
+            /**
+             * Premiere
+             * @description The pretend premiere; null clears it
+             */
+            premiere: string | null;
+        };
+        /** PremiereResult */
+        PremiereResult: {
+            /** Message */
+            message: string;
+            show: components["schemas"]["AdminChannelShow"];
+            state: components["schemas"]["AdminState"];
+            /** Warnings */
+            warnings: components["schemas"]["CheckIssue"][];
         };
         /** Preview */
         Preview: {
@@ -903,6 +1068,58 @@ export interface operations {
             };
         };
     };
+    adminSetPremiere: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+                show: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PremiereRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PremiereResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not saved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     adminCheck: {
         parameters: {
             query?: never;
@@ -965,6 +1182,33 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    adminMediaProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaProgress"];
+                };
+            };
+            /** @description The rig hasn't reported any progress */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -1130,6 +1374,15 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description The data dir is not writable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

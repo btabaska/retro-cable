@@ -110,7 +110,7 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
 | `channels.yaml` | yes | Timezone, year range, channels: type (network, marathon, movie), launch, library, playlist, year-ranged identity (number, call sign, network), blocks, authenticity, transplant mark, bumper length |
 | `holidays.yaml` | yes | Holidays: fixed or nth-weekday rule (n = -1 for the last), window, strength, default mode, per-channel modes, tagged items |
 | `carriage.yaml` | no | Which show or movie airs on which channel from when until when, optionally in a block, with a weight and tags |
-| `synthetic.yaml` | no | Transplants: a synthetic premiere inside 1990–2010, or `library: true` |
+| `synthetic.yaml` | no | Transplants: a synthetic ("pretend") premiere inside 1990–2010 for one show on one channel |
 | `overrides.yaml` | no | Per show: Plex title, US debut, per-episode air dates, holiday tags, exclude |
 | `templates.yaml` | no | Day-part templates per channel with era versions: parts per weekday at clock times, weighted pools of shows or carriage tags, block restriction, primetime flag |
 
@@ -122,11 +122,11 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
   - movie channels, and only movie channels, have a playlist;
   - fixed holiday dates exist, and holiday channels exist;
   - carriage names known channels and blocks, ends after it starts, and doesn't overlap for the same show and channel;
-  - synthetic premieres fall within 1990–2010, or the entry is library;
-  - every override and synthetic entry names a carried show, override holiday tags name known holidays, and no show has both a US debut and a synthetic premiere;
+  - each synthetic entry names a channel and a premiere within 1990–2010, the show is carried on that channel, and no (show, channel) pair is listed twice (M2; `library: true` entries are gone);
+  - every override names a carried show, and override holiday tags name known holidays. A show may have a US debut and a synthetic premiere: the premiere wins on its own channel only (M2; before, both were an error);
   - templates name known channels (never movie channels), their era periods don't overlap per channel, each weekday that appears has exactly one 00:00 part and no duplicate start times, block parts name known blocks, pool shows are carried on the channel, and pool tags appear in that channel's carriage.
 - **Catalog version**: the first 12 hex characters of a SHA-256 over the six files. It is one of the four inputs that make a schedule a pure function.
-- **US debut and synthetic premiere** use the same rule (`shift_air_dates`): the earliest episode moves to the anchor date and every other episode keeps its spacing. Missing dates stay missing.
+- **US debut and synthetic premiere** use the same rule (`shift_air_dates`): the earliest episode moves to the anchor date and every other episode keeps its spacing. A US debut applies on every channel; a synthetic premiere only on its channel, where undated episodes then follow weekly (`premiere_dates`, scheduler spec, M2). Elsewhere missing dates get the conservative synthesized date.
 - The first `carriage.yaml` (299 entries) was generated from `docs/archive-list.md`. Windows run from Jan 1 of the first year to Dec 31 of the last, clamped to the channel's launch; open-ended runs have no `until`. DCOMs air on Disney Channel from their premiere year and always on Disney Movies. `overrides.yaml` has best-effort US debut dates for the Toonami and Adult Swim anime. `synthetic.yaml` lists the archive list's transplant ideas as comments for Brandon to pick.
 - The first `templates.yaml` (Claude-drafted, to edit) covers ktvu (Fox Kids era and after), cartoon-network (classics era and originals era) and adult-swim (late night, two eras). Everything else runs on the **default template**: one all-day part playing everything the channel carries that isn't block-carried, at carriage weights. A weekday with no part in the covering template also falls back to the default.
 
@@ -166,17 +166,17 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
 - `python -m retro_cable.inventory --db --catalog --out` writes `inventory.md` and `inventory.json`. `make inventory` writes them to `reports/` (gitignored) from `data/retro-cable.db`, or from `RC_DB` if set.
 - **Rows:** one per channel per year in the year range, only for years the channel is on the dial (launched, or library).
   - Shows: carried shows whose carriage window overlaps the year.
-  - Expected: those shows' episodes eligible by Dec 31 of that year, plus every episode of a library show.
+  - Expected: those shows' episodes eligible by Dec 31 of that year on that channel.
   - On disk: the expected episodes that have a file.
   - Missing: expected minus on disk.
   - Movies: carried movies already premiered by Dec 31 (or with an unknown premiere), and how many are on disk.
 - **Effective air dates** (`effective_dates`, shared with the scheduler):
   - per-episode dates from `overrides.yaml` replace the originals (`S1E2` and `S01E02` are equivalent);
-  - then a synthetic premiere, or failing that a US debut, shifts the whole show;
+  - then, on a channel with a synthetic premiere for the show, the premiere shifts the whole show there (other channels keep the real dates); otherwise a US debut does;
   - undated episodes get a conservative synthesized date (scheduler spec, "Undated episodes"); specials and shows with no debut bound stay undated and are never eligible.
 - **Library rules:**
-  - A library *channel* is always on the dial, but its items still respect their air dates (Halloweentown can't air before October 1998).
-  - A library *show* (`synthetic.yaml`) has every episode eligible.
+  - A library *channel* is always on the dial, but its items still respect their air dates (Halloweentown can't air before October 1998). Inventory rows for a channel count its shows with that channel's synthetic premieres.
+  - There are no library *shows* any more (M2): to air a show before its debut, give it a synthetic premiere on the channel.
 - **Gaps:**
   - carried shows not in Plex;
   - shows in Plex with no episode files;
@@ -209,7 +209,8 @@ Custom channels made in `/admin` are **catalog inputs**, not schedules, and neve
   - Movie channels get a `shuffled` playlist.
   - Custom channels have no bumpers yet (the bumpers table is per channel id).
 - **Library.** Shows and movies come from the database, whether carried or not. The demo seed adds three uncarried shows (Recess, Gravity Falls, Over the Garden Wall). `ingest scan` stores every show folder it can read, carried or not (see Phase 4: media below), so the picker offers the whole NAS library. The Plex importer still stores only carried titles.
-- **Not in M1:** synthetic premieres for transplants (a premiere is global to the show, so it would move the show on every channel), editing YAML channels, holiday modes per custom channel, per-row on/off toggles, and the nightly YAML export.
+- **Not in M1:** editing YAML channels, holiday modes per custom channel, per-row on/off toggles, and the nightly YAML export.
+- **Pretend premieres (M2).** The overlay also holds `premieres[]`: `Synthetic` entries (`show`, `channel`, `premiere`) for any channel, YAML or custom. `apply_overlay` merges them into `synthetic`, replacing a `synthetic.yaml` entry for the same (show, channel). Canonical JSON sorts them by (channel, show) and leaves the key out when there are none, so overlays saved before M2 keep their version. A custom channel's draft carries each show's `premiere`, saved with the channel and removed with it; a YAML channel's premieres are set one at a time (`PUT /admin/channels/{id}/premieres/{show}`, `api.md`). No migration: they live in the existing `catalog_revisions` overlay JSON, so undo and the catalog version cover them for free (migration 0006 stays unused).
 
 ## Implemented (Phase 4: media)
 
@@ -241,8 +242,11 @@ A stopgap for while there is no Plex token: it reads Plex-named folders straight
 - **Output:** one MP4 per episode, movie and bumper with a source file, at `tv/<show>/sNN/<show>-sNNeNN.mp4`, `movies/<id>.mp4` or `bumpers/<channel>/<name>.mp4` under `--media-dir` (`RC_MEDIA_DIR`).
 - **Encoding:** H.264 High, yuv420p, CRF 23 capped at 1.5 Mbit/s; AAC stereo 128 kbit/s at 48 kHz from the English audio track if tagged, else the first; no subtitles, data or metadata. A keyframe every second (`-force_key_frames`), and the index at the front (`+faststart`).
 - **Picture:** deinterlaced when frames are flagged interlaced (`bwdif`), at most 480 lines, never upscaled, square pixels with the display aspect kept (anamorphic sources are corrected). A picture within 3% of 4:3 or 16:9 is drawn at exactly that shape. With `--crop auto` (default), black bars baked into the picture are cropped first: cropdetect samples 4 s at 20%, 50% and 80% of the running time, the crop is the union of the three boxes, and bars under 2.5% a side are left alone. This turns 4:3 shows released in 16:9 frames (The Simpsons and Courage web releases) back into 640×480.
-- **Encoders:** `--encoder x264` (libx264 `veryfast`, default) or `--encoder nvenc` (`h264_nvenc`, preset p5, VBR CQ 23, forced IDR keyframes); also `RC_ENCODER`.
+- **Encoders:** `--encoder x264` (libx264 `veryfast`, default) or `--encoder nvenc` (`h264_nvenc`, preset p5, VBR CQ 23, forced IDR keyframes); also `RC_ENCODER`. `--encoder auto` picks per item: NVENC while the shared GPU is idle, x264 otherwise (`ingest/gpu.py`; see the ops spec, "Media worker (rig)"). The run's `encoders` stats count encodes per encoder.
+- **Order:** `--order catalog` (default: show, season, episode, then movies and bumpers) or `--order priority` (the rig: bumpers, then carried shows by earliest carriage year in waves of 13 episodes, then uncarried shows; `--priority-url` adds the mini's `/admin` channels).
+- **Manifest:** `--manifest` writes a JSON sidecar next to each new MP4 and `manifest.json` at the media root (every 5 minutes and at the end), which the mini's `ingest index-media` reads instead of probing files (ops spec).
 - **Sources:** absolute paths (as Plex or `scan` saw them) go through `--source-map FROM=TO` (or `RC_SOURCE_MAP`, comma-separated); relative ones resolve under `--source-root` (`RC_SOURCE_ROOT`). A missing source is listed and skipped.
-- **Idempotent and resumable:** an item is skipped when its output exists and the source size and mtime match what was recorded; `--force` re-encodes. Each encode goes to `<name>.partial`, is read back with ffprobe, renamed, and committed on its own, so an interrupted run leaves no half files and the next run carries on. A failed item is listed and the run continues.
+- **Idempotent and resumable:** an item is skipped when its output exists, the source size and mtime match what was recorded, and the recorded encode length is within 2% of the recorded source length (M2: an encode recorded short is converted again); `--force` re-encodes. Each encode goes to `<name>.partial`, is read back with ffprobe, renamed, and committed on its own, so an interrupted run leaves no half files and the next run carries on. A failed item is listed and the run continues.
+- **Whole encodes only (M2 B11):** the read-back must show a video stream, an audio stream when the source has one, and a length within 2% of the source's ffprobe length (at least 1 s of slack, for bumpers), or of `--max-seconds` for a trial. Anything else is a failure: the partial file is deleted, nothing is recorded, the reason goes to the log, and the next run tries again. A trial encode is not whole for a full run, so a later run without `--max-seconds` converts it again.
 - **Trials:** `--limit N` encodes at most N items, `--max-seconds S` keeps the first S seconds, `--dry-run` prints the ffmpeg commands. A `--max-seconds` encode is short media (see Database above): it is recorded but stays off the air unless `RC_ALLOW_SHORT_MEDIA=1`.
 - **Lengths:** each item records the encode's length (`media_seconds`) and the source's (`source_seconds`, episodes and movies). An encode shorter than half the expected runtime is listed in the run's `short` stats as `show S01E02 (120 s of 1320 s)`.

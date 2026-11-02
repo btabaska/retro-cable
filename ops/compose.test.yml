@@ -41,3 +41,9 @@ services:
 
 volumes:
   api-data:
+
+# No homelab Caddy here: create a private stand-in for the external edge network.
+networks:
+  edge:
+    external: false
+    name: retro-cable-test-edge

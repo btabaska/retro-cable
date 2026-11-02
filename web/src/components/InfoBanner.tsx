@@ -49,6 +49,12 @@ export function InfoBanner({ channel, slot, next, now, year, timeZone, onGuide, 
               {slot.holiday_name.toUpperCase()}
             </span>
           )}
+          {slot?.transplant && slot.kind !== "bumper" && (
+            <span className="badge badge-outline badge-transplant" data-testid="banner-transplant">
+              <span className="transplant-mark" aria-hidden="true" />
+              PRETEND PREMIERE
+            </span>
+          )}
         </div>
         <div className="banner-progress-row">
           <span>{formatShortTime(start, timeZone)}</span>
@@ -73,7 +79,7 @@ export function InfoBanner({ channel, slot, next, now, year, timeZone, onGuide, 
         <button type="button" className="btn btn-blue" onClick={onGuide}>
           Guide
         </button>
-        <button type="button" className="btn btn-gold" onClick={onYear}>
+        <button type="button" className="btn btn-gold" data-focus-key="banner-year" onClick={onYear}>
           Year {year}
         </button>
       </div>

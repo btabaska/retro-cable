@@ -137,3 +137,100 @@ def test_source_maps_parse_flags_or_env(monkeypatch: pytest.MonkeyPatch) -> None
     assert cli.source_maps([]) == [("/a", "/b"), ("/c", "/d")]
     with pytest.raises(SystemExit):
         cli.source_maps(["nope"])
+
+
+# --- the rig worker and the mini's index -------------------------------------------------
+
+
+def _rig_db(tmp_path: Path) -> Path:
+    from retro_cable.db import connect, migrate
+
+    path = tmp_path / "rig.db"
+    db = connect(path)
+    migrate(db)
+    db.execute("INSERT INTO shows (id, title, year) VALUES ('the-simpsons', 'The Simpsons', 1989)")
+    (tmp_path / "media/tv/the-simpsons/s01").mkdir(parents=True)
+    (tmp_path / "media/tv/the-simpsons/s01/the-simpsons-s01e01.mp4").write_bytes(b"mp4")
+    db.execute(
+        "INSERT INTO episodes (show_id, season, episode, title, file_path, file_size,"
+        " source_seconds, media_path, media_seconds) VALUES ('the-simpsons', 1, 1, 'Pilot',"
+        " '/sources/tv/x.mkv', 10, 1320, 'tv/the-simpsons/s01/the-simpsons-s01e01.mp4', 1320)"
+    )
+    db.close()
+    return path
+
+
+def test_manifest_then_index_media(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rig = _rig_db(tmp_path)
+    media = str(tmp_path / "media")
+    assert cli.main(["manifest", "--db", str(rig), "--media-dir", media]) == 0
+    assert (tmp_path / "media/manifest.json").is_file()
+    capsys.readouterr()
+
+    mini = tmp_path / "mini.db"
+    assert cli.main(["index-media", "--db", str(mini), "--media-dir", media]) == 0
+    stats = json.loads(capsys.readouterr().out)
+    assert (stats["episodes"], stats["media"]) == (1, 1)
+
+    from retro_cable.db import connect
+    from retro_cable.scheduler import load_library
+
+    assert [p.episode for p in load_library(connect(mini)).episodes["the-simpsons"]] == [1]
+
+
+def test_index_media_reports_a_missing_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args = ["index-media", "--db", str(tmp_path / "m.db"), "--media-dir", str(tmp_path)]
+    assert cli.main(args) == 1
+    assert "manifest.json" in capsys.readouterr().err
+
+
+def test_priority_years_merge_the_catalog_and_the_minis_channels(
+    tmp_path: Path, make_catalog: MakeCatalog, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from retro_cable.catalog import load_catalog
+    from retro_cable.db import connect, migrate
+
+    db = connect(tmp_path / "rig.db")
+    migrate(db)
+    catalog = load_catalog(make_catalog())
+    library = {
+        "items": [
+            {"id": "johnny-bravo", "first_year": 1997, "channels": [{"id": "custom-toons"}]},
+            {"id": "the-simpsons", "first_year": 1989, "channels": [{"id": "ktvu"}]},
+            {"id": "nobody-airs-me", "first_year": 1970, "channels": []},
+        ]
+    }
+    years = cli.priority_years(db, catalog, "http://mini/api/admin/library", lambda u: library)
+    assert years["johnny-bravo"] == 1997  # only on an /admin channel on the mini
+    assert years["the-simpsons"] == 1990  # the catalog's carriage start wins
+    assert years["dexters-laboratory"] == 1996
+    assert "nobody-airs-me" not in years
+
+    def down(url: str) -> object:
+        raise OSError("no route to host")
+
+    years = cli.priority_years(db, catalog, "http://mini/api/admin/library", down)
+    assert "johnny-bravo" not in years and years["the-simpsons"] == 1990
+    assert "warning" in capsys.readouterr().err
+
+
+def test_normalize_rig_flags_pass_a_chooser_an_order_and_a_manifest_hook(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "normalize", lambda db, media, **kw: _capture(kw))
+    args = ["normalize", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog()),
+            "--media-dir", str(tmp_path / "media"), "--all", "--encoder", "auto",
+            "--order", "priority", "--manifest"]  # fmt: skip
+    assert cli.main(args) == 0
+    assert callable(CAPTURED["encoder"])
+    assert callable(CAPTURED["order"])
+    assert callable(CAPTURED["on_encoded"])
+    from retro_cable.ingest.progress import ProgressFile
+
+    watch = CAPTURED["watch"]
+    assert isinstance(watch, ProgressFile), "the rig reports progress for the Media tab"
+    assert watch.path == tmp_path / "media/progress.json" and watch.auto
+    assert CAPTURED["shows"] is None
+    assert (tmp_path / "media/manifest.json").is_file(), "the final manifest is written"
