@@ -120,7 +120,8 @@ def test_rig_worker_reads_sources_read_only_and_writes_only_the_media_share() ->
     assert mounts["/rig/worker.sh"] == "ro"
     assert {t for t, m in mounts.items() if m == "rw"} == {"/media", "/data"}
     text = (OPS / "rig/compose.yml").read_text()
-    assert "${RC_RIG_MEDIA:-/mnt/nas-retro-cable}:/media:rw" in text
+    assert "${RC_RIG_MEDIA:-/mnt/nas-livetv}:/media:rw" in text
+    assert worker["environment"]["RC_CODEC"] == "${RC_CODEC:-hevc}", "the rig saves space with HEVC"
     assert "${RC_RIG_TV:-/mnt/nas-tv-ro}:/sources/tv:ro" in text
     assert "${RC_RIG_MOVIES:-/mnt/nas-movies-ro}:/sources/movies:ro" in text
     assert "ports" not in worker
@@ -208,7 +209,7 @@ def test_rig_worker_skips_an_unmounted_source_tree(tmp_path: Path) -> None:
 
 def test_rig_up_refuses_mounts_that_are_not_what_it_expects(tmp_path: Path) -> None:
     """up.sh checks findmnt before starting anything: read-only sources, and a read-write
-    media root that is the NAS .retro-cable folder with its .plexignore."""
+    media root that is the NAS LiveTV share with its .plexignore."""
     tv, movies, media = (tmp_path / n for n in ("tv", "movies", "media"))
     for d in (tv, movies, media):
         d.mkdir()
@@ -240,7 +241,7 @@ def test_rig_up_refuses_mounts_that_are_not_what_it_expects(tmp_path: Path) -> N
     good = {
         str(tv): ("//nas/tv", "ro,relatime"),
         str(movies): ("//nas/movies", "ro,relatime"),
-        str(media): ("//nas/tv/.retro-cable", "rw,relatime"),
+        str(media): ("//nas/LiveTV", "rw,relatime"),
     }
     writable_tv = {**good, str(tv): ("//nas/tv", "rw,relatime")}
     wrong_media = {**good, str(media): ("//nas/tv", "rw,relatime")}

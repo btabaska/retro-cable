@@ -137,6 +137,19 @@ def test_normalize_includes_shows_on_the_minis_admin_channels(
     assert {"over-the-garden-wall", "the-simpsons"} <= shows and "nobody-airs-me" not in shows
 
 
+def test_normalize_codec_comes_from_the_flag_or_rc_codec(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "normalize", lambda db, media, **kw: _capture(kw))
+    args = ["normalize", "--db", str(tmp_path / "rc.db"), "--catalog", str(make_catalog()),
+            "--media-dir", str(tmp_path / "media")]  # fmt: skip
+    monkeypatch.delenv("RC_CODEC", raising=False)
+    assert cli.main(args) == 0 and CAPTURED["codec"] == "h264"
+    monkeypatch.setenv("RC_CODEC", "hevc")
+    assert cli.main(args) == 0 and CAPTURED["codec"] == "hevc"
+    assert cli.main([*args, "--codec", "h264"]) == 0 and CAPTURED["codec"] == "h264"
+
+
 def test_normalize_needs_a_catalog_unless_all(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

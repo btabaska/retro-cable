@@ -1,9 +1,8 @@
-# The media worker on the rig (the GPU box): converts the NAS library once into the hidden
-# .retro-cable folder of the tv share, which the mini serves read-only. Start it with
+# The media worker on the rig (the GPU box): converts the carried NAS shows once into the
+# LiveTV share on the NAS's volume1, which the mini serves read-only. Start it with
 # ops/rig/up.sh (it checks the mounts first). See docs/specs/ops.md, "Media worker (rig)".
 #
-# Writes go to two places only: the media root (/mnt/nas-retro-cable, the NAS .retro-cable
-# folder) and the worker's own database (ops/rig/data on the rig's local disk). The TV and
+# Writes go to two places only: the media root (/mnt/nas-livetv, the NAS LiveTV share) and the worker's own database (ops/rig/data on the rig's local disk). The TV and
 # movie shares are mounted read-only on the host and again read-only here.
 name: retro-cable-rig
 
@@ -26,6 +25,8 @@ services:
       RC_TV_ROOT: /sources/tv
       RC_MOVIES_ROOT: /sources/movies
       RC_ENCODER: ${RC_ENCODER:-auto}
+      # HEVC (hvc1): about 40% smaller than H.264 at nearly the same VMAF (docs/specs/ops.md).
+      RC_CODEC: ${RC_CODEC:-hevc}
       # ComfyUI's queue, through the gpu-arbiter: an image job in flight means x264.
       RC_GPU_QUEUE_URL: ${RC_GPU_QUEUE_URL:-http://host.docker.internal:8189}
       # The mini's /api/admin/library, so shows on /admin channels go first (optional).
@@ -42,7 +43,7 @@ services:
     volumes:
       - ${RC_RIG_TV:-/mnt/nas-tv-ro}:/sources/tv:ro,rslave
       - ${RC_RIG_MOVIES:-/mnt/nas-movies-ro}:/sources/movies:ro,rslave
-      - ${RC_RIG_MEDIA:-/mnt/nas-retro-cable}:/media:rw,rslave
+      - ${RC_RIG_MEDIA:-/mnt/nas-livetv}:/media:rw,rslave
       - ${RC_RIG_DATA:-./data}:/data:rw
       - ../../catalog:/catalog:ro
       - ./worker.sh:/rig/worker.sh:ro

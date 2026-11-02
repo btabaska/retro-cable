@@ -1,9 +1,9 @@
 """Normalize source files into the MP4s the app plays: `python -m retro_cable.ingest normalize`.
 
-Every episode, movie and bumper with a source file gets one H.264 + AAC stereo MP4 under the
-media root, at most 480 lines with its display aspect kept (4:3 stays 4:3, 16:9 stays 16:9),
-the index at the front (faststart) and a keyframe every second, so playback can start at any
-offset `/tune` returns. The output path is a slug of the item, never the source name.
+Every episode, movie and bumper with a source file gets one H.264 (or HEVC) + AAC stereo MP4
+under the media root, at most 480 lines with its display aspect kept (4:3 stays 4:3, 16:9
+stays 16:9), the index at the front (faststart) and a keyframe every second, so playback can
+start at any offset `/tune` returns. The output path is a slug of the item, never the source name.
 
 The job is idempotent and resumable: an item whose output exists, whose source size and
 mtime match what was recorded and whose recorded length is whole is skipped, each finished
@@ -13,6 +13,8 @@ and a length within 2% of the source's (or of `--max-seconds` for a trial). Anyt
 is a failure, leaves no file and is tried again on the next run.
 
 Encoders: libx264 on the CPU (default) or h264_nvenc on an NVIDIA GPU (`--encoder nvenc`).
+With `--codec hevc` (the rig) they are libx265 and hevc_nvenc, tagged hvc1 for Safari and
+tvOS: about 40% smaller at nearly the same VMAF, measured on NAS episodes (docs/specs/ops.md).
 """
 
 import json
@@ -37,12 +39,15 @@ ENCODERS: dict[str, Encoder] = {
     "nvenc": "nvenc",
     "h264_nvenc": "nvenc",
 }
+Codec = Literal["h264", "hevc"]
 Table = Literal["episodes", "movies", "bumpers"]
 
 MAX_LINES = 480
 KEYFRAME_SECONDS = 1
 VIDEO_MAXRATE = "1500k"
 VIDEO_BUFSIZE = "3000k"
+HEVC_MAXRATE = "1000k"
+HEVC_BUFSIZE = "2000k"
 LENGTH_TOLERANCE = 0.02  # an encode within 2% of its source's length is whole
 LENGTH_SLACK = 1.0  # seconds; container rounding on very short items such as bumpers
 
@@ -198,6 +203,7 @@ def build_command(
     max_seconds: float | None = None,
     ffmpeg: str = "ffmpeg",
     crop: Crop | None = None,
+    codec: Codec = "h264",
 ) -> list[str]:
     if info.video is None:
         raise ValueError(f"{src.name}: no video stream")
@@ -217,16 +223,27 @@ def build_command(
     if info.audio_index is not None:
         cmd += ["-map", f"0:{info.audio_index}"]
     cmd += ["-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn", "-vf", vf]
-    if encoder == "nvenc":
+    if codec == "hevc" and encoder == "nvenc":
+        cmd += ["-c:v", "hevc_nvenc", "-preset", "p7", "-tune", "hq", "-rc", "vbr", "-cq", "26",
+                "-b:v", "0", "-spatial-aq", "1", "-temporal-aq", "1", "-forced-idr", "1",
+                "-profile:v", "main"]  # fmt: skip
+    elif codec == "hevc":
+        cmd += ["-c:v", "libx265", "-preset", "fast", "-crf", "22",
+                "-x265-params", "log-level=error:forced-idr=1"]  # fmt: skip
+    elif encoder == "nvenc":
         cmd += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0",
                 "-forced-idr", "1"]  # fmt: skip
     else:
         cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
-    cmd += ["-maxrate", VIDEO_MAXRATE, "-bufsize", VIDEO_BUFSIZE, "-profile:v", "high",
-            "-pix_fmt", "yuv420p",
+    if codec == "hevc":
+        cmd += ["-maxrate", HEVC_MAXRATE, "-bufsize", HEVC_BUFSIZE, "-tag:v", "hvc1"]
+    else:
+        cmd += ["-maxrate", VIDEO_MAXRATE, "-bufsize", VIDEO_BUFSIZE, "-profile:v", "high"]
+    cmd += ["-pix_fmt", "yuv420p",
             "-force_key_frames", f"expr:gte(t,n_forced*{KEYFRAME_SECONDS})"]  # fmt: skip
     if info.audio_index is not None:
-        cmd += ["-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "48000"]
+        audio_rate = "96k" if codec == "hevc" else "128k"
+        cmd += ["-c:a", "aac", "-b:a", audio_rate, "-ac", "2", "-ar", "48000"]
     else:
         cmd += ["-an"]
     cmd += ["-max_muxing_queue_size", "1024", "-movflags", "+faststart", "-f", "mp4", str(dst)]
@@ -462,6 +479,7 @@ def normalize(
     source_root: Path | None = None,
     source_map: Sequence[tuple[str, str]] = (),
     encoder: Encoder | Callable[[], Encoder] = "x264",
+    codec: Codec = "h264",
     max_seconds: float | None = None,
     limit: int | None = None,
     force: bool = False,
@@ -515,9 +533,9 @@ def normalize(
                 done(item, "skipped")
                 continue
             outcome = _encode(
-                db, media_dir, item, src, st, stats, encoder=encoder, max_seconds=max_seconds,
-                dry_run=dry_run, run=run, probe=probe, crop=crop, progress=progress,
-                watch=watch,
+                db, media_dir, item, src, st, stats, encoder=encoder, codec=codec,
+                max_seconds=max_seconds, dry_run=dry_run, run=run, probe=probe, crop=crop,
+                progress=progress, watch=watch,
             )  # fmt: skip
             if outcome == "encoded" and on_encoded is not None:
                 on_encoded(item)
@@ -538,6 +556,7 @@ def _encode(
     stats: NormalizeStats,
     *,
     encoder: Encoder | Callable[[], Encoder],
+    codec: Codec,
     max_seconds: float | None,
     dry_run: bool,
     run: Runner,
@@ -554,7 +573,7 @@ def _encode(
         source = math.floor(info.duration) if info.duration > 0 else None
         bars = crop(src, info, max_seconds)
         chosen = encoder if isinstance(encoder, str) else encoder()
-        cmd = build_command(src, tmp, info, chosen, max_seconds, crop=bars)
+        cmd = build_command(src, tmp, info, chosen, max_seconds, crop=bars, codec=codec)
         if dry_run:
             stats.commands.append(cmd)
             return None
