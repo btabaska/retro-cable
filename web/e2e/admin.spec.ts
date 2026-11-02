@@ -161,6 +161,7 @@ test("week-preview day chips fit at 360 px", async ({ page }) => {
   // A draft with one show; it is never saved.
   await page.getByRole("button", { name: "+ New channel" }).click();
   await page.getByLabel("Number").fill("59");
+  await page.getByLabel("Call sign").fill("chips");
   await page.getByLabel("Name", { exact: true }).fill("Chip check");
   await page.getByRole("switch").check();
   await page.getByRole("button", { name: "+ Add show" }).click();
