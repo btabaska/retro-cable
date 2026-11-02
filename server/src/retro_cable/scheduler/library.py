@@ -73,20 +73,51 @@ def _year_end(year: int | None) -> date | None:
 # What the app can play. A normalized file (media_path, with its measured length) wins. A
 # relative file_path is already under the media root (demo feeds, fixtures). An absolute
 # file_path is a raw source as Plex or `ingest scan` saw it, so it waits for `normalize`.
-_PLAYABLE = (
-    "COALESCE(media_path, CASE WHEN file_path NOT LIKE '/%' THEN file_path END) AS play_path,"
-    " CASE WHEN media_path IS NOT NULL THEN media_seconds ELSE runtime_seconds END"
+_PLAY_PATH = (
+    "COALESCE(media_path, CASE WHEN file_path NOT LIKE '/%' THEN file_path END) AS play_path"
+)
+# Its length, always the real one when it is known: the normalized file's ffprobe length,
+# else the source's (from `ingest scan`), and only else the catalog runtime (Plex, TMDB, or
+# the demo seed's runtime class).
+PLAY_SECONDS = (
+    "CASE WHEN media_path IS NOT NULL THEN media_seconds"
+    " ELSE COALESCE(source_seconds, runtime_seconds) END"
+)
+# What a whole program should last: the catalog runtime or the source's measured length,
+# whichever is longer. 0 when neither is known.
+EXPECTED_SECONDS = "MAX(COALESCE(runtime_seconds, 0), COALESCE(source_seconds, 0))"
+# A file shorter than half its expected runtime is a sample or a truncated encode (the M1
+# review aired 2-minute samples as 22-minute episodes). It never reaches the schedule unless
+# short media is allowed explicitly (RC_ALLOW_SHORT_MEDIA, for trials and demos).
+SHORT_MEDIA_RATIO = 0.5
+_PLAYABLE = f"{_PLAY_PATH}, {PLAY_SECONDS} AS play_seconds, {EXPECTED_SECONDS} AS expected_seconds"
+_BUMPER_PLAYABLE = (
+    f"{_PLAY_PATH}, CASE WHEN media_path IS NOT NULL THEN media_seconds ELSE runtime_seconds END"
     " AS play_seconds"
 )
 _READY = " WHERE play_path IS NOT NULL AND play_seconds > 0"
 
 
-def load_library(db: sqlite3.Connection) -> Library:
-    """Playable programs with a known runtime. Missing or raw files never reach the schedule."""
+def is_short(seconds: float, expected: float) -> bool:
+    """True when a file of `seconds` is too short to air as a program expected to run
+    `expected` seconds (0 or less: nothing to compare with)."""
+    return expected > 0 and seconds < expected * SHORT_MEDIA_RATIO
+
+
+def _ready(allow_short: bool) -> str:
+    if allow_short:
+        return _READY
+    return _READY + f" AND play_seconds >= expected_seconds * {SHORT_MEDIA_RATIO}"
+
+
+def load_library(db: sqlite3.Connection, *, allow_short: bool = False) -> Library:
+    """Playable programs with a known runtime. Missing or raw files never reach the schedule,
+    nor (unless `allow_short`) files shorter than half their expected runtime."""
+    ready = _ready(allow_short)
     episodes: dict[str, list[Program]] = defaultdict(list)
     for r in db.execute(
         "SELECT * FROM (SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.title,"
-        f" e.air_date, {_PLAYABLE} FROM episodes e JOIN shows s ON s.id = e.show_id)" + _READY
+        f" e.air_date, {_PLAYABLE} FROM episodes e JOIN shows s ON s.id = e.show_id)" + ready
     ):
         episodes[r["show_id"]].append(
             Program(
@@ -115,12 +146,12 @@ def load_library(db: sqlite3.Connection) -> Library:
         )
         for r in db.execute(
             f"SELECT * FROM (SELECT id, title, premiere_date, year, {_PLAYABLE} FROM movies)"
-            + _READY
+            + ready
         )
     }
     bumpers: dict[str, list[Bumper]] = defaultdict(list)
     for r in db.execute(
-        f"SELECT * FROM (SELECT channel_id, file_path, {_PLAYABLE} FROM bumpers)"
+        f"SELECT * FROM (SELECT channel_id, file_path, {_BUMPER_PLAYABLE} FROM bumpers)"
         + _READY
         + " ORDER BY file_path"
     ):

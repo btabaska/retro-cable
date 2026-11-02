@@ -313,6 +313,29 @@ def test_a_scanned_show_counts_episodes_once_normalized(catalog_dir: Path, tmp_p
     assert tuned["current"]["show"] == "ed-edd-n-eddy"
 
 
+def test_short_samples_dont_count_as_playable_episodes(catalog_dir: Path, tmp_path: Path) -> None:
+    """The picker counts what the schedule can air: a 2-minute encode of a 23-minute source is
+    a sample, and stays off the air (load_library) unless RC_ALLOW_SHORT_MEDIA is set."""
+    media = tmp_path / "media"
+    media.mkdir(parents=True)
+    db_path = tmp_path / "rc.db"
+    seed_db(db_path, media)
+    add_scanned(db_path, normalized=True, year=1999)
+    db = connect(db_path)
+    db.execute("UPDATE episodes SET source_seconds = 1380, media_seconds = 120 WHERE episode = 2")
+    db.close()
+
+    def count(allow: bool) -> int:
+        settings = Settings(
+            catalog_dir=catalog_dir, db_path=db_path, media_dir=media, media_secret="s",
+            seed=7, allow_short_media=allow,
+        )  # fmt: skip
+        return int(eddy(TestClient(create_app(settings, clock=lambda: REAL_NOW)))["episodes"])
+
+    assert count(allow=False) == 2
+    assert count(allow=True) == 3
+
+
 def test_an_undated_show_warns_on_a_channel_that_is_not_library(
     catalog_dir: Path, tmp_path: Path
 ) -> None:

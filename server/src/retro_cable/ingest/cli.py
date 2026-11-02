@@ -21,7 +21,13 @@ from retro_cable.admin import store
 from retro_cable.catalog import Catalog, CatalogError, load_catalog
 from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.db import connect, migrate
-from retro_cable.ingest.normalize import ENCODERS, detect_crop, no_crop, normalize
+from retro_cable.ingest.normalize import (
+    ENCODERS,
+    detect_crop,
+    no_crop,
+    normalize,
+    source_seconds,
+)
 from retro_cable.ingest.plex import PlexClient, import_plex
 from retro_cable.ingest.plex import http_fetch as plex_http_fetch
 from retro_cable.ingest.scan import scan_movies, scan_tv
@@ -76,6 +82,8 @@ def _parser() -> argparse.ArgumentParser:
                            "including those on /admin channels)")  # fmt: skip
     scan.add_argument("--carried-only", action="store_true",
                       help="skip show folders no channel carries (default: keep)")  # fmt: skip
+    scan.add_argument("--no-probe", action="store_true",
+                      help="don't measure new or changed files with ffprobe")  # fmt: skip
     return parser
 
 
@@ -125,10 +133,13 @@ def main(argv: list[str]) -> int:
     elif args.job == "scan":
         assert catalog is not None
         out: dict[str, object] = {}
+        measure = None if args.no_probe else source_seconds
         if args.tv:
-            out["tv"] = asdict(scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only))
+            out["tv"] = asdict(
+                scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only, probe=measure)
+            )
         if args.movies:
-            out["movies"] = asdict(scan_movies(db, args.movies, catalog, now))
+            out["movies"] = asdict(scan_movies(db, args.movies, catalog, now, probe=measure))
         stats = out
     else:
         shows = None if args.all or catalog is None else carried_shows(db, catalog)
@@ -162,6 +173,12 @@ def _normalize(
     if args.dry_run:
         for cmd in result.commands:
             print(" ".join(cmd), file=sys.stderr)
+    for label in result.short:
+        print(
+            f"warning: {label} is shorter than half its runtime (a sample or truncated file);"
+            " it won't be scheduled unless RC_ALLOW_SHORT_MEDIA=1",
+            file=sys.stderr,
+        )
     stats = asdict(result)
     stats.pop("commands")
     return stats

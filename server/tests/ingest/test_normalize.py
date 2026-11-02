@@ -326,8 +326,15 @@ def test_normalize_writes_playable_480p_mp4s_and_records_them(
     (bumper_row,) = db.execute("SELECT media_path, media_seconds FROM bumpers").fetchall()
     assert tuple(bumper_row) == ("bumpers/ktvu/1998-id.mp4", 2)
 
-    # The scheduler plays the normalized files at their measured length.
-    lib = load_library(db)
+    # The 3-second fixtures are far shorter than the 1320 s the catalog expects: the job flags
+    # them and the scheduler leaves them off unless short media is allowed explicitly.
+    assert stats.short == [
+        "fixture-friends S01E01 (3 s of 1320 s)",
+        "fixture-friends S01E02 (3 s of 1320 s)",
+    ]
+    assert "fixture-friends" not in load_library(db).episodes
+    # Allowed, the scheduler plays the normalized files at their measured length.
+    lib = load_library(db, allow_short=True)
     eps = lib.episodes["fixture-friends"]
     assert [(p.path, p.seconds) for p in eps] == [
         ("tv/fixture-friends/s01/fixture-friends-s01e01.mp4", 3),
@@ -421,6 +428,32 @@ def test_rerun_skips_up_to_date_outputs_and_reencodes_changed_sources(
     stats = normalize(db, media, run=third, probe=fake_probe, crop=no_crop)
     assert stats.encoded == 3
     assert stats.skipped == 0
+
+
+def test_the_job_records_the_source_length_and_flags_short_encodes(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    """A 2-minute sample (or an encode cut short) must never pass for a whole episode: the
+    job records the source's ffprobe length next to the encode's and lists every output
+    shorter than half the expected runtime."""
+
+    def probe(path: Path) -> Probe:
+        # Episode 2's source is a 2-minute sample; episode 3's encode stopped at 100 s.
+        seconds = {
+            "S01E02.mkv": 120.4, "s-s01e02.mp4.partial": 120.4, "s-s01e03.mp4.partial": 100.0
+        }.get(path.name, 1320.9)  # fmt: skip
+        return Probe(duration=seconds, video=Stream(0, 640, 480, Fraction(1)), audio_index=1)
+
+    stats = normalize(db, tmp_path / "media", run=Recorder(), probe=probe, crop=no_crop)
+    assert stats.encoded == 3
+    assert stats.short == ["s S01E02 (120 s of 1300 s)", "s S01E03 (100 s of 1320 s)"]
+    lengths = "SELECT episode, runtime_seconds, source_seconds, media_seconds FROM episodes"
+    assert [tuple(r) for r in db.execute(lengths + " ORDER BY episode")] == [
+        (1, 1300, 1320, 1320),
+        (2, 1300, 120, 120),
+        (3, 1300, 1320, 100),
+    ]
+    assert [p.episode for p in load_library(db).episodes["s"]] == [1]
 
 
 def test_an_interrupted_run_resumes_where_it_stopped(

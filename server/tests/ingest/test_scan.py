@@ -291,3 +291,60 @@ def test_scan_movies_reads_plex_movie_folders(
         ("halloweentown", "Halloweentown", 1998, None,
          str(root / "Halloweentown (1998)" / "Halloweentown (1998).mkv"), 20),
     ]  # fmt: skip
+
+
+class FakeProbe:
+    """Stands in for ffprobe: a length per file name, and a record of what was probed."""
+
+    def __init__(self, seconds: dict[str, float | None]) -> None:
+        self.seconds = seconds
+        self.calls: list[str] = []
+
+    def __call__(self, path: Path) -> float | None:
+        self.calls.append(path.name)
+        return self.seconds.get(path.name)
+
+
+def test_scan_records_each_source_files_measured_length(
+    db: sqlite3.Connection, tree: Path, make_catalog: MakeCatalog
+) -> None:
+    """The source's ffprobe length, not a runtime class default, is what the scheduler falls
+    back on and what a normalized file is checked against."""
+    catalog = load_catalog(make_catalog())
+    ep1 = "The Simpsons (1989) - S01E01 - Simpsons Roasting [WEBDL].mkv"
+    ep2 = "The Simpsons (1989) - S01E02 - Bart the Genius [WEBDL].mkv"
+    db.execute("INSERT INTO shows (id, title) VALUES ('the-simpsons', 'The Simpsons')")
+    db.execute(
+        "INSERT INTO episodes (show_id, season, episode, title, runtime_seconds)"
+        " VALUES ('the-simpsons', 1, 1, '', 1320)"
+    )
+    probe = FakeProbe({ep1: 1381.7, ep2: None})  # ffprobe could not read episode 2
+    scan_tv(db, tree, catalog, probe=probe)
+    lengths = (
+        "SELECT episode, runtime_seconds, source_seconds FROM episodes"
+        " WHERE show_id = 'the-simpsons' ORDER BY episode"
+    )
+    assert rows(db, lengths) == [(1, 1320, 1381), (2, None, None)]
+
+    # A rescan probes only files that are new, changed or not measured yet.
+    again = FakeProbe({ep1: 9999.0, ep2: 1290.0})
+    scan_tv(db, tree, catalog, probe=again)
+    assert ep1 not in again.calls
+    assert ep2 in again.calls
+    (tree / "The Simpsons" / "Season 01" / ep1).write_bytes(b"a longer file")
+    scan_tv(db, tree, catalog, probe=FakeProbe({ep1: 1402.2}))
+    assert rows(db, lengths) == [(1, 1320, 1402), (2, None, 1290)]
+
+    # Without a prober (tests, or --no-probe) an unchanged file keeps its measured length.
+    scan_tv(db, tree, catalog)
+    assert rows(db, lengths) == [(1, 1320, 1402), (2, None, 1290)]
+
+
+def test_scan_movies_records_the_measured_length(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    root = tmp_path / "movies"
+    touch(root / "Halloweentown (1998)" / "Halloweentown (1998).mkv", size=20)
+    probe = FakeProbe({"Halloweentown (1998).mkv": 5003.5})
+    scan_movies(db, root, load_catalog(make_catalog()), probe=probe)
+    assert rows(db, "SELECT id, source_seconds FROM movies") == [("halloweentown", 5003)]

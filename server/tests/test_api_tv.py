@@ -244,3 +244,43 @@ def test_tune_plays_the_normalized_file_when_there_is_one(
     assert urls
     paths = {urlparse(u).path for u in urls}
     assert paths == {"/media/tv/the-simpsons/s01/the-simpsons-s01e01.mp4"}
+
+
+def test_short_media_stays_off_the_air_unless_allowed(
+    make_catalog: MakeCatalog, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M1 review: 2-minute samples aired as 22-minute episodes. Normalized files shorter than
+    half the expected runtime are skipped; RC_ALLOW_SHORT_MEDIA=1 lets a trial or demo air
+    them anyway, each at its own measured length."""
+    media = tmp_path / "media"
+    media.mkdir()
+    db_path = tmp_path / "rc.db"
+    seed_db(db_path, media)
+    db = connect(db_path)
+    db.execute(
+        "UPDATE episodes SET file_path = '/volume3/tv/The Simpsons/sample.mkv',"
+        " media_path = 'tv/the-simpsons/sample.mp4', media_seconds = 120"
+        " WHERE show_id = 'the-simpsons'"
+    )
+    db.close()
+
+    def simpsons(settings: Settings) -> set[float]:
+        """The lengths of the Simpsons slots in a day of the KTVU guide."""
+        app = TestClient(create_app(settings, clock=lambda: REAL_NOW))
+        body = app.get("/guide", params={"year": 1998, "date": "10-31"}).json()
+        ktvu = next(r for r in body["channels"] if r["channel"]["id"] == "ktvu")
+        return {
+            (datetime.fromisoformat(s["end"]) - datetime.fromisoformat(s["start"])).total_seconds()
+            for s in ktvu["slots"] if s["title"] == "The Simpsons"
+        }  # fmt: skip
+
+    monkeypatch.setenv("RC_CATALOG_DIR", str(make_catalog()))
+    monkeypatch.setenv("RC_DB", str(db_path))
+    monkeypatch.setenv("RC_MEDIA_DIR", str(media))
+    monkeypatch.setenv("RC_MEDIA_SECRET", "k")
+    monkeypatch.delenv("RC_ALLOW_SHORT_MEDIA", raising=False)
+    assert Settings.from_env().allow_short_media is False
+    assert simpsons(Settings.from_env()) == set()
+    monkeypatch.setenv("RC_ALLOW_SHORT_MEDIA", "1")
+    assert Settings.from_env().allow_short_media is True
+    assert simpsons(Settings.from_env()) == {120}

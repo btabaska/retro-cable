@@ -97,3 +97,52 @@ def test_slots_last_the_measured_length_of_the_file(
     assert slots
     for s in slots:
         assert s.path is not None and s.seconds == measured[s.path] != 1320
+
+
+def test_a_sample_or_truncated_file_is_never_scheduled_as_an_episode(
+    db: sqlite3.Connection,
+) -> None:
+    """M1 review: a 2-minute sample of a 22-minute episode aired as the episode. A program whose
+    playable file is shorter than half its expected runtime (the catalog runtime, or the
+    source's own measured length) stays off the schedule."""
+    add_episode(db, 1, "/src/S01E01.mkv", media_path="tv/1.mp4", seconds=120)  # a sample
+    add_episode(db, 2, "/src/S01E02.mkv", media_path="tv/2.mp4", seconds=1381)
+    add_episode(db, 3, "/src/S01E03.mkv", media_path="tv/3.mp4", seconds=660)  # exactly half
+    db.execute(
+        "INSERT INTO movies (id, title, year, runtime_seconds, file_path, media_path, media_seconds)"
+        " VALUES ('halloweentown', 'Halloweentown', 1998, 5040, '/m/h.mkv', 'movies/h.mp4', 300)"
+    )
+    lib = load_library(db)
+    assert [p.episode for p in lib.episodes["the-simpsons"]] == [2, 3]
+    assert "halloweentown" not in lib.movies
+
+
+def test_an_encode_cut_short_of_its_source_is_never_scheduled(db: sqlite3.Connection) -> None:
+    # No catalog runtime to compare with, but the source measured 1380 s and the encode 120 s.
+    db.execute(
+        "INSERT INTO episodes (show_id, season, episode, title, file_path, source_seconds,"
+        " media_path, media_seconds) VALUES ('the-simpsons', 1, 1, '', '/s.mkv', 1380,"
+        " 'tv/1.mp4', 120)"
+    )
+    assert "the-simpsons" not in load_library(db).episodes
+
+
+def test_short_media_can_be_allowed_explicitly(db: sqlite3.Connection) -> None:
+    # Trials (`normalize --max-seconds`) and demos may opt in: RC_ALLOW_SHORT_MEDIA=1.
+    add_episode(db, 1, "/src/S01E01.mkv", media_path="tv/1.mp4", seconds=120)
+    eps = load_library(db, allow_short=True).episodes["the-simpsons"]
+    assert [(p.path, p.seconds) for p in eps] == [("tv/1.mp4", 120)]
+
+
+def test_a_file_under_the_media_root_plays_at_its_measured_length(
+    db: sqlite3.Connection,
+) -> None:
+    """Scheduling uses the real length: the normalized file's when there is one, else the
+    source's ffprobe length from `ingest scan`, and only else the catalog runtime."""
+    add_episode(db, 1, "demo/ep1.mp4")  # runtime 1320, never measured
+    db.execute("UPDATE episodes SET source_seconds = 1402 WHERE episode = 1")
+    add_episode(db, 2, "demo/ep2.mp4")
+    add_episode(db, 3, "/src/S01E03.mkv", media_path="tv/3.mp4", seconds=1377)
+    db.execute("UPDATE episodes SET source_seconds = 1379 WHERE episode = 3")
+    eps = load_library(db).episodes["the-simpsons"]
+    assert [(p.episode, p.seconds) for p in eps] == [(1, 1402), (2, 1320), (3, 1377)]

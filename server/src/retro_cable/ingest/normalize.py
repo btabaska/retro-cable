@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from retro_cable.db import transaction
+from retro_cable.scheduler.library import is_short
 
 Encoder = Literal["x264", "nvenc"]
 ENCODERS: dict[str, Encoder] = {
@@ -93,6 +94,15 @@ def probe(path: Path, ffprobe: str = "ffprobe") -> Probe:
         text=True,
     ).stdout
     return parse_probe(json.loads(out))
+
+
+def source_seconds(path: Path) -> float | None:
+    """A file's length from ffprobe, or None when ffprobe can't read it (`ingest scan`)."""
+    try:
+        seconds = probe(path).duration
+    except (subprocess.CalledProcessError, OSError, ValueError, KeyError):
+        return None
+    return seconds if seconds > 0 else None
 
 
 def _even(x: float) -> int:
@@ -252,6 +262,7 @@ class Item:
     media_path: str | None
     source_size: int | None
     source_mtime_ns: int | None
+    runtime_seconds: int | None = None  # the catalog runtime (Plex, TMDB); None for bumpers
 
 
 def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[Item]:
@@ -261,10 +272,11 @@ def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[I
         Item("episodes", r["id"], f"{r['show_id']} S{r['season']:02d}E{r['episode']:02d}",
              r["file_path"],
              target_path("episodes", r["show_id"], r["season"], r["episode"], r["file_path"]),
-             r["media_path"], r["media_source_size"], r["media_source_mtime_ns"])
+             r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
+             r["runtime_seconds"])
         for r in db.execute(
             "SELECT id, show_id, season, episode, file_path, media_path, media_source_size,"
-            " media_source_mtime_ns FROM episodes WHERE file_path IS NOT NULL"
+            " media_source_mtime_ns, runtime_seconds FROM episodes WHERE file_path IS NOT NULL"
             " ORDER BY show_id, season, episode"
         )
         if shows is None or r["show_id"] in shows
@@ -272,10 +284,11 @@ def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[I
     items += [
         Item("movies", r["id"], r["id"], r["file_path"],
              target_path("movies", r["id"], None, None, r["file_path"]),
-             r["media_path"], r["media_source_size"], r["media_source_mtime_ns"])
+             r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
+             r["runtime_seconds"])
         for r in db.execute(
-            "SELECT id, file_path, media_path, media_source_size, media_source_mtime_ns"
-            " FROM movies WHERE file_path IS NOT NULL ORDER BY id"
+            "SELECT id, file_path, media_path, media_source_size, media_source_mtime_ns,"
+            " runtime_seconds FROM movies WHERE file_path IS NOT NULL ORDER BY id"
         )
     ]  # fmt: skip
     items += [
@@ -322,16 +335,34 @@ class NormalizeStats:
     skipped: int = 0
     missing: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
+    # Encoded, but shorter than half the expected runtime (a sample source, a --max-seconds
+    # trial, a truncated encode): `label (N s of M s)`. They are recorded, and the scheduler
+    # leaves them off the air unless RC_ALLOW_SHORT_MEDIA is set.
+    short: list[str] = field(default_factory=list)
     commands: list[list[str]] = field(default_factory=list)  # dry run only
 
 
-def _record(db: sqlite3.Connection, item: Item, seconds: int, st: os.stat_result) -> None:
+def _record(
+    db: sqlite3.Connection, item: Item, seconds: int, source: int | None, st: os.stat_result
+) -> None:
+    measured = ", source_seconds = ?" if item.table != "bumpers" else ""
+    values: tuple[object, ...] = (item.target, seconds, st.st_size, st.st_mtime_ns)
+    if measured:
+        values += (source,)
     with transaction(db):
         db.execute(
             f"UPDATE {item.table} SET media_path = ?, media_seconds = ?, media_source_size = ?,"
-            " media_source_mtime_ns = ? WHERE id = ?",
-            (item.target, seconds, st.st_size, st.st_mtime_ns, item.rowid),
+            f" media_source_mtime_ns = ?{measured} WHERE id = ?",
+            (*values, item.rowid),
         )
+
+
+def expected_seconds(item: Item, source: int | None) -> int:
+    """What the whole program should last: its catalog runtime or its source's measured
+    length, whichever is longer (bumpers have no expectation)."""
+    if item.table == "bumpers":
+        return 0
+    return max(item.runtime_seconds or 0, source or 0)
 
 
 def normalize(
@@ -374,6 +405,7 @@ def normalize(
         tmp = dst.with_name(dst.name + ".partial")
         try:
             info = probe(src)
+            source = math.floor(info.duration) if info.duration > 0 else None
             bars = crop(src, info, max_seconds)
             cmd = build_command(src, tmp, info, encoder, max_seconds, crop=bars)
             if dry_run:
@@ -391,6 +423,9 @@ def normalize(
             tmp.unlink(missing_ok=True)
             stats.failed.append(item.label)
             continue
-        _record(db, item, seconds, st)
+        _record(db, item, seconds, source, st)
         stats.encoded += 1
+        expected = expected_seconds(item, source)
+        if is_short(seconds, expected):
+            stats.short.append(f"{item.label} ({seconds} s of {expected} s)")
     return stats

@@ -11,11 +11,13 @@ variants found on the NAS: `Show.S01E02.Title`, `1x02`, `102 - Title` and `02. T
 """
 
 import json
+import math
 import os
 import re
 import sqlite3
 import unicodedata
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +43,26 @@ _JUNK = re.compile(
     re.I,
 )
 _YEAR = re.compile(r"\((19\d{2}|20\d{2})\)")
+
+# Measures a source file: its length in seconds from ffprobe, or None when it can't be read.
+# The CLI passes normalize.source_seconds; tests pass a fake, or nothing to skip measuring.
+SourceProbe = Callable[[Path], float | None]
+
+
+def _measure(
+    probe: SourceProbe | None,
+    path: Path,
+    size: int,
+    known: tuple[str | None, int | None, int | None] | None,
+) -> int | None:
+    """A source's measured length, rounded down: probed when the file is new, changed or not
+    measured yet, else the length recorded for it last time."""
+    if known is not None and known[0] == str(path) and known[1] == size and known[2]:
+        return known[2]
+    if probe is None:
+        return None
+    seconds = probe(path)
+    return math.floor(seconds) if seconds and seconds > 0 else None
 
 
 def _season_of(folder: str) -> int | None:
@@ -241,7 +263,19 @@ def _store(
     year: int | None,
     best: dict[tuple[int, int], _Found],
     now: datetime | None,
+    probe: SourceProbe | None = None,
 ) -> None:
+    known = {
+        (r["season"], r["episode"]): (r["file_path"], r["file_size"], r["source_seconds"])
+        for r in db.execute(
+            "SELECT season, episode, file_path, file_size, source_seconds FROM episodes"
+            " WHERE show_id = ?",
+            (show,),
+        )
+    }
+    measured = {
+        key: _measure(probe, pick.path, pick.size, known.get(key)) for key, pick in best.items()
+    }
     with transaction(db):
         db.execute(
             "INSERT INTO shows (id, title, year, updated_at) VALUES (?, ?, ?, ?)"
@@ -250,14 +284,17 @@ def _store(
         )
         for (season, episode), pick in sorted(best.items()):
             db.execute(
-                """INSERT INTO episodes (show_id, season, episode, title, file_path, file_size)
-                   VALUES (?, ?, ?, ?, ?, ?)
+                """INSERT INTO episodes (show_id, season, episode, title, file_path, file_size,
+                     source_seconds)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT (show_id, season, episode) DO UPDATE SET
                      title = CASE WHEN episodes.title = '' THEN excluded.title
                              ELSE episodes.title END,
-                     file_path = excluded.file_path, file_size = excluded.file_size""",
-                (show, season, episode, pick.title, str(pick.path), pick.size),
-            )
+                     file_path = excluded.file_path, file_size = excluded.file_size,
+                     source_seconds = excluded.source_seconds""",
+                (show, season, episode, pick.title, str(pick.path), pick.size,
+                 measured[(season, episode)]),
+            )  # fmt: skip
 
 
 def _previous_id(db: sqlite3.Connection, folders: list[Path], skip: set[str]) -> str | None:
@@ -295,6 +332,7 @@ def scan_tv(
     now: datetime | None = None,
     *,
     carried_only: bool = False,
+    probe: SourceProbe | None = None,
 ) -> ScanStats:
     """Attach every show's episode files under `root`. Air dates are left alone.
 
@@ -302,6 +340,9 @@ def scan_tv(
     uncarried shows (in the library, on no channel) so the admin can build channels from them,
     unless `carried_only` is set or overrides.yaml excludes the title. Their ids are slugs of
     the folder title and stay the same across re-scans.
+
+    With `probe`, each new or changed file's length is measured (source_seconds), so the
+    scheduler never has to fall back on a runtime class default.
     """
     stats = ScanStats()
     index, titles = _Index(catalog, "show"), _titles(catalog)
@@ -332,7 +373,7 @@ def scan_tv(
             continue
         best = _best(found, stats)
         year = show_year(folder.name, [f.name for f in files])
-        _store(db, slug, titles.get(slug, folder.name), year, best, now)
+        _store(db, slug, titles.get(slug, folder.name), year, best, now, probe)
         seen |= {(slug, str(f.path)) for f in best.values()}
         stats.shows += 1
         stats.episodes += len(best)
@@ -354,7 +395,7 @@ def scan_tv(
             ids[i], title = _new_id(group.title, group.year, taken)
             taken.add(ids[i])
         best = _best(group.found, stats)
-        _store(db, ids[i], title, year, best, now)
+        _store(db, ids[i], title, year, best, now, probe)
         seen |= {(ids[i], str(f.path)) for f in best.values()}
         stats.uncarried += [f.name for f in group.folders]
         stats.uncarried_episodes += len(best)
@@ -383,7 +424,12 @@ class MovieScanStats:
 
 
 def scan_movies(
-    db: sqlite3.Connection, root: Path, catalog: Catalog, now: datetime | None = None
+    db: sqlite3.Connection,
+    root: Path,
+    catalog: Catalog,
+    now: datetime | None = None,
+    *,
+    probe: SourceProbe | None = None,
 ) -> MovieScanStats:
     """Attach carried movies from `<root>/<Title (Year)>/`: the biggest video file that isn't
     a trailer or extra. The premiere date is left alone (the year bounds it, see load_library)."""
@@ -399,13 +445,20 @@ def scan_movies(
             continue
         best = max(files, key=lambda f: (f.stat().st_size, str(f)))
         year = show_year(folder.name, [])
+        size = best.stat().st_size
+        row = db.execute(
+            "SELECT file_path, file_size, source_seconds FROM movies WHERE id = ?", (slug,)
+        ).fetchone()
+        known = (row["file_path"], row["file_size"], row["source_seconds"]) if row else None
         db.execute(
-            """INSERT INTO movies (id, title, year, file_path, file_size, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO movies (id, title, year, file_path, file_size, source_seconds,
+                 updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT (id) DO UPDATE SET year = COALESCE(movies.year, excluded.year),
-                 file_path = excluded.file_path, file_size = excluded.file_size""",
-            (slug, titles.get(slug, folder.name), year, str(best), best.stat().st_size,
-             now.isoformat() if now else None),
+                 file_path = excluded.file_path, file_size = excluded.file_size,
+                 source_seconds = excluded.source_seconds""",
+            (slug, titles.get(slug, folder.name), year, str(best), size,
+             _measure(probe, best, size, known), now.isoformat() if now else None),
         )  # fmt: skip
         stats.movies += 1
     _record_run(db, "scan-movies", now, asdict(stats))
