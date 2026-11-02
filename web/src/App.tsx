@@ -35,7 +35,7 @@ export function App({ api = liveApi }: AppProps) {
   const [lastChannelId, setLastChannelId] = useState<string | null>(null);
   const [bannerUntil, setBannerUntil] = useState(0);
   const [retry, setRetry] = useState(0);
-  useNow(250); // re-render for the clock, banner progress and guide
+  const wallNow = useNow(250); // re-render for the clock, banner progress and guide; real time
 
   useEffect(() => {
     let live = true;
@@ -166,6 +166,7 @@ export function App({ api = liveApi }: AppProps) {
         slot={tuner.slot}
         next={tuner.upcoming[0] ?? null}
         now={now}
+        wallNow={wallNow}
         year={year}
         timeZone={timeZone}
         bannerUntil={bannerUntil}
