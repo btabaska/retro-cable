@@ -78,3 +78,22 @@ def test_scanned_episodes_without_dates_air_only_after_a_safe_synthesized_date(
     day = date(1990, 1, 5)
     aired = {s.episode for s in sched.day("ktvu", day) if s.show == "the-simpsons"}
     assert aired == {1}
+
+
+def test_slots_last_the_measured_length_of_the_file(
+    db: sqlite3.Connection, catalog: Catalog
+) -> None:
+    """Programs always air in full: the slot is the normalized file's measured length
+    (media_seconds), not the catalog runtime, even when it lines up with no half hour."""
+    for ep in range(1, 23):
+        add_episode(
+            db, ep, f"tv/{ep}.mp4", media_path=f"tv/{ep}.mp4", seconds=1381 + ep,
+            air_date="1989-12-17",
+        )  # fmt: skip
+    lib = load_library(db)
+    measured = {p.path: p.seconds for p in lib.episodes["the-simpsons"]}
+    sched = Scheduler(catalog, lib, seed=1)
+    slots = [s for s in sched.day("ktvu", date(1995, 3, 3)) if s.show == "the-simpsons"]
+    assert slots
+    for s in slots:
+        assert s.path is not None and s.seconds == measured[s.path] != 1320
