@@ -58,11 +58,24 @@ The schedule is a pure function of (channel, simulated date, catalog version, se
 
 The `/tune` endpoint is specified in `api.md` (Tuning in).
 
+## Invariants (never break)
+
+These extend the list in `CLAUDE.md` and are each covered by a Hypothesis property in `server/tests/scheduler/test_properties.py`.
+
+- A schedule is a pure function of (channel, simulated date, catalog version, seed). The scheduler never reads the wall clock.
+- No episode airs before its US debut or synthetic premiere date.
+- No channel appears before its launch, except channels marked `library: true`.
+- Programs run back to back: no gaps, no overlaps, correct across midnight and DST.
+- **Programs always air in full** (Brandon, M1 review, Nov 2 2026). Every episode or movie slot lasts exactly the program's full runtime: `media_seconds` when the file has been normalized, otherwise the catalog runtime. Nothing truncates a program: not a day-part change, not a template block ending, not a holiday window opening or closing, not the 5 a.m. end of the broadcast day. Schedule alignment flexes; the program never does. A TV episode plays through even when it doesn't land on a half hour.
+- **Only filler and bumpers absorb leftover time.** "Paid Programming" and "Off Air" filler and the between-program bumper are the only slots whose length is set by the clock rather than by a file. A program that doesn't fit before 5 a.m. is not picked; the remainder becomes filler.
+- **Day parts and blocks are soft.** A part or block starts when the program already running ends. A program that starts inside a block runs to completion even past the block's end (X-Men started in Fox Kids at 7:40 finishes at 8:10; primetime starts then).
+- Admin edits and the AI manager change inputs (catalog, weights), never generated schedules.
+
 ## Testing
 
 | Layer | Tests | Runs |
 | --- | --- | --- |
-| Scheduler invariants | Hypothesis property tests: no episode before its debut; no hidden channel; no gaps or overlaps; deterministic; midnight and DST safe; holiday windows pull only tagged items | Every PR |
+| Scheduler invariants | Hypothesis property tests: no episode before its debut; no hidden channel; no gaps or overlaps; deterministic; midnight and DST safe; holiday windows pull only tagged items; every program slot equals the program's full runtime, including with odd runtimes that line up with nothing | Every PR |
 | Scheduler golden days | Snapshots for Oct 31 1998, Dec 24 2003, Sep 2 2001 (Adult Swim launch), Jan 1 2002 (NBC switch) | Every PR |
 
 ## Implemented (Phase 3)
