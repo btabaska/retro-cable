@@ -71,7 +71,7 @@ test-web: ## Vitest unit tests
 	cd web && npm test
 
 e2e: ## Playwright against a local API and production web build
-	cd web && npx playwright test --project=chromium
+	cd web && npx playwright test --project=chromium --project=admin-chromium
 
 catalog-check: ## Validate catalog/*.yaml (schemas and cross-file checks)
 	cd server && uv run python -m retro_cable.catalog ../catalog

@@ -3,7 +3,7 @@ import { type APIRequestContext, expect, type Page, test } from "@playwright/tes
 // Runs against the demo database, which has a few shows no channel carries (Recess, Gravity
 // Falls, Over the Garden Wall). Each browser project uses its own channel number and name.
 // Undo is global (it reverts the last admin write, whoever made it), so specs must not run in
-// parallel against one API: playwright.config.ts uses one worker in CI.
+// parallel against one API: playwright.config.ts runs its webkit project after its chromium one.
 const shot = (page: Page, name: string) => page.screenshot({ path: `test-results/screens/${name}.png` });
 
 interface Row {
@@ -25,7 +25,7 @@ test.setTimeout(120_000);
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
 test("create a channel on the phone, see it in the guide, then undo", async ({ browser, page, request }, info) => {
-  const number = info.project.name === "webkit" ? "51" : "50";
+  const number = info.project.name.endsWith("webkit") ? "51" : "50";
   const name = `Brandon's Toons ${info.project.name}`;
   await removeLeftovers(request, name);
 

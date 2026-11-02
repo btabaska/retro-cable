@@ -37,6 +37,7 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
   const [warnings, setWarnings] = useState<CheckIssue[]>([]);
   const [checking, setChecking] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [open, setOpen] = useState<number | null>(null);
   const [sheet, setSheet] = useState<Sheets>("none");
   const summary = useRef<HTMLDivElement>(null);
@@ -44,20 +45,26 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
   const placeholder = useMemo(() => (list ? nextFreeNumber(list.channels) : 2), [list]);
 
   useEffect(() => {
+    if (!channelId) return;
     let live = true;
-    if (channelId) {
-      api.getChannel(channelId).then(
-        (c) => {
-          if (!live) return;
-          setLoaded(c.draft);
-          setDraft(c.draft);
-          setCustom(c.custom);
-        },
-        () => {
-          if (live) setFailed(true);
-        },
-      );
-    }
+    api.getChannel(channelId).then(
+      (c) => {
+        if (!live) return;
+        setLoaded(c.draft);
+        setDraft(c.draft);
+        setCustom(c.custom);
+      },
+      () => {
+        if (live) setFailed(true);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, channelId, attempt]);
+
+  useEffect(() => {
+    let live = true;
     api.searchLibrary("").then(
       (items) => {
         if (live) setTitles(Object.fromEntries(items.map((i) => [i.id, i.title])));
@@ -135,23 +142,66 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
     document.getElementById(id)?.focus();
   };
 
-  const title = channelId ? draft.name || "Channel" : "New channel";
+  // An existing channel is named from the list row until it loads, never a placeholder.
+  const listed = channelId ? list?.channels.find((c) => c.id === channelId) : undefined;
+  const title = channelId ? draft.name || loaded?.name || listed?.name || "" : "New channel";
+  const header = (
+    <header className="adm-header">
+      <button type="button" className="adm-back" onClick={back}>
+        ‹ Channels
+      </button>
+      <h1 className="adm-title">
+        {title || <span className="adm-skeleton adm-skeleton-title" aria-label="Loading channel name" />}
+      </h1>
+    </header>
+  );
+
+  if (loaded === null) {
+    return (
+      <div className="adm-screen">
+        {header}
+        <main className="adm-body">
+          {failed ? (
+            <div className="adm-card adm-error-card" role="alert">
+              <p>Couldn&apos;t load this channel.</p>
+              <button
+                type="button"
+                className="adm-btn adm-btn-outline"
+                onClick={() => {
+                  setFailed(false);
+                  setAttempt((n) => n + 1);
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <div aria-busy="true" aria-label="Loading channel" data-testid="editor-loading">
+              <div className="adm-card adm-fields">
+                {Array.from({ length: 4 }, (_, i) => (
+                  <div key={i} className="adm-field">
+                    <span className="adm-skeleton adm-skeleton-label" />
+                    <span className="adm-skeleton adm-skeleton-input" />
+                  </div>
+                ))}
+              </div>
+              <div className="adm-rows">
+                {Array.from({ length: 3 }, (_, i) => (
+                  <div key={i} className="adm-row adm-skeleton" />
+                ))}
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="adm-screen">
-      <header className="adm-header">
-        <button type="button" className="adm-back" onClick={back}>
-          ‹ Channels
-        </button>
-        <h1 className="adm-title">{title}</h1>
-      </header>
+      {header}
 
       <main className="adm-body adm-body-footer">
-        {failed && (
-          <div className="adm-card adm-error-card" role="alert">
-            Couldn&apos;t load this channel.
-          </div>
-        )}
         {errors.length > 0 && (
           <div className="adm-card adm-error-card" role="alert" tabIndex={-1} ref={summary} data-testid="check-errors">
             <h2 className="adm-h3">
@@ -185,11 +235,11 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
             ))}
           </div>
         )}
-        {readOnly && loaded && (
+        {readOnly && (
           <p className="adm-note">This channel comes from the catalog files, so it is read-only here.</p>
         )}
 
-        <fieldset className="adm-card adm-fields" disabled={readOnly || !loaded}>
+        <fieldset className="adm-card adm-fields" disabled={readOnly}>
           <legend className="adm-visually-hidden">Channel</legend>
           <div className="adm-field">
             <label className="adm-label" htmlFor="f-number">Number</label>
