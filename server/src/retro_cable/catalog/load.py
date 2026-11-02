@@ -18,9 +18,10 @@ from retro_cable.catalog.models import (
     Model,
     OverridesFile,
     SyntheticFile,
+    TemplatesFile,
 )
 
-OPTIONAL = {"carriage", "synthetic", "overrides"}
+OPTIONAL = {"carriage", "synthetic", "overrides", "templates"}
 
 
 class CatalogError(Exception):
@@ -51,6 +52,7 @@ class Catalog:
     carriage: CarriageFile
     synthetic: SyntheticFile
     overrides: OverridesFile
+    templates: TemplatesFile
     version: str  # first 12 hex chars of a sha256 over the input files
 
     def channel(self, channel_id: str) -> Channel:
@@ -96,5 +98,6 @@ def load_catalog(root: Path) -> Catalog:
         carriage=files["carriage"],  # type: ignore[arg-type]
         synthetic=files["synthetic"],  # type: ignore[arg-type]
         overrides=files["overrides"],  # type: ignore[arg-type]
+        templates=files["templates"],  # type: ignore[arg-type]
         version=digest.hexdigest()[:12],
     )

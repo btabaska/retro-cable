@@ -65,6 +65,14 @@
           "title": "Blocks",
           "type": "array"
         },
+        "bumper_seconds": {
+          "default": 15,
+          "description": "Bumper or promo inserted between programs; 0 for none",
+          "maximum": 300,
+          "minimum": 0,
+          "title": "Bumper Seconds",
+          "type": "integer"
+        },
         "id": {
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
           "title": "Id",

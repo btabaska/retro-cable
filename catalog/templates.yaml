@@ -1,0 +1,147 @@
+# yaml-language-server: $schema=schema/templates.schema.json
+# Day-part templates per channel, with era versions (Claude drafted; Brandon edits).
+# A template covers a channel from `from` until `until` (open when omitted); a day picks the
+# covering template. Parts name a weekday and the local HH:MM they begin; a program already
+# running finishes before the next part starts, so parts anchor the day. Every weekday that
+# appears needs a 00:00 part. A part's pool picks among shows or carriage tags by weight;
+# `block` restricts to shows carried in that channel block, and an empty pool with a block
+# means "everything the block carries". primetime parts air NEW episodes the day they debut.
+# A channel — or a single weekday — with no covering template gets the default: one all-day
+# part playing everything the channel carries (block shows excluded) at carriage weights.
+# Only ktvu, cartoon-network and adult-swim are drafted so far; the rest run on the default.
+
+templates:
+  # KTVU 2 (Fox): Fox Kids after school and Saturday morning, network primetime at 8.
+  - id: ktvu-foxkids-era
+    channel: ktvu
+    from: 1990-01-01
+    until: 2002-08-31
+    parts:
+      - { weekday: monday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: monday, start: "16:00", block: fox-kids }
+      - { weekday: monday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: the-x-files, weight: 2 }, { show: beverly-hills-90210, weight: 2 }, { show: king-of-the-hill }, { show: "24" }] }
+      - { weekday: monday, start: "23:00", pool: [{ show: madtv, weight: 2 }, { show: in-living-color }, { show: arrested-development }] }
+      - { weekday: tuesday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: tuesday, start: "16:00", block: fox-kids }
+      - { weekday: tuesday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: the-x-files, weight: 2 }, { show: beverly-hills-90210, weight: 2 }, { show: king-of-the-hill }, { show: "24" }] }
+      - { weekday: tuesday, start: "23:00", pool: [{ show: madtv, weight: 2 }, { show: in-living-color }, { show: arrested-development }] }
+      - { weekday: wednesday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: wednesday, start: "16:00", block: fox-kids }
+      - { weekday: wednesday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: the-x-files, weight: 2 }, { show: beverly-hills-90210, weight: 2 }, { show: king-of-the-hill }, { show: "24" }] }
+      - { weekday: wednesday, start: "23:00", pool: [{ show: madtv, weight: 2 }, { show: in-living-color }, { show: arrested-development }] }
+      - { weekday: thursday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: thursday, start: "16:00", block: fox-kids }
+      - { weekday: thursday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: the-x-files, weight: 2 }, { show: beverly-hills-90210, weight: 2 }, { show: king-of-the-hill }, { show: "24" }] }
+      - { weekday: thursday, start: "23:00", pool: [{ show: madtv, weight: 2 }, { show: in-living-color }, { show: arrested-development }] }
+      - { weekday: friday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: friday, start: "16:00", block: fox-kids }
+      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: the-x-files, weight: 2 }, { show: beverly-hills-90210, weight: 2 }, { show: king-of-the-hill }, { show: "24" }] }
+      - { weekday: friday, start: "23:00", pool: [{ show: madtv, weight: 2 }, { show: in-living-color }, { show: arrested-development }] }
+      - { weekday: saturday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: saturday, start: "08:00", block: fox-kids }
+      - { weekday: saturday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: that-70s-show, weight: 2 }, { show: malcolm-in-the-middle }] }
+      - { weekday: sunday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: the-x-files, weight: 2 }, { show: house, weight: 2 }] }
+  - id: ktvu-post-foxkids
+    channel: ktvu
+    from: 2002-09-01
+    parts:
+      - { weekday: monday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: monday, start: "16:00", pool: [{ show: house, weight: 2 }, { show: bones }, { show: american-dad }] }
+      - { weekday: monday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: "24", weight: 2 }, { show: house, weight: 2 }, { show: american-idol }] }
+      - { weekday: monday, start: "23:00", pool: [{ show: arrested-development, weight: 2 }, { show: the-o-c }] }
+      - { weekday: tuesday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: tuesday, start: "16:00", pool: [{ show: house, weight: 2 }, { show: bones }, { show: american-dad }] }
+      - { weekday: tuesday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: "24", weight: 2 }, { show: house, weight: 2 }, { show: american-idol }] }
+      - { weekday: tuesday, start: "23:00", pool: [{ show: arrested-development, weight: 2 }, { show: the-o-c }] }
+      - { weekday: wednesday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: wednesday, start: "16:00", pool: [{ show: house, weight: 2 }, { show: bones }, { show: american-dad }] }
+      - { weekday: wednesday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: "24", weight: 2 }, { show: house, weight: 2 }, { show: american-idol }] }
+      - { weekday: wednesday, start: "23:00", pool: [{ show: arrested-development, weight: 2 }, { show: the-o-c }] }
+      - { weekday: thursday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: thursday, start: "16:00", pool: [{ show: house, weight: 2 }, { show: bones }, { show: american-dad }] }
+      - { weekday: thursday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: "24", weight: 2 }, { show: house, weight: 2 }, { show: american-idol }] }
+      - { weekday: thursday, start: "23:00", pool: [{ show: arrested-development, weight: 2 }, { show: the-o-c }] }
+      - { weekday: friday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: friday, start: "16:00", pool: [{ show: house, weight: 2 }, { show: bones }, { show: american-dad }] }
+      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: "24", weight: 2 }, { show: house, weight: 2 }, { show: american-idol }] }
+      - { weekday: friday, start: "23:00", pool: [{ show: arrested-development, weight: 2 }, { show: the-o-c }] }
+      - { weekday: saturday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: saturday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: that-70s-show, weight: 2 }, { show: malcolm-in-the-middle }] }
+      - { weekday: sunday, start: "00:00", pool: [{ show: cops, weight: 2 }, { show: americas-most-wanted }] }
+      - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 3 }, { show: the-x-files, weight: 2 }, { show: house, weight: 2 }] }
+
+  # Cartoon Network: the classics era leans on the library; originals take over from 1997.
+  - id: cn-classics-era
+    channel: cartoon-network
+    from: 1992-10-01
+    until: 1996-12-31
+    parts:
+      - { weekday: monday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: monday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
+      - { weekday: monday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: tuesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: tuesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
+      - { weekday: tuesday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: wednesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: wednesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
+      - { weekday: wednesday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: thursday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: thursday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
+      - { weekday: thursday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: friday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: friday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: what-a-cartoon }, { show: space-ghost-coast-to-coast }] }
+      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: space-ghost-coast-to-coast, weight: 2 }, { show: dexters-laboratory }] }
+      - { weekday: saturday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: saturday, start: "08:00", pool: [{ show: looney-tunes, weight: 3 }, { show: tom-and-jerry, weight: 2 }, { show: scooby-doo-where-are-you, weight: 2 }] }
+      - { weekday: saturday, start: "20:00", primetime: true, pool: [{ show: dexters-laboratory, weight: 2 }, { show: space-ghost-coast-to-coast }] }
+      - { weekday: sunday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: scooby-doo-where-are-you, weight: 2 }, { show: dexters-laboratory }] }
+  - id: cn-originals-era
+    channel: cartoon-network
+    from: 1997-01-01
+    parts:
+      - { weekday: monday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: monday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
+      - { weekday: monday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: monday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: tuesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: tuesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
+      - { weekday: tuesday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: tuesday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: wednesday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: wednesday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
+      - { weekday: wednesday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: wednesday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: thursday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: thursday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
+      - { weekday: thursday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: thursday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: friday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: friday, start: "16:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: johnny-bravo }, { show: cow-and-chicken }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy }] }
+      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: the-powerpuff-girls, weight: 2 }, { show: courage-the-cowardly-dog }, { show: samurai-jack }, { show: justice-league }] }
+      - { weekday: friday, start: "22:30", pool: [{ show: space-ghost-coast-to-coast }] }
+      - { weekday: saturday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: saturday, start: "08:00", pool: [{ show: dexters-laboratory, weight: 2 }, { show: the-powerpuff-girls, weight: 2 }, { show: ed-edd-n-eddy, weight: 2 }, { show: looney-tunes }] }
+      - { weekday: saturday, start: "20:00", primetime: true, pool: [{ show: teen-titans, weight: 2 }, { show: justice-league, weight: 2 }, { show: the-grim-adventures-of-billy-and-mandy }] }
+      - { weekday: sunday, start: "00:00", pool: [{ show: looney-tunes, weight: 2 }, { show: tom-and-jerry }, { show: scooby-doo-where-are-you }] }
+      - { weekday: sunday, start: "20:00", primetime: true, pool: [{ show: scooby-doo-where-are-you, weight: 2 }, { show: ed-edd-n-eddy }, { show: courage-the-cowardly-dog }] }
+
+  # Adult Swim: late night only from launch; other weekdays fall back to the channel default.
+  - id: adult-swim-launch
+    channel: adult-swim
+    from: 2001-09-02
+    until: 2005-12-31
+    parts:
+      - { weekday: monday, start: "00:00", pool: [{ show: aqua-teen-hunger-force, weight: 2 }, { show: sealab-2021 }, { show: the-brak-show }] }
+      - { weekday: monday, start: "21:00", primetime: true, pool: [{ show: aqua-teen-hunger-force, weight: 3 }, { show: harvey-birdman-attorney-at-law }] }
+      - { weekday: saturday, start: "00:00", pool: [{ show: cowboy-bebop }, { show: flcl }, { show: trigun }] }
+      - { weekday: saturday, start: "21:00", primetime: true, pool: [{ show: futurama, weight: 2 }, { show: family-guy, weight: 2 }, { show: the-venture-bros }] }
+  - id: adult-swim-2006
+    channel: adult-swim
+    from: 2006-01-01
+    parts:
+      - { weekday: monday, start: "00:00", pool: [{ show: aqua-teen-hunger-force, weight: 2 }, { show: robot-chicken }, { show: the-venture-bros }] }
+      - { weekday: monday, start: "21:00", primetime: true, pool: [{ show: family-guy, weight: 3 }, { show: futurama, weight: 2 }, { show: robot-chicken }] }
+      - { weekday: saturday, start: "00:00", pool: [{ show: fullmetal-alchemist }, { show: cowboy-bebop }, { show: inuyasha }] }
+      - { weekday: saturday, start: "21:00", primetime: true, pool: [{ show: family-guy, weight: 3 }, { show: futurama, weight: 2 }, { show: the-venture-bros }] }
