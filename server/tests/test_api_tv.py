@@ -172,7 +172,9 @@ def test_media_auth_checks_the_signature_caddy_forwards(client: TestClient) -> N
     assert client.get("/media-auth").status_code == 403  # no header at all
 
 
-def test_schedules_pick_up_writes_still_in_the_wal(make_catalog: MakeCatalog, tmp_path: Path) -> None:
+def test_schedules_pick_up_writes_still_in_the_wal(
+    make_catalog: MakeCatalog, tmp_path: Path
+) -> None:
     """A long ingest run keeps its connection open, so its commits sit in the -wal file and
     the main database file's mtime doesn't move until a checkpoint."""
     media = tmp_path / "media"
