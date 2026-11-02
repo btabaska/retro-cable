@@ -2,7 +2,8 @@
 set -euo pipefail
 # The rig's conversion loop, run inside the worker container (ops/rig/compose.yml).
 #   1. scan the NAS TV and movie trees (read-only) into the rig's own database (/data);
-#   2. normalize into the media root (the NAS .retro-cable folder), carried shows first,
+#   2. normalize into the media root (the NAS .retro-cable folder): only what a channel
+#      carries (YAML, /admin here, and the mini's /admin with RC_PRIORITY_URL), earliest first,
 #      NVENC while the GPU is idle and x264 otherwise, writing a JSON sidecar per encode
 #      and manifest.json for the mini (ingest/manifest.py);
 #   3. sleep, then look again for new files.
@@ -43,7 +44,7 @@ cycle() {
     log "scan failed; normalizing what is already known"
   fi
   log "normalize started (encoder $encoder)"
-  if ingest normalize --all --order priority --encoder "$encoder" --manifest \
+  if ingest normalize --order priority --encoder "$encoder" --manifest \
     >"$data/last-normalize.json"; then
     log "normalize done ($data/last-normalize.json)"
   else

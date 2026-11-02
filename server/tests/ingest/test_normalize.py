@@ -281,9 +281,18 @@ def test_plan_lists_every_item_with_a_source_file(db: sqlite3.Connection, librar
 
 
 def test_plan_can_keep_to_some_shows(db: sqlite3.Connection, library: Path) -> None:
-    # Uncarried shows from `scan` wait until a channel carries them; movies and bumpers stay.
-    assert [i.table for i in plan(db, shows={"fixture-friends"})] == ["episodes"] * 3 + ["bumpers"]
+    # Uncarried shows and movies wait until a channel carries them; bumpers always go.
+    db.execute(
+        "INSERT INTO movies (id, title, file_path) VALUES ('home-alone', 'Home Alone', '/m/ha.mkv')"
+    )
+    db.execute("INSERT INTO movies (id, title, file_path) VALUES ('heat', 'Heat', '/m/heat.mkv')")
+    carried = {"fixture-friends", "home-alone"}
+    assert [i.key for i in plan(db, shows=carried)] == ["fixture-friends"] * 3 + [
+        "home-alone",
+        "ktvu",
+    ]
     assert [i.table for i in plan(db, shows=set())] == ["bumpers"]
+    assert {i.key for i in plan(db) if i.table == "movies"} == {"heat", "home-alone"}
 
 
 @needs_ffmpeg

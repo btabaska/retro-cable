@@ -299,7 +299,7 @@ def recorded_whole(
 
 def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[Item]:
     """Every episode, movie and bumper with a source file, in a stable order. With `shows`,
-    only those shows' episodes (the CLI passes the shows some channel carries)."""
+    only those shows' episodes and those movies (the CLI passes what some channel carries)."""
     items = [
         Item("episodes", r["id"], f"{r['show_id']} S{r['season']:02d}E{r['episode']:02d}",
              r["file_path"],
@@ -323,6 +323,7 @@ def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[I
             " runtime_seconds, media_seconds, source_seconds FROM movies"
             " WHERE file_path IS NOT NULL ORDER BY id"
         )
+        if shows is None or r["id"] in shows
     ]  # fmt: skip
     items += [
         Item("bumpers", r["id"], f"{r['channel_id']} {Path(r['file_path']).name}",
