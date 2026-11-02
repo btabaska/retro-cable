@@ -9,13 +9,16 @@
 - [x] M1 rough edges: Cartoon Network evenings, Disney Movies rotation, focus return, errors, borders, chevrons, 360 px chips, narrow cells, holiday colour (#15)
 - [x] Rig worker (`ops/rig/`): GPU-aware encoder (NVENC only when the GPU is idle and ComfyUI's queue is empty, otherwise x264 at low priority), priority order, resumable, manifest (#14)
 - [x] Mini: read-only automount of `//192.168.10.4/tv/.retro-cable` at `/mnt/nas-retro-cable`; the `media-index` service records new encodes from `manifest.json` every 5 minutes, with no redeploy (#14)
-- [x] Deployed to the mini with `ops/deploy.sh` (build mode, `sha-7cf2c9d`), LAN only at https://tv.home.tabaska.us through the homelab Caddy; the web port stays on loopback
-- [ ] Conversion of the real library: running on the rig since Nov 2. Carried shows first, then uncarried ones; about 40–50 s per episode, so about 1.5 days for the 2,980 carried episodes and about 4–5 days for all 8,414. 50 were done at 20:33 UTC on Nov 2
+- [x] Deployed to the mini with `ops/deploy.sh` (build mode, `m2/integration`), LAN only at https://tv.home.tabaska.us through the homelab Caddy; the web port stays on loopback. Checked on Nov 2 from the Mac with Playwright (WebKit and Chromium): power on in 1995, KTVU plays a converted episode at the tune offset, the banner hides, and `/admin` loads; the next program on KTVU, Cartoon Network and Boomerang serves a 206 byte range
+- [ ] Conversion of the real library: running on the rig since Nov 2. Carried shows first (13 episodes per show per turn, earliest year first), then uncarried ones; about 50–80 s per episode, so roughly 2 days for the 2,980 carried episodes (about Nov 4–5) and about 6 days for all 8,414 (about Nov 8). 110 were done at 21:10 UTC on Nov 2; the `/admin` Media tab shows live progress and an ETA
+- Real episodes on the dial right now (Nov 2, 21:10 UTC): KTVU (The Simpsons 1990–2010; Batman: The Animated Series 1993–95; Animaniacs 1994–95), Cartoon Network and Boomerang (Scooby-Doo 1993–2010; on Cartoon Network also Johnny Bravo, Ed, Edd n Eddy, Courage from 1998–2000), Comedy Central (South Park 1998–2010), Toonami (Batman, 2000). Best years to try: 1995 and 1999–2001. Other channels show Off Air until their shows convert
 - [x] `/admin` Media tab backed by `GET /api/admin/media/progress`, read from the `progress.json` the rig worker keeps on the NAS (#14). Encodes count only when whole (video, audio, length within 2% of the source); `/health` and `media-index` now fail a deploy on an unwritable data dir; the web container rejects non-private clients itself (#14)
 - [ ] Plex import and TMDB fill: waiting on `PLEX_URL`, `PLEX_TOKEN` and a TMDB key in the mini's `ops/.env` (the code reads `TMDB_TOKEN`). Until then air dates are unknown, so the library comes from the disk scan
 - [ ] Brandon's check: open the TV from a LAN device; real episodes play on their channels, and at least three channels tune and play past a program boundary
 
 Waiting on Brandon: the show lineup (`catalog/carriage.yaml` is unchanged), the Plex/TMDB keys, and the M2 questions in #16 (library channels keep their shows; weekly cadence for undated episodes after a pretend premiere; label and colours; whether uncarried shows convert too; NVENC bitrate).
+
+Checks on #16 (`ae9ce4c`): server, web and local-test green; `make lint` and `make test` (server 397, tools 9, ops 44 + 2 skipped, web 79, e2e 8) pass in a clean worktree.
 
 ## Phase 10 (part) — Custom channels in /admin (in review, stacked on Phase 7)
 
