@@ -1,8 +1,9 @@
 import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
 
 // Runs against the demo database, which has a few shows no channel carries (Recess, Gravity
-// Falls, Over the Garden Wall). Each browser project uses its own channel number so they can
-// run side by side against one API.
+// Falls, Over the Garden Wall). Each browser project uses its own channel number and name.
+// Undo is global (it reverts the last admin write, whoever made it), so specs must not run in
+// parallel against one API: playwright.config.ts uses one worker in CI.
 const shot = (page: Page, name: string) => page.screenshot({ path: `test-results/screens/${name}.png` });
 
 interface Row {
@@ -81,7 +82,7 @@ test("create a channel on the phone, see it in the guide, then undo", async ({ b
   await expectSlow(tv.getByTestId("banner-title")).toHaveText(/Recess|Gravity Falls|Brandon's Toons/);
   await tv.keyboard.press("Enter");
   await expectSlow(tv.getByTestId("guide")).toBeVisible();
-  await expectSlow(tv.locator('[data-testid^="guide-row-custom-brandon-s-toons"]')).toBeVisible();
+  await expectSlow(tv.getByTestId(`guide-row-custom-brandon-s-toons-${info.project.name}`)).toBeVisible();
   await tv.screenshot({ path: `test-results/screens/admin-4-guide-${info.project.name}.png` });
   await tv.close();
 

@@ -9,6 +9,9 @@ export default defineConfig({
   testDir: "e2e",
   forbidOnly: ci,
   retries: ci ? 1 : 0,
+  // One API serves every spec, and the admin spec changes its inputs (undo reverts the last
+  // write, whoever made it), so CI runs specs one at a time.
+  workers: ci ? 1 : undefined,
   reporter: ci ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL,
