@@ -18,7 +18,7 @@ encoder=${RC_ENCODER:-auto}
 
 log() { printf 'worker: %s\n' "$*" >&2; }
 ingest() { nice -n 19 ionice -c 3 python -m retro_cable.ingest "$@"; }
-has_files() { [[ -d $1 ]] && [[ -n $(ls -A "$1" 2>/dev/null | head -n 1) ]]; }
+has_files() { [[ -d $1 ]] && [[ -n $(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) ]]; }
 
 cycle() {
   # The media root must be the NAS folder: it carries a .plexignore of '*'. Without it the
