@@ -35,7 +35,9 @@ jobs:
         run: make e2e-stack
       - name: Collect stack logs
         if: always()
-        run: docker compose -f ops/compose.yml -f ops/compose.test.yml logs --no-color > web/test-results/stack.log 2>&1 || true
+        run: |
+          mkdir -p web/test-results
+          docker compose -f ops/compose.yml -f ops/compose.test.yml logs --no-color > web/test-results/stack.log 2>&1 || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:

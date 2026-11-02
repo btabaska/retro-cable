@@ -1,4 +1,4 @@
-# Local test stack: builds from source and serves fixture media.
+# Local test stack: builds from source and plays the demo feeds (make demo-db).
 #   make fixtures
 #   docker compose -f ops/compose.yml -f ops/compose.test.yml up -d --build --wait
 services:
@@ -8,8 +8,21 @@ services:
       context: ../server
       args:
         RC_GIT_SHA: ${RC_GIT_SHA:-test}
+    environment:
+      RC_CATALOG_DIR: /catalog
+      RC_MEDIA_DIR: /media
+      RC_DB: /data/demo.db
+    # Seed the demo database from the mounted catalog and demo feeds, then serve.
+    command:
+      - sh
+      - -c
+      - >-
+        python -m retro_cable.demo --db /data/demo.db --catalog /catalog --media /media &&
+        exec uvicorn retro_cable.app:app --host 0.0.0.0 --port 8000 --no-access-log
     volumes:
       - api-data:/data  # replaces the /data bind mount
+      - ../catalog:/catalog:ro
+      - ../.fixtures:/media:ro
 
   web:
     image: retro-cable-web:test
