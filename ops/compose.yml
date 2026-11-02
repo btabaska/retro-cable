@@ -92,6 +92,14 @@ services:
     volumes:
       - ${RC_DATA_DIR:-./data}:/data
       - ${RC_MEDIA_DIR:-./media}:/media:ro,rslave
+    # Healthy once the database exists and this user can write it, so `up --wait` (and so
+    # deploy.sh, which rolls back) fails on a data dir the api user can't write.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys; p = '/data/retro-cable.db'; sys.exit(0 if os.access(p, os.W_OK) and os.access('/data', os.W_OK) else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
 networks:
   edge:

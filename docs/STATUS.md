@@ -11,7 +11,7 @@
 - [x] Mini: read-only automount of `//192.168.10.4/tv/.retro-cable` at `/mnt/nas-retro-cable`; the `media-index` service records new encodes from `manifest.json` every 5 minutes, with no redeploy (#14)
 - [x] Deployed to the mini with `ops/deploy.sh` (build mode, `sha-7cf2c9d`), LAN only at https://tv.home.tabaska.us through the homelab Caddy; the web port stays on loopback
 - [ ] Conversion of the real library: running on the rig since Nov 2. Carried shows first, then uncarried ones; about 40–50 s per episode, so about 1.5 days for the 2,980 carried episodes and about 4–5 days for all 8,414. 50 were done at 20:33 UTC on Nov 2
-- [ ] `/admin` Media tab: needs `GET /api/admin/media/progress` (eng-media); it says status isn't available until then
+- [x] `/admin` Media tab backed by `GET /api/admin/media/progress`, read from the `progress.json` the rig worker keeps on the NAS (#14). Encodes count only when whole (video, audio, length within 2% of the source); `/health` and `media-index` now fail a deploy on an unwritable data dir; the web container rejects non-private clients itself (#14)
 - [ ] Plex import and TMDB fill: waiting on `PLEX_URL`, `PLEX_TOKEN` and a TMDB key in the mini's `ops/.env` (the code reads `TMDB_TOKEN`). Until then air dates are unknown, so the library comes from the disk scan
 - [ ] Brandon's check: open the TV from a LAN device; real episodes play on their channels, and at least three channels tune and play past a program boundary
 

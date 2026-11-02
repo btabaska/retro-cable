@@ -352,3 +352,42 @@ def test_an_undated_show_warns_on_every_channel_until_it_has_a_pretend_premiere(
     # ...until a pretend premiere dates it on this channel.
     dated = toons(shows=[{"show": "ed-edd-n-eddy", "premiere": "1999-01-04"}])
     assert client.post("/admin/check", json={"draft": dated}).json()["warnings"] == []
+
+
+# --- conversion progress (M2 B13) ---------------------------------------------------------
+
+
+def test_media_progress_is_404_until_the_rig_writes_it(client: TestClient) -> None:
+    assert client.get("/admin/media/progress").status_code == 404
+
+
+def test_media_progress_reads_the_rigs_file(catalog_dir: Path, tmp_path: Path) -> None:
+    import json
+
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "progress.json").write_text(json.dumps({
+        "format": "retro-cable-progress/1",
+        "updated_at": (REAL_NOW - timedelta(minutes=2)).isoformat(),
+        "state": "running", "encoder": "cpu", "gpu_busy": True, "current": "dexters-laboratory",
+        "recent_seconds": [52.1, 49.0],
+        "groups": [
+            {"key": "dexters-laboratory", "title": "Dexter's Laboratory", "done": 38,
+             "total": 52, "failed": 2},
+            {"key": "_movies", "title": "Movies", "done": 0, "total": 4, "failed": 0},
+        ],
+    }))  # fmt: skip
+    settings = Settings(catalog_dir=catalog_dir, db_path=tmp_path / "rc.db", media_dir=media,
+                        media_secret="s")  # fmt: skip
+    client = TestClient(create_app(settings, clock=lambda: REAL_NOW))
+    response = client.get("/admin/media/progress")
+    assert response.status_code == 200
+    assert response.json() == {
+        "done": 38, "total": 56, "failed": 2, "encoder": "cpu", "gpu_busy": True,
+        "recent_seconds": [52.1, 49.0],
+        "shows": [
+            {"title": "Dexter's Laboratory", "done": 38, "total": 52, "failed": 2,
+             "state": "converting"},
+            {"title": "Movies", "done": 0, "total": 4, "failed": 0, "state": "queued"},
+        ],
+    }  # fmt: skip

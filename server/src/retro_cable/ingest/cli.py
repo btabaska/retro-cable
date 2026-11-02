@@ -39,6 +39,7 @@ from retro_cable.ingest.normalize import (
 )
 from retro_cable.ingest.plex import PlexClient, import_plex
 from retro_cable.ingest.plex import http_fetch as plex_http_fetch
+from retro_cable.ingest.progress import PROGRESS, ProgressFile
 from retro_cable.ingest.scan import scan_movies, scan_tv
 from retro_cable.ingest.tmdb import TmdbClient, fill_gaps
 from retro_cable.ingest.tmdb import http_fetch as tmdb_http_fetch
@@ -282,6 +283,11 @@ def _normalize(
             return prioritize(items, carried, years)
 
     hook = _rig_hooks(db, args, media) if args.manifest and not args.dry_run else None
+    # The rig also keeps progress.json for the mini's /admin Media tab (ingest/progress.py).
+    watch = None
+    if hook is not None:
+        titles = {r["id"]: r["title"] for r in db.execute("SELECT id, title FROM shows")}
+        watch = ProgressFile(media / PROGRESS, titles, auto=args.encoder == "auto")
     root = args.source_root or (
         Path(os.environ["RC_SOURCE_ROOT"]) if os.environ.get("RC_SOURCE_ROOT") else None
     )
@@ -300,6 +306,7 @@ def _normalize(
         shows=shows,
         order=order,
         on_encoded=hook,
+        watch=watch,
     )
     if hook is not None:
         manifest.write_manifest(db, media, datetime.now(UTC))

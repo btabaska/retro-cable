@@ -227,5 +227,10 @@ def test_normalize_rig_flags_pass_a_chooser_an_order_and_a_manifest_hook(
     assert callable(CAPTURED["encoder"])
     assert callable(CAPTURED["order"])
     assert callable(CAPTURED["on_encoded"])
+    from retro_cable.ingest.progress import ProgressFile
+
+    watch = CAPTURED["watch"]
+    assert isinstance(watch, ProgressFile), "the rig reports progress for the Media tab"
+    assert watch.path == tmp_path / "media/progress.json" and watch.auto
     assert CAPTURED["shows"] is None
     assert (tmp_path / "media/manifest.json").is_file(), "the final manifest is written"

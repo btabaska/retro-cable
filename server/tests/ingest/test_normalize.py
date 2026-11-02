@@ -11,6 +11,7 @@ import shutil
 import sqlite3
 import struct
 import subprocess
+from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
 
@@ -393,20 +394,7 @@ def fake_probe(path: Path) -> Probe:
     return Probe(duration=1320.9, video=Stream(0, 640, 480, Fraction(1)), audio_index=1)
 
 
-@pytest.fixture
-def fake_library(db: sqlite3.Connection, tmp_path: Path) -> Path:
-    src = tmp_path / "src"
-    db.execute("INSERT INTO shows (id, title) VALUES ('s', 'S')")
-    for ep in (1, 2, 3):
-        f = src / f"S01E0{ep}.mkv"
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_bytes(b"x" * ep)
-        db.execute(
-            "INSERT INTO episodes (show_id, season, episode, runtime_seconds, file_path)"
-            " VALUES ('s', 1, ?, 1300, ?)",
-            (ep, str(f)),
-        )
-    return src
+# `fake_library` (three 1300 s episodes of show 's') is in conftest.py.
 
 
 def test_rerun_skips_up_to_date_outputs_and_reencodes_changed_sources(
@@ -449,15 +437,97 @@ def test_the_job_records_the_source_length_and_flags_short_encodes(
         return Probe(duration=seconds, video=Stream(0, 640, 480, Fraction(1)), audio_index=1)
 
     stats = normalize(db, tmp_path / "media", run=Recorder(), probe=probe, crop=no_crop)
-    assert stats.encoded == 3
-    assert stats.short == ["s S01E02 (120 s of 1300 s)", "s S01E03 (100 s of 1320 s)"]
+    assert stats.encoded == 2
+    assert stats.short == ["s S01E02 (120 s of 1300 s)"]
+    # A truncated encode is no longer recorded at all (see the length check below).
+    assert stats.failed == ["s S01E03"]
     lengths = "SELECT episode, runtime_seconds, source_seconds, media_seconds FROM episodes"
     assert [tuple(r) for r in db.execute(lengths + " ORDER BY episode")] == [
         (1, 1300, 1320, 1320),
         (2, 1300, 120, 120),
-        (3, 1300, 1320, 100),
+        (3, 1300, None, None),
     ]
     assert [p.episode for p in load_library(db).episodes["s"]] == [1]
+
+
+# --- an encode counts as done only when it is whole (M2 B11) ------------------------------
+
+
+def _probe_with(partial: Probe) -> Callable[[Path], Probe]:
+    def probe(path: Path) -> Probe:
+        return partial if path.name.endswith(".partial") else fake_probe(path)
+
+    return probe
+
+
+VIDEO = Stream(0, 640, 480, Fraction(1))
+
+
+@pytest.mark.parametrize(
+    ("partial", "why"),
+    [
+        (Probe(duration=1280.0, video=VIDEO, audio_index=1), "3% short of the source"),
+        (Probe(duration=1360.0, video=VIDEO, audio_index=1), "3% longer than the source"),
+        (Probe(duration=1320.9, video=None, audio_index=1), "no video stream"),
+        (Probe(duration=1320.9, video=VIDEO, audio_index=None), "the source had audio"),
+        (Probe(duration=0.0, video=VIDEO, audio_index=1), "no length"),
+    ],
+)
+def test_an_encode_that_is_not_whole_is_a_failure_and_leaves_nothing(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path, partial: Probe, why: str
+) -> None:
+    media = tmp_path / "media"
+    stats = normalize(db, media, run=Recorder(), probe=_probe_with(partial), crop=no_crop)
+    assert (stats.encoded, len(stats.failed)) == (0, 3), why
+    assert not list(media.rglob("*.mp4*")), "no output and no partial file"
+    assert db.execute("SELECT COUNT(media_path) FROM episodes").fetchone()[0] == 0
+
+
+def test_an_encode_within_2_percent_of_the_source_is_whole(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    partial = Probe(duration=1300.0, video=VIDEO, audio_index=1)  # 1.6% short (AAC, VFR)
+    stats = normalize(db, tmp_path / "media", run=Recorder(), probe=_probe_with(partial),
+                      crop=no_crop)  # fmt: skip
+    assert (stats.encoded, stats.failed) == (3, [])
+
+
+def test_a_source_without_audio_needs_no_audio_in_the_encode(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    silent = Probe(duration=1320.9, video=VIDEO, audio_index=None)
+    stats = normalize(db, tmp_path / "media", run=Recorder(), probe=lambda p: silent,
+                      crop=no_crop)  # fmt: skip
+    assert stats.encoded == 3
+
+
+def test_a_trial_is_measured_against_its_limit_and_redone_by_a_full_run(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    media = tmp_path / "media"
+    trial = Probe(duration=60.0, video=VIDEO, audio_index=1)
+    probe = _probe_with(trial)
+    stats = normalize(db, media, run=Recorder(), probe=probe, crop=no_crop, max_seconds=60)
+    assert stats.encoded == 3
+    again = normalize(db, media, run=Recorder(), probe=probe, crop=no_crop, max_seconds=60)
+    assert (again.encoded, again.skipped) == (0, 3)
+    full = normalize(db, media, run=Recorder(), probe=fake_probe, crop=no_crop)
+    assert (full.encoded, full.skipped) == (3, 0), "a trial is not a whole episode"
+
+
+def test_a_recorded_truncated_encode_is_converted_again(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    """An encode recorded before the length check (or cut short since) is not skipped just
+    because its file exists and the source is unchanged."""
+    media = tmp_path / "media"
+    assert normalize(db, media, run=Recorder(), probe=fake_probe, crop=no_crop).encoded == 3
+    db.execute("UPDATE episodes SET media_seconds = 900 WHERE episode = 2")
+    rec = Recorder()
+    stats = normalize(db, media, run=rec, probe=fake_probe, crop=no_crop)
+    assert (stats.encoded, stats.skipped) == (1, 2)
+    assert any("S01E02" in part for part in rec.calls[0])
+    assert db.execute("SELECT media_seconds FROM episodes WHERE episode = 2").fetchone()[0] == 1320
 
 
 def test_an_interrupted_run_resumes_where_it_stopped(
