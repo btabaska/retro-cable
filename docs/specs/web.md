@@ -77,3 +77,22 @@ The first frontend is a browser app with the same TV interface, so agents can te
 - **Movies.** The line under the title reads the premiere year and running time ("1998 · 1h 25m") instead of season and episode (`src/lib/program.ts`). Cells keep their true length.
 - **Bumpers without media** show a station ID slate on `color.background`: number and call sign, channel name, and "Up next 8:27 Seinfeld". Bumpers with media play them.
 - **Tests.** `program.test.ts` (kicker and labels), `InfoBanner.test.tsx` (badges, movie line) and `Player.test.tsx` (bumper slate).
+
+## Implemented (Phase 10: /admin)
+
+- **Route.** `/admin` (and anything under it) renders the phone admin (`src/admin/`) instead of the TV. Production Caddy already serves `index.html` for unknown paths.
+- **Tokens.** `design/tokens.json` has an `admin` group, which becomes `--rc-admin-*`. `$`-prefixed keys inside a group are skipped.
+- **Shell.** A 64 px ink header, a scrolling body on `admin.bg` with a 16 px gutter, and a 64 px tab bar. In M1 the tab bar shows only Channels; Holidays, Manager and Build are hidden.
+- **Channel list.** 48 px rows: number, name, and meta ("Network · 12 shows", "Library · 2 shows", "from 2001 · …"). Custom channels have a dashed border and "Custom". A row opens the editor; YAML channels open read-only. Loading shows 6 skeleton rows, and an error shows a card with Retry. "+ New channel" is gold.
+- **Editor.**
+  - Fields: number (`inputmode=numeric`, with the next free number as placeholder), call sign (upper case, max 6), name, type, "On the dial from" year, and a Library switch ("Available in every year").
+  - Shows list: tap a row to set from/until years or "Remove from channel".
+  - Sticky footer: "Preview week" and gold Save. Save is enabled once the draft changed and has a number, a name and a show, and reads "Checking…" while the server checks.
+  - Failed checks show a summary card that takes focus and links to each field, plus inline messages tied to the field with `aria-invalid` and `aria-describedby`. Warnings show in a `warn` card.
+  - Delete (custom channels) and leaving with unsaved changes both ask first.
+- **Show picker.** A full-height sheet with an autofocused search. Results are grouped "Not on any channel", then "On other channels" ("on 27 Cartoon Network"). Shows already on the channel show ✓ and are disabled. Empty states: "No shows match '…'" and "Your library is empty. Run an import first."
+- **Week preview.** A sheet with a year select and Sun–Sat day chips (today's date selected). It lists the day's programs with time and title, folds bumpers away, and shows NEW and holiday chips in the TV colors at 11 px. Failed checks show in place of the list.
+- **Undo toast.** After a save or delete, an ink toast appears above the tab bar with a gold Undo. It lasts 10 s, pauses while hovered or focused, and has `role=status`. Undo shows "Restored".
+- **Sheets** trap focus, close on Esc, return focus to the opener, and skip the slide animation under reduced motion. Tap targets are at least 44 px. `:focus-visible` is a 3 px accent outline.
+- **Fix.** Number entry on live TV never committed: the commit timer depended on `props` and restarted on every 250 ms clock render. It now depends only on the digits and the dial.
+- **Tests.** Vitest: `admin/draft.test.ts`, `admin/AdminApp.test.tsx` (list, create with picker, preview, save, undo, inline errors, discard, retry), and `lib/route.test.ts`. Playwright `e2e/admin.spec.ts` runs at 390 px: create a library channel from two uncarried shows, preview it, save, tune it by number on the TV and find it in the guide, then undo.

@@ -261,6 +261,7 @@ class Checked:
     catalog: Catalog | None  # the effective catalog with the draft, when it passed
     overlay: Overlay | None
     channel: Channel | None
+    scheduler: Scheduler | None = None  # on the effective catalog, when it passed
 
 
 def check_draft(
@@ -282,6 +283,7 @@ def check_draft(
     overlay = with_channel(head, channel, carriage)
     merged = apply_overlay(base, overlay)
     errors += [CheckIssue(field=None, message=m) for m in validate(merged)]
+    sched = None
     if not errors:
         sched = Scheduler(merged, library, seed=seed)
         errors += [
@@ -296,4 +298,5 @@ def check_draft(
         merged if ok else None,
         overlay if ok else None,
         channel,
+        sched if ok else None,
     )

@@ -8,7 +8,7 @@ export function tokensToCssVars(tokens: TokenGroups): Record<string, string> {
   for (const [group, values] of Object.entries(tokens)) {
     if (group.startsWith("$") || typeof values !== "object" || values === null) continue;
     for (const [name, value] of Object.entries(values)) {
-      if (typeof value !== "string" && typeof value !== "number") continue;
+      if (name.startsWith("$") || (typeof value !== "string" && typeof value !== "number")) continue;
       vars[`--rc-${kebab(group)}-${kebab(name)}`] = typeof value === "number" ? `${value}px` : value;
     }
   }

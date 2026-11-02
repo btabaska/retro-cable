@@ -303,9 +303,9 @@ def router(
         channel_id = req.channel_id or CUSTOM_PREFIX + "draft"
         with database() as db:
             checked = run_check(db, req, channel_id)
-        if checked.catalog is None or checked.channel is None:
+        if checked.scheduler is None or checked.channel is None:
             return Preview(check=checked.result, channel=None, days=[])
-        sched = Scheduler(checked.catalog, schedules.library, seed=seed)
+        sched = checked.scheduler  # the same engine the checks just ran, days memoized
         anchor = week_day(sched, req)
         days = []
         for d in preview_week(anchor):

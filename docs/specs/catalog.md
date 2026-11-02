@@ -192,3 +192,20 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
 - `overrides.yaml` gains `seasonal: true` per show: a holiday specials show whose episodes air only in their holiday's season. The Peanuts holiday specials are marked.
 - Tagging is at read time, not in the database, like overrides and synthetic dates: the tagger runs over the library's titles whenever the scheduler is built, so editing a keyword or override never needs a re-import. The plan's "classification pass at ingest" with a review list for low-confidence tags is not built; the keyword tagger plus overrides covers it until a local model joins in Phase 11. How tags and seasons drive the schedule is in `scheduler.md` (Phase 7).
 - The demo seed titles every episode that airs in the week up to a holiday for it ("Episode 57: Halloween"), gives the Peanuts specials their real titles and dates, and gives the holiday DCOMs their real premieres (Halloweentown 1998-10-17).
+
+## Implemented (Phase 10: custom channels)
+
+Custom channels made in `/admin` are **catalog inputs**, not schedules, and never touch the YAML files.
+
+- **Overlay.** `server/src/retro_cable/catalog/overlay.py`. An `Overlay` holds `channels[]` and `carriage[]` in the same models as `channels.yaml` and `carriage.yaml`. The effective catalog is the YAML catalog plus the head overlay (`apply_overlay`), validated by the same cross-file `validate()`. Overlay channel ids start with `custom-`, so they can't collide with YAML ids. In M1, YAML channels are read-only in the admin.
+- **Version.** An empty overlay leaves the YAML version unchanged. Otherwise the version is `sha256(yaml version + canonical overlay JSON)[:12]`. A schedule stays a pure function of (channel, date, catalog version, seed), and undo brings back the exact previous version.
+- **History.** Migration `0003_catalog_revisions` adds an append-only `catalog_revisions` table (`id`, `created_at`, `parent_id`, `overlay` as canonical JSON, `note`). The row with the highest id is the head.
+  - The first save records an empty "start" row, then the new head.
+  - Undo appends a copy of the head's parent, with the parent's own parent, so successive undos walk back and rows are never rewritten.
+- **Draft to models** (`server/src/retro_cable/admin/drafts.py`):
+  - The channel gets one identity from its launch (Jan 1 of the launch year), or from 1990-01-01 when it is library.
+  - Each show's carriage runs from Jan 1 of its `from_year` (default: the launch) to Dec 31 of its `until_year` (default: open).
+  - Movie channels get a `shuffled` playlist.
+  - Custom channels have no bumpers yet (the bumpers table is per channel id).
+- **Library.** Shows and movies come from the database, whether carried or not. The demo seed adds three uncarried shows (Recess, Gravity Falls, Over the Garden Wall). The Plex importer still stores only carried titles; storing uncarried ones is left for the ingest owner.
+- **Not in M1:** synthetic premieres for transplants (a premiere is global to the show, so it would move the show on every channel), editing YAML channels, holiday modes per custom channel, per-row on/off toggles, and the nightly YAML export.
