@@ -103,15 +103,16 @@ The per-channel show list to prune is in `docs/archive-list.md`.
 
 ### Catalog files
 
-The scheduler's inputs are five YAML files in `catalog/`. Each starts with a `yaml-language-server` comment that points editors at its JSON Schema in `catalog/schema/`, generated from the pydantic models in `server/src/retro_cable/catalog/models.py` (`make catalog-schema`; a test fails if they are stale).
+The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yaml-language-server` comment that points editors at its JSON Schema in `catalog/schema/`, generated from the pydantic models in `server/src/retro_cable/catalog/models.py` (`make catalog-schema`; a test fails if they are stale).
 
 | File | Required | Holds |
 | --- | --- | --- |
-| `channels.yaml` | yes | Timezone, year range, channels: type (network, marathon, movie), launch, library, playlist, year-ranged identity (number, call sign, network), blocks, authenticity, transplant mark |
+| `channels.yaml` | yes | Timezone, year range, channels: type (network, marathon, movie), launch, library, playlist, year-ranged identity (number, call sign, network), blocks, authenticity, transplant mark, bumper length |
 | `holidays.yaml` | yes | Holidays: fixed or nth-weekday rule (n = -1 for the last), window, strength, default mode, per-channel modes, tagged items |
 | `carriage.yaml` | no | Which show or movie airs on which channel from when until when, optionally in a block, with a weight and tags |
 | `synthetic.yaml` | no | Transplants: a synthetic premiere inside 1990–2010, or `library: true` |
 | `overrides.yaml` | no | Per show: Plex title, US debut, per-episode air dates, holiday tags, exclude |
+| `templates.yaml` | no | Day-part templates per channel with era versions: parts per weekday at clock times, weighted pools of shows or carriage tags, block restriction, primetime flag |
 
 - Show ids are slugs (`the-simpsons`). Carriage pairs each id with the Plex title used for matching; `overrides.yaml` can set a different `plex_title`.
 - YAML dates and `1:30`-style values are read as text and parsed by the models, so a bad date names the file and field. Unquoted `on` is a YAML boolean and is rejected with the field name; holiday modes must be quoted.
@@ -122,10 +123,12 @@ The scheduler's inputs are five YAML files in `catalog/`. Each starts with a `ya
   - fixed holiday dates exist, and holiday channels exist;
   - carriage names known channels and blocks, ends after it starts, and doesn't overlap for the same show and channel;
   - synthetic premieres fall within 1990–2010, or the entry is library;
-  - every override and synthetic entry names a carried show, override holiday tags name known holidays, and no show has both a US debut and a synthetic premiere.
-- **Catalog version**: the first 12 hex characters of a SHA-256 over the five files. It is one of the four inputs that make a schedule a pure function.
+  - every override and synthetic entry names a carried show, override holiday tags name known holidays, and no show has both a US debut and a synthetic premiere;
+  - templates name known channels (never movie channels), their era periods don't overlap per channel, each weekday that appears has exactly one 00:00 part and no duplicate start times, block parts name known blocks, pool shows are carried on the channel, and pool tags appear in that channel's carriage.
+- **Catalog version**: the first 12 hex characters of a SHA-256 over the six files. It is one of the four inputs that make a schedule a pure function.
 - **US debut and synthetic premiere** use the same rule (`shift_air_dates`): the earliest episode moves to the anchor date and every other episode keeps its spacing. Missing dates stay missing.
 - The first `carriage.yaml` (299 entries) was generated from `docs/archive-list.md`. Windows run from Jan 1 of the first year to Dec 31 of the last, clamped to the channel's launch; open-ended runs have no `until`. DCOMs air on Disney Channel from their premiere year and always on Disney Movies. `overrides.yaml` has best-effort US debut dates for the Toonami and Adult Swim anime. `synthetic.yaml` lists the archive list's transplant ideas as comments for Brandon to pick.
+- The first `templates.yaml` (Claude-drafted, to edit) covers ktvu (Fox Kids era and after), cartoon-network (classics era and originals era) and adult-swim (late night, two eras). Everything else runs on the **default template**: one all-day part playing everything the channel carries that isn't block-carried, at carriage weights. A weekday with no part in the covering template also falls back to the default.
 
 ### Database
 

@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "DayPart": {
+      "additionalProperties": false,
+      "description": "One part of a channel's day. The next part starts when its `start` passes, but only\nafter the program already running has finished, so day-parts anchor the day.",
+      "properties": {
+        "block": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Restrict the pool to this channel block",
+          "title": "Block"
+        },
+        "pool": {
+          "description": "An empty pool runs bumpers until the next part",
+          "items": {
+            "$ref": "#/$defs/Pool"
+          },
+          "title": "Pool",
+          "type": "array"
+        },
+        "primetime": {
+          "default": false,
+          "description": "This part airs NEW episodes on debut day",
+          "title": "Primetime",
+          "type": "boolean"
+        },
+        "start": {
+          "description": "Local HH:MM the part begins; a day's first part starts at 00:00",
+          "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+          "title": "Start",
+          "type": "string"
+        },
+        "weekday": {
+          "enum": [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday"
+          ],
+          "title": "Weekday",
+          "type": "string"
+        }
+      },
+      "required": [
+        "weekday",
+        "start"
+      ],
+      "title": "DayPart",
+      "type": "object"
+    },
+    "Pool": {
+      "additionalProperties": false,
+      "description": "One weighted entry in a day-part pool: a specific carried show, or every show with a tag.",
+      "properties": {
+        "show": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Show"
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tag"
+        },
+        "weight": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "title": "Pool",
+      "type": "object"
+    },
+    "Template": {
+      "additionalProperties": false,
+      "description": "An era version of a channel's week: CN 1992-96 leans on classics, 1997+ adds originals.",
+      "properties": {
+        "channel": {
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Channel",
+          "type": "string"
+        },
+        "from": {
+          "format": "date",
+          "title": "From",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "parts": {
+          "items": {
+            "$ref": "#/$defs/DayPart"
+          },
+          "minItems": 1,
+          "title": "Parts",
+          "type": "array"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Until"
+        }
+      },
+      "required": [
+        "id",
+        "channel",
+        "from",
+        "parts"
+      ],
+      "title": "Template",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "templates": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Template"
+      },
+      "title": "Templates",
+      "type": "array"
+    }
+  },
+  "title": "catalog/templates.yaml",
+  "type": "object"
+}

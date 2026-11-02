@@ -118,6 +118,51 @@ def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
     return errors
 
 
+def _check_templates(catalog: Catalog) -> list[str]:
+    errors: list[str] = []
+    channels = {c.id: c for c in catalog.channels.channels}
+    carried: dict[str, set[str]] = defaultdict(set)  # channel -> show ids of kind "show"
+    tagged: dict[str, set[str]] = defaultdict(set)  # channel -> carriage tags used on that channel
+    for c in catalog.carriage.carriage:
+        if c.kind == "show":
+            carried[c.channel].add(c.show)
+        tagged[c.channel].update(c.tags)
+    blocks = {c.id: {b.id for b in c.blocks} for c in catalog.channels.channels}
+    seen: set[str] = set()
+    eras: dict[str, list[tuple[date, date]]] = defaultdict(list)
+    for t in catalog.templates.templates:
+        if t.id in seen:
+            errors.append(f"templates: duplicate template id '{t.id}'")
+        seen.add(t.id)
+        if t.channel not in channels:
+            errors.append(f"templates: '{t.id}' has unknown channel '{t.channel}'")
+            continue
+        if channels[t.channel].type == "movie":
+            errors.append(f"templates: '{t.id}' targets movie channel '{t.channel}'")
+        if t.until and t.until < t.from_:
+            errors.append(f"{t.id}: until is before from")
+        eras[t.channel].append((t.from_, t.until or FOREVER))
+        starts: dict[str, list[str]] = defaultdict(list)
+        for p in t.parts:
+            if p.block and p.block not in blocks[t.channel]:
+                errors.append(f"{t.id}: unknown block '{p.block}' on {t.channel}")
+            for entry in p.pool:
+                if entry.show and entry.show not in carried[t.channel]:
+                    errors.append(f"{t.id}: pool show '{entry.show}' is not carried on {t.channel}")
+                if entry.tag and entry.tag not in tagged[t.channel]:
+                    errors.append(f"{t.id}: pool tag '{entry.tag}' unused in {t.channel} carriage")
+            starts[p.weekday].append(p.start)
+        for weekday, times in starts.items():
+            if len(times) != len(set(times)):
+                errors.append(f"{t.id}: {weekday} has two parts starting at the same time")
+            if min(times) != "00:00":
+                errors.append(f"{t.id}: {weekday} must have a part starting at 00:00")
+    for channel, periods in eras.items():
+        if _overlaps(periods):
+            errors.append(f"{channel}: template era periods overlap")
+    return errors
+
+
 def validate(catalog: Catalog) -> list[str]:
     """Every problem in a loaded catalog, as human-readable lines; empty means valid."""
     channel_ids = {c.id for c in catalog.channels.channels}
@@ -127,6 +172,7 @@ def validate(catalog: Catalog) -> list[str]:
         *_check_holidays(catalog, channel_ids),
         *_check_carriage(catalog, channel_ids),
         *_check_shows(catalog, holiday_ids),
+        *_check_templates(catalog),
     ]
 
 

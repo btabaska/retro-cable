@@ -74,12 +74,30 @@ shows:
       S10E04: [halloween]
 """
 
+TEMPLATES = """
+templates:
+  - id: ktvu-base
+    channel: ktvu
+    from: 1990-01-01
+    parts:
+      - { weekday: friday, start: "00:00", pool: [{ show: the-simpsons }] }
+      - { weekday: friday, start: "16:00", block: fox-kids, pool: [{ show: x-men }] }
+      - { weekday: friday, start: "20:00", primetime: true, pool: [{ show: the-simpsons, weight: 2 }, { show: x-men }] }
+  - id: cn-classics
+    channel: cartoon-network
+    from: 1992-10-01
+    until: 1996-12-31
+    parts:
+      - { weekday: friday, start: "00:00", pool: [{ show: dexters-laboratory, weight: 2 }] }
+"""  # fmt: skip
+
 FILES = {
     "channels.yaml": CHANNELS,
     "holidays.yaml": HOLIDAYS,
     "carriage.yaml": CARRIAGE,
     "synthetic.yaml": SYNTHETIC,
     "overrides.yaml": OVERRIDES,
+    "templates.yaml": TEMPLATES,
 }
 
 MakeCatalog = Callable[..., Path]

@@ -4,9 +4,10 @@ catalog/schema/ are generated from these models (`make catalog-schema`)."""
 from datetime import date
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Slug = Annotated[str, Field(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")]
+ClockTime = Annotated[str, Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")]
 HolidayMode = Literal["on", "specials_only", "off"]
 Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
@@ -50,6 +51,12 @@ class Channel(Model):
     blocks: list[Block] = []
     authenticity: int = Field(default=30, ge=0, le=100)
     transplant_mark: bool = Field(default=True, description="Mark transplanted shows in the guide")
+    bumper_seconds: int = Field(
+        default=15,
+        ge=0,
+        le=300,
+        description="Bumper or promo inserted between programs; 0 for none",
+    )
 
 
 class ChannelsFile(Model):
@@ -151,10 +158,57 @@ class OverridesFile(Model):
     shows: list[ShowOverride] = []
 
 
+# --- templates.yaml ------------------------------------------------------------
+
+
+class Pool(Model):
+    """One weighted entry in a day-part pool: a specific carried show, or every show with a tag."""
+
+    show: Slug | None = None
+    tag: Slug | None = None
+    weight: float = Field(default=1.0, gt=0)
+
+    @model_validator(mode="after")
+    def _one_of_show_or_tag(self) -> "Pool":
+        if (self.show is None) == (self.tag is None):
+            raise ValueError("a pool entry names exactly one of show or tag")
+        return self
+
+
+class DayPart(Model):
+    """One part of a channel's day. The next part starts when its `start` passes, but only
+    after the program already running has finished, so day-parts anchor the day."""
+
+    weekday: Weekday
+    start: ClockTime = Field(
+        description="Local HH:MM the part begins; a day's first part starts at 00:00"
+    )
+    block: Slug | None = Field(default=None, description="Restrict the pool to this channel block")
+    primetime: bool = Field(default=False, description="This part airs NEW episodes on debut day")
+    pool: list[Pool] = Field(
+        default_factory=list, description="An empty pool runs bumpers until the next part"
+    )
+
+
+class Template(Model):
+    """An era version of a channel's week: CN 1992-96 leans on classics, 1997+ adds originals."""
+
+    id: Slug
+    channel: Slug
+    from_: date = Field(alias="from")
+    until: date | None = None
+    parts: list[DayPart] = Field(min_length=1)
+
+
+class TemplatesFile(Model):
+    templates: list[Template] = []
+
+
 FILE_MODELS: dict[str, type[Model]] = {
     "channels": ChannelsFile,
     "holidays": HolidaysFile,
     "carriage": CarriageFile,
     "synthetic": SyntheticFile,
     "overrides": OverridesFile,
+    "templates": TemplatesFile,
 }
