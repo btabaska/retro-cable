@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AdminApi, AdminChannelList, AdminState, ChannelDraft, CheckIssue, DraftShow } from "./api";
+import type {
+  AdminApi,
+  AdminChannelList,
+  AdminChannelShow,
+  AdminState,
+  ChannelDraft,
+  CheckIssue,
+  DraftShow,
+} from "./api";
 import {
   carriageLine,
   emptyDraft,
@@ -7,9 +15,18 @@ import {
   issuesFor,
   LAST_YEAR,
   nextFreeNumber,
+  PREMIERE_MAX,
+  PREMIERE_MIN,
+  premiereMeta,
+  premiereRun,
   readyToSave,
+  runLine,
   sameDraft,
+  withoutField,
+  wontAir,
+  wontAirMeta,
 } from "./draft";
+import { PremiereControl } from "./PremiereControl";
 import { Sheet } from "./Sheet";
 import { ShowPicker } from "./ShowPicker";
 import { WeekPreview } from "./WeekPreview";
@@ -21,6 +38,8 @@ interface ChannelEditorProps {
   list: AdminChannelList | null;
   onBack: () => void;
   onChanged: (message: string, state: AdminState) => void;
+  /** A change saved without leaving the screen (a pretend premiere on a YAML channel). */
+  onPremiere: (message: string, state: AdminState) => void;
 }
 
 type Sheets = "none" | "picker" | "preview" | "delete" | "discard";
@@ -28,11 +47,13 @@ type Sheets = "none" | "picker" | "preview" | "delete" | "discard";
 const DEFAULT_PREVIEW_YEAR = 2000;
 
 /** AdminChannel: edit a custom channel, or view a YAML channel read-only. */
-export function ChannelEditor({ api, channelId, list, onBack, onChanged }: ChannelEditorProps) {
+export function ChannelEditor({ api, channelId, list, onBack, onChanged, onPremiere }: ChannelEditorProps) {
   const [loaded, setLoaded] = useState<ChannelDraft | null>(channelId ? null : emptyDraft());
   const [draft, setDraft] = useState<ChannelDraft>(emptyDraft());
   const [custom, setCustom] = useState(channelId === null);
   const [titles, setTitles] = useState<Record<string, string>>({});
+  const [debuts, setDebuts] = useState<Record<string, string | null>>({});
+  const [dates, setDates] = useState<Record<string, AdminChannelShow>>({});
   const [errors, setErrors] = useState<CheckIssue[]>([]);
   const [warnings, setWarnings] = useState<CheckIssue[]>([]);
   const [checking, setChecking] = useState(false);
@@ -53,6 +74,7 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
         setLoaded(c.draft);
         setDraft(c.draft);
         setCustom(c.custom);
+        setDates(Object.fromEntries((c.shows ?? []).map((s) => [s.show, s])));
       },
       () => {
         if (live) setFailed(true);
@@ -67,7 +89,9 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
     let live = true;
     api.searchLibrary("").then(
       (items) => {
-        if (live) setTitles(Object.fromEntries(items.map((i) => [i.id, i.title])));
+        if (!live) return;
+        setTitles(Object.fromEntries(items.map((i) => [i.id, i.title])));
+        setDebuts(Object.fromEntries(items.map((i) => [i.id, i.debut ?? null])));
       },
       () => undefined,
     );
@@ -82,20 +106,28 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
 
   const dirty = loaded !== null && !sameDraft(loaded, draft);
   const shows = draft.shows ?? [];
+  // Editing a field clears its errors (and the summary once none are left): M2 D24.
+  const clear = (...fields: string[]) => {
+    setErrors((errs) => fields.reduce(withoutField, errs));
+  };
   const set = (patch: Partial<ChannelDraft>) => {
+    clear(...Object.keys(patch));
     setDraft((d) => ({ ...d, ...patch }));
   };
   const setShow = (i: number, patch: Partial<DraftShow>) => {
-    set({ shows: shows.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
+    clear(`shows.${i}`);
+    setDraft((d) => ({ ...d, shows: (d.shows ?? []).map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
   };
   const year = (value: string): number | null => (value === "" ? null : Number(value));
 
   const save = async () => {
     setChecking(true);
+    setWarnings([]);
     try {
       const outcome = await api.saveChannel({ draft, channel_id: channelId, year: DEFAULT_PREVIEW_YEAR }, channelId);
       if (outcome.saved) {
         setErrors([]);
+        setWarnings([]);
         setLoaded(draft);
         onChanged(outcome.result.message, outcome.result.state);
       } else {
@@ -138,8 +170,33 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
 
   const focusField = (field: string | null) => {
     if (!field) return;
-    const id = field.startsWith("shows.") ? `show-${field.slice(6)}` : `f-${field}`;
-    document.getElementById(id)?.focus();
+    if (field.startsWith("shows.")) {
+      // Open the row first, then focus it (or its premiere field), once it has rendered.
+      const [, index, part] = field.split(".");
+      const n = Number(index);
+      setOpen(n);
+      window.setTimeout(() => {
+        const target = part === "premiere" ? document.getElementById(`premiere-${n}`) : null;
+        (target ?? document.getElementById(`show-${n}`))?.focus();
+      }, 0);
+      return;
+    }
+    document.getElementById(`f-${field}`)?.focus();
+  };
+
+  // A YAML channel's pretend premieres save on their own, straight away.
+  const savePremiere = async (show: string, premiere: string | null) => {
+    if (!channelId) return null;
+    try {
+      const outcome = await api.setPremiere(channelId, show, premiere);
+      if (!outcome.saved) return outcome.check.errors.map((e) => e.message).join(" ") || "Not saved.";
+      setDates((d) => ({ ...d, [show]: outcome.result.show }));
+      setWarnings(outcome.result.warnings);
+      onPremiere(outcome.result.message, outcome.result.state);
+      return null;
+    } catch {
+      return "Couldn't reach the server. Nothing was saved.";
+    }
   };
 
   // An existing channel is named from the list row until it loads, never a placeholder.
@@ -150,7 +207,7 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
       <button type="button" className="adm-back" onClick={back}>
         ‹ Channels
       </button>
-      <h1 className="adm-title">
+      <h1 className="adm-title" tabIndex={-1}>
         {title || <span className="adm-skeleton adm-skeleton-title" aria-label="Loading channel name" />}
       </h1>
     </header>
@@ -236,7 +293,10 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
           </div>
         )}
         {readOnly && (
-          <p className="adm-note">This channel comes from the catalog files, so it is read-only here.</p>
+          <p className="adm-note">
+            This channel comes from the catalog files, so it is read-only here. You can still give its shows a
+            pretend premiere.
+          </p>
         )}
 
         <fieldset className="adm-card adm-fields" disabled={readOnly}>
@@ -355,8 +415,62 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
           {shows.map((s, i) => {
             const field = `shows.${i}`;
             const expanded = open === i;
+            const known = dates[s.show];
+            const debut = known?.debut ?? debuts[s.show] ?? null;
+            const flagged = s.kind === "show" && !s.premiere && !known?.premiere && wontAir(debut, s.until_year);
+            const premiere = s.premiere ?? known?.premiere ?? null;
+            const meta = (
+              <span className={`adm-row-meta${flagged ? " adm-meta-warn" : ""}`} data-testid={`show-meta-${i}`}>
+                {s.kind === "movie" ? "Movie · " : ""}
+                {carriageLine(s)}
+                {premiere && (
+                  <>
+                    {" · "}
+                    <span className="adm-mark" aria-hidden="true" />
+                    {premiereMeta(premiere, debut)}
+                  </>
+                )}
+                {flagged && debut && (
+                  <>
+                    {" · "}
+                    <span className="adm-mark adm-mark-warn" aria-hidden="true" />
+                    {wontAirMeta(debut)}
+                  </>
+                )}
+              </span>
+            );
+            const rowClass = [
+              "adm-show",
+              issuesFor(errors, field).length || issuesFor(errors, `${field}.premiere`).length ? "adm-show-bad" : "",
+              flagged ? "adm-show-flag" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            if (readOnly) {
+              // Read-only rows are plain: no chevron, no button (M2 D26). A YAML channel's only
+              // edit is a show's pretend premiere, which saves on its own.
+              return (
+                <li key={s.show} className={rowClass}>
+                  <div id={`show-${i}`} className="adm-row adm-row-static" data-testid={`show-row-${i}`}>
+                    <span className="adm-row-main">
+                      <span className="adm-row-title">{titles[s.show] ?? s.show}</span>
+                      {meta}
+                    </span>
+                    {s.kind === "show" && (
+                      <PremiereControl
+                        index={i}
+                        value={premiere}
+                        locked={known?.premiere_source === "catalog"}
+                        run={known?.first_air ? { first: known.first_air, last: known.last_air ?? null } : null}
+                        onSave={(value) => savePremiere(s.show, value)}
+                      />
+                    )}
+                  </div>
+                </li>
+              );
+            }
             return (
-              <li key={s.show} className={`adm-show${issuesFor(errors, field).length ? " adm-show-bad" : ""}`}>
+              <li key={s.show} className={rowClass}>
                 <button
                   id={`show-${i}`}
                   type="button"
@@ -364,22 +478,22 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
                   aria-expanded={expanded}
                   onClick={() => {
                     setOpen(expanded ? null : i);
+                    if (!expanded && flagged) {
+                      window.setTimeout(() => document.getElementById(`premiere-${i}`)?.focus(), 0);
+                    }
                   }}
                   {...invalid(field)}
                 >
                   <span className="adm-row-main">
                     <span className="adm-row-title">{titles[s.show] ?? s.show}</span>
-                    <span className="adm-row-meta">
-                      {s.kind === "movie" ? "Movie · " : ""}
-                      {carriageLine(s)}
-                    </span>
+                    {meta}
                   </span>
                   <span className="adm-chevron" aria-hidden="true">
                     {expanded ? "⌃" : "⌄"}
                   </span>
                 </button>
                 {fieldError(field)}
-                {expanded && !readOnly && (
+                {expanded && (
                   <div className="adm-show-edit">
                     <label className="adm-field">
                       <span className="adm-label">From year</span>
@@ -405,6 +519,48 @@ export function ChannelEditor({ api, channelId, list, onBack, onChanged }: Chann
                         }}
                       />
                     </label>
+                    {s.kind === "show" && (
+                      <div className="adm-field adm-field-wide">
+                        <label className="adm-label" htmlFor={`premiere-${i}`}>
+                          Pretend premiere
+                        </label>
+                        <div className="adm-premiere">
+                          <input
+                            id={`premiere-${i}`}
+                            type="date"
+                            className="adm-input"
+                            min={PREMIERE_MIN}
+                            max={PREMIERE_MAX}
+                            value={s.premiere ?? ""}
+                            onChange={(e) => {
+                              setShow(i, { premiere: e.target.value || null });
+                            }}
+                            {...invalid(`${field}.premiere`)}
+                          />
+                          {s.premiere && (
+                            <button
+                              type="button"
+                              className="adm-btn adm-btn-text"
+                              onClick={() => {
+                                setShow(i, { premiere: null });
+                              }}
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        {fieldError(`${field}.premiere`)}
+                        <span className="adm-hint">
+                          Air this show on this channel as if it first aired on this date. Episodes keep their real
+                          spacing. Other channels are not affected.
+                        </span>
+                        {s.premiere && (
+                          <span className="adm-hint" data-testid={`premiere-run-${i}`}>
+                            {runLine(premiereRun(s.premiere, known))}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <button
                       type="button"
                       className="adm-btn adm-btn-danger-text"

@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChannelInfo, Guide, Lineup, Tune, TunedSlot, TvApi } from "./api/client";
@@ -153,5 +153,55 @@ describe("App", () => {
     await screen.findByTestId("banner-title");
     expect(api.tune).toHaveBeenLastCalledWith("ktvu", 1999);
     expect(window.localStorage.getItem("rc.year")).toBe("1999");
+  });
+
+  it("gives focus back to the banner's Year button when the year picker closes (M2 D23)", async () => {
+    const user = userEvent.setup();
+    render(<App api={fakeApi()} />);
+    await user.keyboard("{Enter}");
+    await screen.findByTestId("banner-title");
+    await user.click(screen.getByRole("button", { name: "Year 1998" }));
+    expect(await screen.findByTestId("year-picker")).toBeInTheDocument();
+    expect(screen.getByRole("gridcell", { name: "1998" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(await screen.findByRole("button", { name: "Year 1998" })).toHaveFocus();
+  });
+
+  it("marks pretend premieres and keeps sliver cells empty in the guide (M2 A7, D28)", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    const transplant = { ...slot("Gravity Falls", "1998-10-31T20:00:30-05:00", "1998-10-31T20:27:00-05:00"), transplant: true };
+    const tail = slot("Long Movie", "1998-10-31T18:00:00-05:00", "1998-10-31T20:00:30-05:00");
+    const holiday = {
+      ...slot("Spooky", "1998-10-31T20:27:00-05:00", "1998-10-31T21:00:00-05:00"),
+      holiday: "halloween",
+      holiday_name: "Halloween",
+    };
+    vi.mocked(api.getGuide).mockResolvedValue({
+      ...guide,
+      channels: [
+        { channel: CHANNELS[0] as ChannelInfo, slots: [tail, transplant, holiday] },
+        ...guide.channels.slice(1),
+      ],
+    });
+    render(<App api={api} />);
+    await user.keyboard("{Enter}");
+    await screen.findByTestId("banner-title");
+    await user.keyboard("{Enter}");
+    const row = await screen.findByTestId("guide-row-ktvu");
+    const cells = within(row).getAllByRole("gridcell");
+    // The 30 seconds of the movie still in the window: a sliver with no text, labelled.
+    const sliver = cells[0] as HTMLElement;
+    expect(sliver).toHaveClass("cell-sliver");
+    expect(sliver.textContent).toBe("");
+    expect(sliver).toHaveAttribute("aria-label", "Long Movie");
+    // The transplant: a CSS mark before the title, never the ◇ glyph.
+    const marked = cells.find((c) => c.textContent.includes("Gravity Falls")) as HTMLElement;
+    expect(within(marked).getByTestId("transplant-mark")).toBeInTheDocument();
+    expect(marked.textContent).not.toContain("◇");
+    // Holiday programs get the left bar, not a HALLOWEEN kicker in the cell.
+    const spooky = cells.find((c) => c.textContent.includes("Spooky")) as HTMLElement;
+    expect(spooky).toHaveClass("cell-holiday");
+    expect(spooky.textContent).not.toContain("HALLOWEEN");
   });
 });

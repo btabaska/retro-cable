@@ -51,6 +51,14 @@ test("create a channel on the phone, see it in the guide, then undo", async ({ b
   await page.getByRole("button", { name: "Done" }).click();
   await expectSlow(page.getByTestId("editor-shows")).toContainText("Recess");
   await expectSlow(page.getByTestId("editor-shows")).toContainText("Gravity Falls");
+  // Gravity Falls really debuted in 2012. Library channels no longer lift debut dates (M2), so
+  // it is flagged, and it airs in 2000 only with a pretend premiere on this channel.
+  const gravity = page.getByTestId("editor-shows").getByRole("button", { name: /Gravity Falls/ });
+  await expect(gravity).toContainText("won't air");
+  await gravity.click();
+  await expect(page.getByLabel("Pretend premiere")).toBeFocused();
+  await page.getByLabel("Pretend premiere").fill("1999-06-15");
+  await expect(page.getByTestId("editor-shows")).toContainText("Pretend premiere Jun 1999 · really Jun 2012");
   await shot(page, `admin-2-editor-${info.project.name}`);
 
   // Preview the week before saving: both shows, back to back, from the same engine.
@@ -91,4 +99,79 @@ test("create a channel on the phone, see it in the guide, then undo", async ({ b
   await expectSlow(page.getByRole("status")).toContainText("Restored");
   await expectSlow(page.getByTestId("admin-channels")).not.toContainText(name);
   await removeLeftovers(request, name);
+});
+
+interface GuideBody {
+  channels: { channel: { id: string }; slots: { show: string | null; transplant: boolean; air_date: string | null }[] }[];
+}
+
+test("give a YAML channel's show a pretend premiere, see the mark in the guide, then undo", async ({ page, request }) => {
+  const bear = async () => {
+    const guide = (await (await request.get("/api/guide?year=2000&date=06-05&hours=24")).json()) as GuideBody;
+    return (guide.channels.find((r) => r.channel.id === "disney")?.slots ?? []).filter(
+      (s) => s.show === "bear-in-the-big-blue-house",
+    );
+  };
+  const before = await bear();
+  expect(before.every((s) => !s.transplant)).toBe(true);
+
+  await page.goto("/admin");
+  await page.getByTestId("admin-channel-disney").click();
+  const shows = page.getByTestId("editor-shows");
+  await expectSlow(shows).toContainText("Bear in the Big Blue House");
+  // Read-only rows: no chevrons (M2 D26), but a pretend premiere field each.
+  await expect(shows.getByText("⌄")).toHaveCount(0);
+  const row = shows.getByRole("listitem").filter({ hasText: "Bear in the Big Blue House" });
+  await row.getByLabel("Pretend premiere").fill("1999-01-04");
+  await row.getByRole("button", { name: "Set" }).click();
+  const toast = page.getByRole("status");
+  await expectSlow(toast).toContainText("Set the pretend premiere of Bear in the Big Blue House");
+  await toast.hover();
+  await expect(row).toContainText("Pretend premiere Jan 1999");
+  await expect(row).toContainText("S1E1 airs Jan 4, 1999");
+  await shot(page, "admin-5-premiere");
+
+  // The guide follows on the next read: Bear carries the mark and its shifted dates on Disney
+  // Channel, and only there.
+  await expectSlow.poll(async () => (await bear()).some((s) => s.transplant)).toBe(true);
+  for (const s of await bear()) {
+    expect(s.transplant).toBe(true);
+    expect((s.air_date ?? "") >= "1999-01-04").toBe(true);
+  }
+
+  await toast.getByRole("button", { name: "Undo" }).click();
+  await expectSlow(page.getByRole("status")).toContainText("Restored");
+  await expectSlow.poll(async () => (await bear()).some((s) => s.transplant)).toBe(false);
+});
+
+test("the Media tab shows conversion progress or says it isn't available", async ({ page }) => {
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Media" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Media" })).toBeFocused();
+  await expectSlow(
+    page.getByText(/isn't available on this server yet|Nothing to convert|files ·/).first(),
+  ).toBeVisible();
+  // No horizontal scroll at phone width.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test("week-preview day chips fit at 360 px", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto("/admin");
+  // A draft with one show; it is never saved.
+  await page.getByRole("button", { name: "+ New channel" }).click();
+  await page.getByLabel("Number").fill("59");
+  await page.getByLabel("Call sign").fill("chips");
+  await page.getByLabel("Name", { exact: true }).fill("Chip check");
+  await page.getByRole("switch").check();
+  await page.getByRole("button", { name: "+ Add show" }).click();
+  await page.getByLabel("Search the library").fill("recess");
+  await page.getByTestId("show-picker").getByRole("button", { name: "Add Recess" }).click();
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "Preview week" }).click();
+  const chips = page.locator(".adm-chips");
+  await expectSlow(chips).toBeVisible();
+  const box = await chips.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+  expect(box.scroll).toBeLessThanOrEqual(box.client);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 });

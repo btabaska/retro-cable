@@ -92,16 +92,16 @@ def _check_carriage(catalog: Catalog, channel_ids: set[str]) -> list[str]:
 def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
     errors: list[str] = []
     carried = {c.show for c in catalog.carriage.carriage}
-    synthetic_premieres = set()
+    carried_on = {(c.show, c.channel) for c in catalog.carriage.carriage}
+    premieres: set[tuple[str, str]] = set()
     for s in catalog.synthetic.synthetic:
-        if s.show not in carried:
-            errors.append(f"synthetic: '{s.show}' has no carriage on any channel")
-        if s.premiere is None and not s.library:
-            errors.append(f"{s.show}: set premiere or library")
-        if s.premiere and not FIRST_DAY <= s.premiere <= LAST_DAY:
-            errors.append(f"{s.show}: premiere must be within 1990-2010")
-        if s.premiere:
-            synthetic_premieres.add(s.show)
+        if (s.show, s.channel) in premieres:
+            errors.append(f"synthetic: '{s.show}' on {s.channel} is listed twice")
+        premieres.add((s.show, s.channel))
+        if (s.show, s.channel) not in carried_on:
+            errors.append(f"synthetic: '{s.show}' is not carried on {s.channel}")
+        if not FIRST_DAY <= s.premiere <= LAST_DAY:
+            errors.append(f"{s.show} on {s.channel}: premiere must be within 1990-2010")
     seen: set[str] = set()
     for o in catalog.overrides.shows:
         if o.show in seen:
@@ -109,8 +109,6 @@ def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
         seen.add(o.show)
         if o.show not in carried:
             errors.append(f"overrides: '{o.show}' has no carriage on any channel")
-        if o.us_debut and o.show in synthetic_premieres:
-            errors.append(f"{o.show}: both us_debut and a synthetic premiere; keep one")
         for ep, tags in o.holiday_tags.items():
             errors.extend(
                 f"{o.show} {ep}: unknown holiday '{t}'" for t in tags if t not in holiday_ids

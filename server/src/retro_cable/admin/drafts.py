@@ -13,11 +13,12 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from retro_cable.catalog import Catalog, validate
-from retro_cable.catalog.models import Carriage, Channel, Identity
+from retro_cable.catalog.models import Carriage, Channel, Identity, Synthetic
 from retro_cable.catalog.overlay import CUSTOM_PREFIX, Overlay, apply_overlay, with_channel
 from retro_cable.scheduler import Library, Scheduler
 
 FIRST_YEAR, LAST_YEAR = 1990, 2010
+FIRST_DAY, LAST_DAY = date(FIRST_YEAR, 1, 1), date(LAST_YEAR, 12, 31)
 CALL_SIGN_MAX = 6
 
 
@@ -26,6 +27,10 @@ class DraftShow(BaseModel):
     kind: Literal["show", "movie"] = "show"
     from_year: int | None = Field(default=None, description="First year carried; default launch")
     until_year: int | None = Field(default=None, description="Last year carried; default open")
+    premiere: date | None = Field(
+        default=None,
+        description="Pretend premiere on this channel only (1990-01-01 to 2010-12-31)",
+    )
 
 
 class ChannelDraft(BaseModel):
@@ -35,14 +40,17 @@ class ChannelDraft(BaseModel):
     call_sign: str
     name: str
     type: Literal["network", "marathon", "movie"] = "network"
-    library: bool = Field(default=False, description="Always on the dial, every episode eligible")
+    library: bool = Field(
+        default=False, description="On the dial in every year; episodes still wait for their dates"
+    )
     launch_year: int | None = Field(default=None, description="Required unless library")
     shows: list[DraftShow] = Field(default_factory=list)
 
 
 class CheckIssue(BaseModel):
     field: str | None = Field(
-        description="Form field: number, call_sign, name, launch_year, shows or shows.<i>"
+        description="Form field: number, call_sign, name, launch_year, shows, shows.<i> or"
+        " shows.<i>.premiere"
     )
     message: str
 
@@ -59,7 +67,7 @@ class LibraryItem:
     id: str
     title: str
     kind: Literal["show", "movie"]
-    first_air: date | None
+    first_air: date | None  # first and last playable effective date (no pretend premiere)
     last_air: date | None
     episodes: int  # playable: normalized, or under the media root with a runtime
     known: int  # all known, on disk or not
@@ -86,7 +94,7 @@ def _start(draft: ChannelDraft) -> date:
 
 def to_models(
     channel_id: str, draft: ChannelDraft, library: Mapping[str, LibraryItem]
-) -> tuple[Channel, list[Carriage]]:
+) -> tuple[Channel, list[Carriage], list[Synthetic]]:
     """The draft as catalog models. Call after check_fields() has no errors."""
     start = _start(draft)
     channel = Channel.model_validate(
@@ -115,10 +123,45 @@ def to_models(
         )
         for s in draft.shows
     ]
-    return channel, carriage
+    premieres = [
+        Synthetic(show=s.show, channel=channel_id, premiere=s.premiere)
+        for s in draft.shows
+        if s.premiere is not None
+    ]
+    return channel, carriage, premieres
 
 
-def to_draft(channel: Channel, carriage: Sequence[Carriage]) -> ChannelDraft:
+def premiere_issues(
+    title: str,
+    premiere: date,
+    debut: date | None,
+    on_dial_from: date | None,
+    until: date | None,
+) -> tuple[list[str], list[str]]:
+    """Plain-words (errors, warnings) for a pretend premiere."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not FIRST_DAY <= premiere <= LAST_DAY:
+        errors.append("Pick a date from 1990 to 2010.")
+    elif until is not None and premiere > until:
+        errors.append("This is after the show leaves the channel, so it would never air.")
+    if not errors:
+        if on_dial_from is not None and premiere < on_dial_from:
+            warnings.append(
+                f"{title}: the channel isn't on the dial until {on_dial_from.year}."
+                " The show starts then."
+            )
+        if debut is not None and premiere > debut:
+            warnings.append(
+                f"{title}: this is later than its real premiere, so it will air later than it did."
+            )
+    return errors, warnings
+
+
+def to_draft(
+    channel: Channel, carriage: Sequence[Carriage], premieres: Sequence[Synthetic] = ()
+) -> ChannelDraft:
+    dates = {p.show: p.premiere for p in premieres if p.channel == channel.id}
     ident = sorted(channel.identity, key=lambda i: i.from_)[-1]
     launch = channel.launch.year if channel.launch else None
     return ChannelDraft(
@@ -134,6 +177,7 @@ def to_draft(channel: Channel, carriage: Sequence[Carriage]) -> ChannelDraft:
                 kind=c.kind,
                 from_year=c.from_.year if c.from_.year != (launch or FIRST_YEAR) else None,
                 until_year=c.until.year if c.until else None,
+                premiere=dates.get(c.show),
             )
             for c in carriage
             if c.channel == channel.id
@@ -208,24 +252,41 @@ def check_fields(
                 err(where, f"{item.title}: years run from {FIRST_YEAR} to {LAST_YEAR}.")
         if s.from_year and s.until_year and s.until_year < s.from_year:
             err(where, f"{item.title}: the last year is before the first.")
+        if s.premiere is not None:
+            until = date(s.until_year, 12, 31) if s.until_year else None
+            dial = None if draft.library else (date(s.from_year, 1, 1) if s.from_year else start)
+            bad, notes = premiere_issues(item.title, s.premiere, item.first_air, dial, until)
+            errors.extend(CheckIssue(field=f"{where}.premiere", message=m) for m in bad)
+            warnings.extend(CheckIssue(field=f"{where}.premiere", message=m) for m in notes)
         if item.episodes == 0:
             # Raw files from `ingest scan` play once the normalize job, which encodes every
             # carried show, has run.
             warnings.append(
                 CheckIssue(field=where, message=f"{item.title} has no playable files yet.")
             )
-        elif not draft.library and item.first_air is None and s.kind == "show":
+        elif s.premiere is not None:
+            pass  # the pretend premiere sets its dates on this channel
+        elif item.first_air is None and s.kind == "show":
             warnings.append(
                 CheckIssue(
                     field=where,
-                    message=f"{item.title} has no air dates yet, so it airs only on library"
-                    " channels.",
+                    message=f"{item.title} has no air dates yet, so it won't air."
+                    " Set a pretend premiere.",
                 )
             )
-        elif not draft.library and item.first_air:
+        elif item.first_air:
             carried_from = date(s.from_year, 1, 1) if s.from_year else start
-            if item.first_air > carried_from:
-                kind = "premiere" if s.kind == "movie" else "debut"
+            last = date(s.until_year, 12, 31) if s.until_year else LAST_DAY
+            kind = "premiere" if s.kind == "movie" else "debut"
+            if item.first_air > last:
+                warnings.append(
+                    CheckIssue(
+                        field=where,
+                        message=f"{item.title} debuts {item.first_air:%b %Y}, so it won't air"
+                        " here. Set a pretend premiere.",
+                    )
+                )
+            elif item.first_air > carried_from:
                 warnings.append(
                     CheckIssue(
                         field=where,
@@ -243,7 +304,7 @@ def preview_week(day: date) -> list[date]:
 
 def smoke_test(sched: Scheduler, channel: Channel, days: Sequence[date]) -> list[str]:
     """The scheduler invariants on one channel for some days: no gaps or overlaps, every day
-    closes at 5 a.m., and nothing airs before its date (except on library channels)."""
+    closes at 5 a.m., and nothing airs before its date (on every channel, library ones too)."""
     problems = []
     for day in days:
         if not sched.on_air(channel, day):
@@ -258,12 +319,11 @@ def smoke_test(sched: Scheduler, channel: Channel, days: Sequence[date]) -> list
             if a.end != b.start:
                 problems.append(f"{label}: gap or overlap at {a.end.astimezone(sched.tz):%H:%M}.")
                 break
-        if not channel.library:
-            for s in slots:
-                aired = s.start.astimezone(sched.tz).date()
-                if s.kind in ("episode", "movie") and (s.air_date is None or s.air_date > aired):
-                    problems.append(f"{label}: {s.title} would air before its first air date.")
-                    break
+        for s in slots:
+            aired = s.start.astimezone(sched.tz).date()
+            if s.kind in ("episode", "movie") and (s.air_date is None or s.air_date > aired):
+                problems.append(f"{label}: {s.title} would air before its first air date.")
+                break
     return problems
 
 
@@ -291,8 +351,8 @@ def check_draft(
     if errors:
         failed = CheckResult(ok=False, errors=errors, warnings=warnings, catalog_version=None)
         return Checked(failed, None, None, None)
-    channel, carriage = to_models(channel_id, draft, library_index)
-    overlay = with_channel(head, channel, carriage)
+    channel, carriage, premieres = to_models(channel_id, draft, library_index)
+    overlay = with_channel(head, channel, carriage, premieres)
     merged = apply_overlay(base, overlay)
     errors += [CheckIssue(field=None, message=m) for m in validate(merged)]
     sched = None

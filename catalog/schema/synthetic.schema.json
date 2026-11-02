@@ -2,12 +2,13 @@
   "$defs": {
     "Synthetic": {
       "additionalProperties": false,
-      "description": "A transplanted show: a made-up premiere inside 1990-2010, or library (always eligible).",
+      "description": "A transplant: a show (or movie) given a made-up premiere inside 1990-2010 on one\nchannel. Its earliest episode airs on that channel from `premiere`, the rest keep their\nspacing; every other channel keeps the real (or US debut) dates.",
       "properties": {
-        "library": {
-          "default": false,
-          "title": "Library",
-          "type": "boolean"
+        "channel": {
+          "description": "The one channel the pretend premiere applies to",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Channel",
+          "type": "string"
         },
         "mark": {
           "anyOf": [
@@ -23,17 +24,10 @@
           "title": "Mark"
         },
         "premiere": {
-          "anyOf": [
-            {
-              "format": "date",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Premiere"
+          "description": "The pretend first air date on that channel",
+          "format": "date",
+          "title": "Premiere",
+          "type": "string"
         },
         "show": {
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
@@ -42,7 +36,9 @@
         }
       },
       "required": [
-        "show"
+        "show",
+        "channel",
+        "premiere"
       ],
       "title": "Synthetic",
       "type": "object"
