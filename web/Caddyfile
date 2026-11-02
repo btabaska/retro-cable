@@ -1,12 +1,18 @@
-# Inside the web container. TLS and the LAN-only check happen in the host Caddy
-# (ops/caddy/retro-cable.caddy); this serves plain HTTP on the compose network.
-# No access log: media URLs carry signatures and must never be logged.
+# Inside the web container. TLS happens in the host Caddy (ops/caddy/retro-cable.caddy);
+# this serves plain HTTP on the compose network. No access log: media URLs carry signatures
+# and must never be logged.
 {
 	admin off
 	auto_https off
 }
 
 :80 {
+	# LAN only here too: the host Caddy checks first, but RC_WEB_BIND can publish this port
+	# on the LAN (mini:8095), and then this is the only check. Docker keeps the client's
+	# address on a published port; the host Caddy and loopback are private addresses.
+	@not_lan not remote_ip private_ranges
+	abort @not_lan
+
 	encode gzip
 
 	handle_path /api/* {

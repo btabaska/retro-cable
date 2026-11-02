@@ -16,7 +16,7 @@ import pytest
 import yaml
 
 OPS = Path(__file__).resolve().parents[1]
-SCRIPTS = ["deploy.sh", "rollback.sh", "smoke.sh"]
+SCRIPTS = ["deploy.sh", "rollback.sh", "smoke.sh", "rig/worker.sh", "rig/up.sh"]
 
 
 def load(name: str) -> dict[str, Any]:
@@ -47,7 +47,7 @@ def test_scripts_pass_shellcheck() -> None:
 
 def test_compose_runs_api_and_web_and_a_worker_on_demand() -> None:
     services = load("compose.yml")["services"]
-    assert set(services) == {"api", "web", "worker"}
+    assert set(services) == {"api", "web", "worker", "media-index"}
     assert services["api"]["image"].startswith("ghcr.io/btabaska/retro-cable-api:")
     assert services["web"]["image"].startswith("ghcr.io/btabaska/retro-cable-web:")
     # The worker shares the api image (it has ffmpeg) and only runs when asked:
@@ -59,13 +59,12 @@ def test_compose_runs_api_and_web_and_a_worker_on_demand() -> None:
 
 
 def volumes(service: dict[str, Any]) -> dict[str, str]:
-    """Container path -> mount mode ('ro' or 'rw')."""
+    """Container path -> mount mode ('ro' or 'rw'), ignoring propagation flags (rslave)."""
     out = {}
     for v in service.get("volumes", []):
         parts = re.sub(r"\$\{[^}]*\}", "SRC", v).split(":")
-        mode = parts[-1] if parts[-1] in ("ro", "rw") else "rw"
-        target = parts[-2] if mode == parts[-1] and len(parts) > 2 else parts[1]
-        out[target] = mode
+        flags = parts[-1].split(",") if len(parts) > 2 else []
+        out[parts[1]] = "ro" if "ro" in flags else "rw"
     return out
 
 
@@ -83,6 +82,175 @@ def test_compose_mounts_catalog_and_media_and_only_the_worker_writes_media() -> 
         assert env["RC_MEDIA_DIR"] == "/media"
     text = (OPS / "compose.yml").read_text()
     assert "${RC_MEDIA_DIR:-" in text
+
+
+def test_media_index_records_the_rigs_encodes_without_writing_media() -> None:
+    services = load("compose.yml")["services"]
+    index = services["media-index"]
+    # Off unless ops/.env turns it on (COMPOSE_PROFILES=media-index on the mini).
+    assert index["profiles"] == ["media-index"]
+    assert index["image"] == services["api"]["image"]
+    assert index["restart"] == "unless-stopped"
+    assert "ports" not in index
+    assert index["command"][:5] == ["python", "-m", "retro_cable.ingest", "index-media", "--watch"]
+    assert volumes(index) == {"/data": "rw", "/media": "ro"}
+    assert index["environment"]["RC_MEDIA_DIR"] == "/media"
+    assert index["depends_on"]["api"]["condition"] == "service_healthy"
+
+
+def test_media_index_is_unhealthy_until_it_can_write_the_database() -> None:
+    """A data dir the api user can't write (it was uid 1000 on the mini) made media-index
+    crash-loop while `up --wait` and the smoke test passed. With a healthcheck, `up --wait`
+    fails and deploy.sh rolls back."""
+    index = load("compose.yml")["services"]["media-index"]
+    check = " ".join(index["healthcheck"]["test"])
+    assert "/data/retro-cable.db" in check and "W_OK" in check
+    assert index["healthcheck"]["start_period"]
+
+
+# --- the rig worker ----------------------------------------------------------
+
+
+def test_rig_worker_reads_sources_read_only_and_writes_only_the_media_share() -> None:
+    worker = load("rig/compose.yml")["services"]["worker"]
+    mounts = volumes(worker)
+    assert mounts["/sources/tv"] == "ro"
+    assert mounts["/sources/movies"] == "ro"
+    assert mounts["/catalog"] == "ro"
+    assert mounts["/rig/worker.sh"] == "ro"
+    assert {t for t, m in mounts.items() if m == "rw"} == {"/media", "/data"}
+    text = (OPS / "rig/compose.yml").read_text()
+    assert "${RC_RIG_MEDIA:-/mnt/nas-retro-cable}:/media:rw" in text
+    assert "${RC_RIG_TV:-/mnt/nas-tv-ro}:/sources/tv:ro" in text
+    assert "${RC_RIG_MOVIES:-/mnt/nas-movies-ro}:/sources/movies:ro" in text
+    assert "ports" not in worker
+    assert worker["restart"] == "unless-stopped"
+    assert worker["user"].startswith("${RC_RIG_UID:-1000}")
+
+
+def test_rig_worker_is_low_priority_and_can_use_the_gpu() -> None:
+    worker = load("rig/compose.yml")["services"]["worker"]
+    assert "nvidia.com/gpu=all" in worker["devices"]
+    assert worker["cpu_shares"] <= 256
+    assert worker["environment"]["RC_ENCODER"] == "${RC_ENCODER:-auto}"
+    script = (OPS / "rig/worker.sh").read_text()
+    assert "nice -n 19 ionice -c 3 python -m retro_cable.ingest" in script
+
+
+def _fake_bin(tmp_path: Path) -> tuple[Path, Path]:
+    """nice, ionice and python stand-ins that log their arguments."""
+    bin_dir, calls = tmp_path / "bin", tmp_path / "calls.log"
+    bin_dir.mkdir()
+    for name, body in (
+        ("nice", 'echo "nice $*" >>"$CALLS"; shift 2; exec "$@"'),
+        ("ionice", 'echo "ionice $*" >>"$CALLS"; shift 2; exec "$@"'),
+        ("python", 'echo "python $*" >>"$CALLS"; echo "{}"'),
+    ):
+        path = bin_dir / name
+        path.write_text(f"#!/usr/bin/env bash\n{body}\n")
+        path.chmod(0o755)
+    return bin_dir, calls
+
+
+def _run_worker(tmp_path: Path, media: Path, tv: Path) -> tuple[int, str, str]:
+    bin_dir, calls = _fake_bin(tmp_path)
+    data = tmp_path / "data"
+    data.mkdir(exist_ok=True)
+    env = {
+        **os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CALLS": str(calls),
+        "RC_WORKER_ONCE": "1", "RC_TV_ROOT": str(tv), "RC_MOVIES_ROOT": str(tmp_path / "none"),
+        "RC_MEDIA_DIR": str(media), "RC_DATA_DIR": str(data),
+    }  # fmt: skip
+    result = subprocess.run(
+        ["bash", str(OPS / "rig/worker.sh")], env=env, capture_output=True, text=True
+    )
+    log = calls.read_text() if calls.exists() else ""
+    return result.returncode, log, result.stderr
+
+
+def test_rig_worker_scans_then_normalizes_in_priority_order(tmp_path: Path) -> None:
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    (tv / "Show (1990)").mkdir(parents=True)
+    code, log, _ = _run_worker(tmp_path, media, tv)
+    assert code == 0
+    pythons = [line for line in log.splitlines() if line.startswith("python")]
+    assert pythons[0] == f"python -m retro_cable.ingest scan --tv {tv} --no-probe"
+    assert pythons[1] == (
+        "python -m retro_cable.ingest normalize --all --order priority --encoder auto --manifest"
+    )
+    lines = log.splitlines()
+    assert sum(line.startswith("nice -n 19 ionice -c 3 python") for line in lines) == 2
+    assert sum(line.startswith("ionice -c 3 python") for line in lines) == 2
+
+
+def test_rig_worker_writes_nothing_without_the_nas_share(tmp_path: Path) -> None:
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (tv / "Show (1990)").mkdir(parents=True)
+    code, log, err = _run_worker(tmp_path, media, tv)
+    assert code != 0
+    assert "python" not in log
+    assert ".plexignore" in err
+
+
+def test_rig_worker_skips_an_unmounted_source_tree(tmp_path: Path) -> None:
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    tv.mkdir()
+    code, log, err = _run_worker(tmp_path, media, tv)
+    assert code != 0
+    assert "python" not in log, "an empty tree would detach every file"
+    assert "not mounted" in err
+
+
+def test_rig_up_refuses_mounts_that_are_not_what_it_expects(tmp_path: Path) -> None:
+    """up.sh checks findmnt before starting anything: read-only sources, and a read-write
+    media root that is the NAS .retro-cable folder with its .plexignore."""
+    tv, movies, media = (tmp_path / n for n in ("tv", "movies", "media"))
+    for d in (tv, movies, media):
+        d.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker_log = tmp_path / "docker.log"
+    (bin_dir / "docker").write_text(f'#!/usr/bin/env bash\necho "$*" >>{docker_log}\n')
+    (bin_dir / "docker").chmod(0o755)
+
+    def run(table: dict[str, tuple[str, str]]) -> subprocess.CompletedProcess[str]:
+        findmnt = tmp_path / "findmnt"
+        cases = "\n".join(
+            f'  {p}) [[ $col == SOURCE ]] && echo "{src}" || echo "{opts}" ;;'
+            for p, (src, opts) in table.items()
+        )
+        findmnt.write_text(
+            f"#!/usr/bin/env bash\ncol=$3; target=$5\ncase $target in\n{cases}\n"
+            "  *) exit 1 ;;\nesac\n"
+        )
+        findmnt.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "FINDMNT": str(findmnt),
+               "RC_RIG_TV": str(tv), "RC_RIG_MOVIES": str(movies), "RC_RIG_MEDIA": str(media),
+               "RC_RIG_DATA": str(tmp_path / "data")}  # fmt: skip
+        return subprocess.run(
+            ["bash", str(OPS / "rig/up.sh")], env=env, capture_output=True, text=True
+        )
+
+    good = {
+        str(tv): ("//nas/tv", "ro,relatime"),
+        str(movies): ("//nas/movies", "ro,relatime"),
+        str(media): ("//nas/tv/.retro-cable", "rw,relatime"),
+    }
+    writable_tv = {**good, str(tv): ("//nas/tv", "rw,relatime")}
+    wrong_media = {**good, str(media): ("//nas/tv", "rw,relatime")}
+    for bad in (writable_tv, wrong_media):
+        result = run(bad)
+        assert result.returncode != 0
+        assert not docker_log.exists(), result.stderr
+    result = run(good)
+    assert result.returncode == 0, result.stderr
+    assert "compose" in docker_log.read_text()
 
 
 def test_env_example_documents_media_settings() -> None:
@@ -160,6 +328,19 @@ def _block(text: str, opener: str) -> str:
         if depth == 0:
             return text[at + 1 : i]
     raise AssertionError(f"unbalanced block {opener}")
+
+
+def test_web_caddy_also_rejects_non_private_clients() -> None:
+    """The web port is loopback by default, but RC_WEB_BIND can put it on the LAN (mini:8095
+    when the host Caddy can't be used). The container then needs its own LAN-only check,
+    before any route."""
+    text = (OPS.parent / "web" / "Caddyfile").read_text()
+    site = _block(text, ":80")
+    lines = [
+        ln.strip() for ln in site.splitlines() if ln.strip() and not ln.strip().startswith("#")
+    ]
+    assert lines[0] == "@not_lan not remote_ip private_ranges"
+    assert lines[1] == "abort @not_lan"
 
 
 def test_web_caddy_checks_media_signatures_before_serving_files() -> None:

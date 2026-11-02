@@ -93,6 +93,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/media/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Adminmediaprogress */
+        get: operations["adminMediaProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/preview": {
         parameters: {
             query?: never;
@@ -579,6 +596,55 @@ export interface components {
             /** Year */
             year: number;
         };
+        /** MediaProgress */
+        MediaProgress: {
+            /** Done */
+            done: number;
+            /**
+             * Encoder
+             * @description paused: the worker is between passes or hasn't reported for 30 minutes
+             * @enum {string}
+             */
+            encoder: "gpu" | "cpu" | "paused";
+            /** Failed */
+            failed: number;
+            /**
+             * Gpu Busy
+             * @description The CPU was chosen because the GPU was in use
+             */
+            gpu_busy: boolean;
+            /**
+             * Recent Seconds
+             * @description Wall-clock seconds of the most recent finished files, newest last (<= 20)
+             */
+            recent_seconds: number[];
+            /**
+             * Shows
+             * @description In conversion order
+             */
+            shows: components["schemas"]["MediaShowProgress"][];
+            /** Total */
+            total: number;
+        };
+        /** MediaShowProgress */
+        MediaShowProgress: {
+            /** Done */
+            done: number;
+            /**
+             * Failed
+             * @description Failed in the current or last pass; retried on the next
+             */
+            failed: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "converting" | "queued" | "done";
+            /** Title */
+            title: string;
+            /** Total */
+            total: number;
+        };
         /** Preview */
         Preview: {
             channel: components["schemas"]["ChannelInfo"] | null;
@@ -968,6 +1034,33 @@ export interface operations {
             };
         };
     };
+    adminMediaProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaProgress"];
+                };
+            };
+            /** @description The rig hasn't reported any progress */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     adminPreview: {
         parameters: {
             query?: never;
@@ -1130,6 +1223,15 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description The data dir is not writable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

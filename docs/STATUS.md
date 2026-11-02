@@ -26,7 +26,7 @@
 - [x] Live TV: playback at offset, channel up/down, last channel, number entry, info banner (Phase 5)
 - [x] Guide (true run-time cells, PiP) and year picker (Phase 6)
 - [x] Normalize job (ffmpeg) for real media; Caddy signature check on `/media/*`; disk scan while there is no Plex token, storing uncarried shows for `/admin` (`phase-4/media`, stacked on `phase-10/custom-channels`)
-- [ ] Normalize the real library: needs a writable media share and a host to encode on (questions for Brandon)
+- [ ] Normalize the real library: running on the rig since Nov 2 into the NAS `tv/.retro-cable` folder (`ops/rig/`, `m2/rig-worker`); the mini mounts it read-only and indexes its `manifest.json` (`media-index` service)
 - [ ] Brandon's couch check: flipping channels feels like cable; the guide matches what plays
 
 ## Phase 2 — Catalog and measurements (in review)

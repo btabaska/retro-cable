@@ -1,0 +1,53 @@
+# The media worker on the rig (the GPU box): converts the NAS library once into the hidden
+# .retro-cable folder of the tv share, which the mini serves read-only. Start it with
+# ops/rig/up.sh (it checks the mounts first). See docs/specs/ops.md, "Media worker (rig)".
+#
+# Writes go to two places only: the media root (/mnt/nas-retro-cable, the NAS .retro-cable
+# folder) and the worker's own database (ops/rig/data on the rig's local disk). The TV and
+# movie shares are mounted read-only on the host and again read-only here.
+name: retro-cable-rig
+
+services:
+  worker:
+    build:
+      context: ../../server
+    image: retro-cable-rig-worker:local
+    restart: unless-stopped
+    # The CIFS mounts belong to uid 1000 (forceuid), and only it may write the media root.
+    user: "${RC_RIG_UID:-1000}:${RC_RIG_GID:-1000}"
+    command: ["bash", "/rig/worker.sh"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RC_DATA_DIR: /data
+      RC_CATALOG_DIR: /catalog
+      RC_MEDIA_DIR: /media
+      RC_TV_ROOT: /sources/tv
+      RC_MOVIES_ROOT: /sources/movies
+      RC_ENCODER: ${RC_ENCODER:-auto}
+      # ComfyUI's queue, through the gpu-arbiter: an image job in flight means x264.
+      RC_GPU_QUEUE_URL: ${RC_GPU_QUEUE_URL:-http://host.docker.internal:8189}
+      # The mini's /api/admin/library, so shows on /admin channels go first (optional).
+      RC_PRIORITY_URL: ${RC_PRIORITY_URL:-}
+      RC_WORKER_INTERVAL: ${RC_WORKER_INTERVAL:-21600}
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    # NVENC and nvidia-smi through the NVIDIA container toolkit's CDI spec.
+    devices:
+      - nvidia.com/gpu=all
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Low priority: a small CPU share here, and nice 19 / idle I/O inside (worker.sh).
+    cpu_shares: 128
+    volumes:
+      - ${RC_RIG_TV:-/mnt/nas-tv-ro}:/sources/tv:ro,rslave
+      - ${RC_RIG_MOVIES:-/mnt/nas-movies-ro}:/sources/movies:ro,rslave
+      - ${RC_RIG_MEDIA:-/mnt/nas-retro-cable}:/media:rw,rslave
+      - ${RC_RIG_DATA:-./data}:/data:rw
+      - ../../catalog:/catalog:ro
+      - ./worker.sh:/rig/worker.sh:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
