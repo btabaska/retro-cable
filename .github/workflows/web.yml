@@ -33,6 +33,15 @@ jobs:
         run: make lint-web
       - name: Unit tests (Vitest)
         run: make test-web
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      # Full-length demo feeds (~3 h of color bars) take minutes to encode; reuse them
+      # until the generator changes. Playwright's API (tools/e2e-api.sh) seeds from them.
+      - uses: actions/cache@v6
+        with:
+          path: .fixtures
+          key: fixtures-${{ hashFiles('tools/fixtures/generate.py') }}
+      - name: Demo feeds and demo database
+        run: make demo-db
       - run: cd web && npx playwright install --with-deps chromium
       - name: End-to-end (Playwright, Chromium)
         run: make e2e

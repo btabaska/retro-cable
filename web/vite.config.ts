@@ -5,6 +5,8 @@ import { defineConfig } from "vite";
 const apiTarget = process.env.RC_API_URL ?? "http://127.0.0.1:8000";
 const proxy = {
   "/api": { target: apiTarget, rewrite: (path: string) => path.replace(/^\/api/, "") },
+  // Signed media URLs; the API checks the signature and serves the file in dev.
+  "/media": { target: apiTarget },
 };
 
 export default defineConfig({

@@ -1,6 +1,15 @@
 # Status
 
-**Current phase:** 1 — Skeleton
+**Current phase:** 3–6 in review (scheduler, tuning, live TV, guide) — playable on demo media with `make demo`
+
+## Phases 3–6 — Scheduler through guide (in review, stacked on Phase 2)
+
+- [x] Scheduler engine with Hypothesis invariants; `/channels`, `/guide`, `/tune` (Phase 3)
+- [x] Signed media URLs and `/media` in dev; demo feeds and demo database (`make demo`) (Phase 4)
+- [x] Live TV: playback at offset, channel up/down, last channel, number entry, info banner (Phase 5)
+- [x] Guide (true run-time cells, PiP) and year picker (Phase 6)
+- [ ] Normalize job (ffmpeg) for real media; Caddy signature check on `/media/*`
+- [ ] Brandon's couch check: flipping channels feels like cable; the guide matches what plays
 
 ## Phase 2 — Catalog and measurements (in review)
 

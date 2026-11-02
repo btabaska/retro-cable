@@ -23,8 +23,10 @@ export default defineConfig({
     ? undefined
     : [
         {
-          command: "uv run --project ../server uvicorn retro_cable.app:app --host 127.0.0.1 --port 8000",
+          // The API on the demo database (tools/e2e-api.sh seeds it from the demo feeds).
+          command: "../tools/e2e-api.sh",
           url: "http://127.0.0.1:8000/health",
+          timeout: 300_000,
           reuseExistingServer: !ci,
         },
         {

@@ -141,6 +141,10 @@ def encode(clip: Clip, dest: Path) -> None:
     out_fps = OUT_FPS if clip.kind != "demo" else 10
     # Demo feeds run for hours of viewing, so their tone is kept very quiet.
     volume = "0.03" if clip.kind == "demo" else "1"
+    # Hours of AAC dominate demo encode time; the fast coder at mono 24 kHz is ~5x quicker.
+    audio = ["-c:a", "aac", "-b:a", "128k"]
+    if clip.kind == "demo":
+        audio = ["-c:a", "aac", "-aac_coder", "fast", "-ac", "1", "-ar", "24000", "-b:a", "48k"]
     cmd = [
         "ffmpeg", "-v", "error", "-y",
         "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{WIDTH}x{HEIGHT}",
@@ -150,7 +154,7 @@ def encode(clip: Clip, dest: Path) -> None:
         "-vf", f"fps={out_fps}", "-af", f"volume={volume}",
         "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
         "-g", str(out_fps),  # a keyframe every second so playback can start at any offset
-        "-c:a", "aac", "-b:a", "128k",
+        *audio,
         "-movflags", "+faststart",
         str(tmp),
     ]  # fmt: skip
@@ -210,14 +214,10 @@ def main() -> None:
     parser.add_argument(
         "--demo", action="store_true", help="also write the long demo feeds into _demo/"
     )
-    parser.add_argument(
-        "--demo-scale", type=float, default=1.0, help="shrink demo feed lengths (tests)"
-    )
     args = parser.parse_args()
     generate(args.out, args.episode_seconds, args.bumper_seconds)
     if args.demo:
-        lengths = {k: max(1, round(v * args.demo_scale)) for k, v in DEMO_FEEDS.items()}
-        generate_demo(args.out, lengths)
+        generate_demo(args.out)
 
 
 if __name__ == "__main__":

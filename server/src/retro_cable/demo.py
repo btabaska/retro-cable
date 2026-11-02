@@ -38,6 +38,11 @@ HOUR = {
     "walker-texas-ranger",
 }  # fmt: skip
 SPECIALS = {"rudolph-the-red-nosed-reindeer", "frosty-the-snowman", "peanuts-holiday-specials"}
+# The shortest feed each runtime class accepts. Episodes take their feed's length, so short
+# feeds make schedules no real channel had (and guides of tens of thousands of slots).
+MIN_FEED_SECONDS = {
+    "quarter-hour": 10 * 60, "half-hour": 20 * 60, "hour": 40 * 60, "movie": 80 * 60
+}  # fmt: skip
 
 
 def _feed(show: str, kind: str) -> str:
@@ -52,6 +57,10 @@ def seed_demo(db_path: Path, catalog_dir: Path, media_dir: Path) -> dict[str, in
     catalog = load_catalog(catalog_dir)
     manifest = json.loads((media_dir / "_demo" / "manifest.json").read_text())
     feeds = {c["feed"]: (c["path"], int(c["seconds"])) for c in manifest["clips"]}
+    short = [f"{k} ({feeds[k][1]} s)" for k, low in MIN_FEED_SECONDS.items() if feeds[k][1] < low]
+    if short:
+        listed = ", ".join(short)
+        raise ValueError(f"demo feeds are too short to schedule: {listed}; run make demo-db")
     library_channels = {c.id for c in catalog.channels.channels if c.library}
 
     first: dict[tuple[str, str], date] = {}
