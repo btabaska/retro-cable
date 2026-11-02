@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -96,3 +97,13 @@ def test_generate_demo_writes_clips_and_manifest(tmp_path: Path) -> None:
     fmt = info["format"]
     assert isinstance(fmt, dict)
     assert float(fmt["duration"]) == pytest.approx(2, abs=0.3)
+
+
+def test_cli_has_no_demo_scale_flag() -> None:
+    # Shrunken demo feeds made unrealistic schedules (see server/tests/test_demo.py).
+    import generate
+
+    out = subprocess.run(
+        [sys.executable, generate.__file__, "--help"], check=True, capture_output=True, text=True
+    ).stdout
+    assert "--demo-scale" not in out

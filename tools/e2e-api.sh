@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Start the API on demo data for Playwright (web/playwright.config.ts runs this).
-# Reuses the demo feeds from `make demo-db` when present; otherwise writes tiny ones.
+# Reuses the demo feeds from `make demo-db` when present; otherwise writes them at full
+# length (shorter feeds make schedules of seconds-long programs).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ ! -f .fixtures/_demo/manifest.json ]]; then
-  uv run --project server python tools/fixtures/generate.py --out .fixtures --demo --demo-scale 0.02
+  uv run --project server python tools/fixtures/generate.py --out .fixtures --demo
 fi
 mkdir -p data
 (cd server && uv run python -m retro_cable.demo --db ../data/e2e.db --catalog ../catalog --media ../.fixtures)

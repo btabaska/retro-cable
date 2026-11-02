@@ -32,10 +32,9 @@ dev: fixtures ## Run the API and web dev server on fixtures
 	wait
 
 DEMO_DB := $(CURDIR)/data/demo.db
-DEMO_SCALE ?= 1
 
 demo-db: ## Demo feeds in .fixtures/_demo and a demo database (data/demo.db) for every carried show
-	$(UV) python tools/fixtures/generate.py --out .fixtures --demo --demo-scale $(DEMO_SCALE)
+	$(UV) python tools/fixtures/generate.py --out .fixtures --demo
 	mkdir -p data
 	cd server && uv run python -m retro_cable.demo --db $(DEMO_DB) --catalog ../catalog --media ../.fixtures
 
@@ -95,7 +94,7 @@ api-check: api ## Fail if the committed spec or client is stale
 	git diff --exit-code -- server/openapi.json web/src/api/generated
 
 stack-up: fixtures ## Build and start ops/compose.test.yml on 127.0.0.1:8080 (demo feeds)
-	test -f .fixtures/_demo/manifest.json || $(MAKE) demo-db DEMO_SCALE=0.02
+	test -f .fixtures/_demo/manifest.json || $(MAKE) demo-db
 	RC_GIT_SHA=$$(git rev-parse --short HEAD) $(COMPOSE_TEST) up -d --build --wait
 
 stack-down:

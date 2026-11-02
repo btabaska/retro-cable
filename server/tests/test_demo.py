@@ -2,6 +2,8 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from retro_cable.catalog import load_catalog
 from retro_cable.db import connect
 from retro_cable.demo import seed_demo
@@ -11,9 +13,9 @@ from tests.conftest import MakeCatalog
 FEEDS = {"quarter-hour": 660, "half-hour": 1320, "hour": 2640, "movie": 5400, "bumper": 10}
 
 
-def write_manifest(media: Path) -> None:
+def write_manifest(media: Path, feeds: dict[str, int] = FEEDS) -> None:
     (media / "_demo").mkdir(parents=True)
-    clips = [{"feed": k, "seconds": v, "path": f"_demo/{k}.mp4"} for k, v in FEEDS.items()]
+    clips = [{"feed": k, "seconds": v, "path": f"_demo/{k}.mp4"} for k, v in feeds.items()]
     (media / "_demo" / "manifest.json").write_text(json.dumps({"clips": clips}))
 
 
@@ -45,3 +47,13 @@ def test_seed_demo_fills_every_carried_show(make_catalog: MakeCatalog, tmp_path:
     sched = Scheduler(load_catalog(root), library, seed=0)
     slots = sched.day("cartoon-network", date(1998, 10, 31))
     assert any(s.kind == "episode" for s in slots)
+
+
+def test_seed_demo_refuses_shrunken_feeds(make_catalog: MakeCatalog, tmp_path: Path) -> None:
+    # Feeds cut to 2% made 26-second "episodes": a 12-hour guide of 32,000 slots that the
+    # browser could not load in time. Every runtime class must be full length.
+    media = tmp_path / "media"
+    write_manifest(media, {**FEEDS, "half-hour": 26})
+    with pytest.raises(ValueError, match="half-hour"):
+        seed_demo(tmp_path / "demo.db", make_catalog(), media)
+    assert not (tmp_path / "demo.db").exists()
