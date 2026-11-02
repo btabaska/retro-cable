@@ -178,8 +178,8 @@ def test_rig_worker_scans_then_normalizes_in_priority_order(tmp_path: Path) -> N
     pythons = [line for line in log.splitlines() if line.startswith("python")]
     assert pythons[0] == f"python -m retro_cable.ingest scan --tv {tv} --no-probe"
     assert pythons[1] == (
-        "python -m retro_cable.ingest normalize --all --order priority --encoder auto --manifest"
-    )
+        "python -m retro_cable.ingest normalize --order priority --encoder auto --manifest"
+    ), "only what a channel carries is converted, never the whole library (--all)"
     lines = log.splitlines()
     assert sum(line.startswith("nice -n 19 ionice -c 3 python") for line in lines) == 2
     assert sum(line.startswith("ionice -c 3 python") for line in lines) == 2

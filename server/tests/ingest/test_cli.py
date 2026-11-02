@@ -112,6 +112,31 @@ def test_normalize_includes_shows_on_custom_channels(
     assert isinstance(shows, frozenset) and {"johnny-bravo", "the-simpsons"} <= shows
 
 
+def test_normalize_includes_shows_on_the_minis_admin_channels(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The rig converts only what some channel carries, including channels made on the mini.
+    library = {
+        "items": [
+            {
+                "id": "over-the-garden-wall",
+                "first_year": 2004,
+                "channels": [{"id": "custom-toons"}],
+            },
+            {"id": "nobody-airs-me", "first_year": 1995, "channels": []},
+        ]
+    }
+    monkeypatch.setattr(cli, "_get_json", lambda url: library)
+    monkeypatch.setattr(cli, "normalize", lambda db, media, **kw: _capture(kw))
+    args = ["normalize", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog()),
+            "--media-dir", str(tmp_path / "media"), "--order", "priority",
+            "--priority-url", "http://mini/api/admin/library"]  # fmt: skip
+    assert cli.main(args) == 0
+    shows = CAPTURED["shows"]
+    assert isinstance(shows, frozenset)
+    assert {"over-the-garden-wall", "the-simpsons"} <= shows and "nobody-airs-me" not in shows
+
+
 def test_normalize_needs_a_catalog_unless_all(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

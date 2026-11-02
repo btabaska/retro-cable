@@ -107,8 +107,8 @@ def _parser() -> argparse.ArgumentParser:
                       help="auto: remove black bars baked into the picture (default)")  # fmt: skip
     norm.add_argument("--dry-run", action="store_true", help="print the ffmpeg commands")
     norm.add_argument("--all", action="store_true",
-                      help="also shows no channel carries (default: carried shows only, "
-                           "including those on /admin channels)")  # fmt: skip
+                      help="also what no channel carries (default: carried only, with "
+                           "/admin channels; --priority-url adds the mini's)")  # fmt: skip
     scan.add_argument("--carried-only", action="store_true",
                       help="skip show folders no channel carries (default: keep)")  # fmt: skip
     scan.add_argument("--no-probe", action="store_true",
@@ -181,7 +181,12 @@ def main(argv: list[str]) -> int:
     elif args.job == "index-media":
         return _index_media(db, args)
     else:
-        shows = None if args.all or catalog is None else carried_shows(db, catalog)
+        shows = None
+        if not args.all and catalog is not None:
+            # What a channel carries here, plus the shows on channels made in the mini's /admin.
+            shows = carried_shows(db, catalog) | frozenset(
+                priority_years(db, None, args.priority_url)
+            )
         stats = _normalize(db, args, shows, catalog)
     print(json.dumps(stats, indent=2))
     return 0
@@ -217,7 +222,7 @@ def priority_years(
     db: sqlite3.Connection,
     catalog: Catalog | None,
     url: str = "",
-    fetch: Callable[[str], object] = _get_json,
+    fetch: Callable[[str], object] | None = None,
 ) -> dict[str, int]:
     """Show and movie id -> the earliest year a channel carries it: the YAML catalog plus
     this database's /admin overlay, plus (with `url`, the mini's /api/admin/library) the
@@ -229,7 +234,7 @@ def priority_years(
             years[c.show] = min(years.get(c.show, 9999), c.from_.year)
     if url:
         try:
-            data = fetch(url)
+            data = (fetch or _get_json)(url)
             items = data.get("items", []) if isinstance(data, dict) else []
         except (OSError, ValueError) as err:
             print(f"warning: can't read {url} for priorities: {err}", file=sys.stderr)
