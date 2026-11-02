@@ -175,13 +175,18 @@ def router(
     seed: int,
 ) -> APIRouter:
     api = APIRouter(prefix="/admin", tags=["admin"])
+    migrated: set[tuple[int, int]] = set()  # (device, inode) of database files migrated
 
     @contextmanager
     def database() -> Iterator[sqlite3.Connection]:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         db = connect(db_path)
         try:
-            migrate(db)
+            # Migrate once per database file, not on every request: reads stay reads.
+            st = db_path.stat()
+            if (st.st_dev, st.st_ino) not in migrated:
+                migrate(db)
+                migrated.add((st.st_dev, st.st_ino))
             yield db
         finally:
             db.close()

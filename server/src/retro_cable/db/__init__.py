@@ -28,9 +28,10 @@ def _load_migrations() -> list[Migration]:
 MIGRATIONS = _load_migrations()
 
 
-def connect(path: Path | str) -> sqlite3.Connection:
-    """Open the database in autocommit mode; callers group writes with `with transaction(db)`."""
-    db = sqlite3.connect(path, isolation_level=None)
+def connect(path: Path | str, *, check_same_thread: bool = True) -> sqlite3.Connection:
+    """Open the database in autocommit mode; callers group writes with `with transaction(db)`.
+    Pass check_same_thread=False only for a connection guarded by a lock."""
+    db = sqlite3.connect(path, isolation_level=None, check_same_thread=check_same_thread)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     db.execute("PRAGMA journal_mode = WAL")

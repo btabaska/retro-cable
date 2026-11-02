@@ -3,6 +3,8 @@
 import logging
 import os
 import secrets
+import sqlite3
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -62,23 +64,56 @@ class Settings:
 
 class _Schedules:
     """The current Scheduler, rebuilt when the catalog files, the database or the admin
-    overlay change. The effective catalog is the YAML plus the head admin overlay."""
+    overlay change. The effective catalog is the YAML plus the head admin overlay.
+
+    The database part of the cache stamp is SQLite's `PRAGMA data_version` on one
+    long-lived connection, which changes only when another connection commits. File
+    mtimes are not used for the database: opening and closing connections (WAL checkpoints,
+    the -wal file coming and going) changed them on plain reads, so every admin read
+    rebuilt the Scheduler and stalled the next TV request. A rebuild runs under a lock, so
+    concurrent requests after a change share one rebuild."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._stamp: tuple[float, ...] | None = None
+        self._stamp: tuple[object, ...] | None = None
         self._scheduler: Scheduler | None = None
         self._base: Catalog | None = None
         self._library = Library()
+        self._lock = threading.RLock()
+        self._watch: sqlite3.Connection | None = None
+        self._watch_file: tuple[int, int] | None = None
 
-    def _mtimes(self) -> tuple[float, ...]:
-        paths = sorted(self.settings.catalog_dir.glob("*.yaml"))
-        db = self.settings.db_path
-        paths += [db, db.with_name(db.name + "-wal")]
-        return tuple(p.stat().st_mtime if p.exists() else 0.0 for p in paths)
+    def _db_stamp(self) -> tuple[object, ...]:
+        """(device, inode, data_version) of the database, or () when there is none. Call
+        with the lock held."""
+        try:
+            st = self.settings.db_path.stat()
+        except FileNotFoundError:
+            self._close_watch()
+            return ()
+        ident = (st.st_dev, st.st_ino)
+        if self._watch is None or ident != self._watch_file:
+            self._close_watch()
+            self._watch = connect(self.settings.db_path, check_same_thread=False)
+            migrate(self._watch)
+            self._watch_file = ident
+        (version,) = self._watch.execute("PRAGMA data_version").fetchall()[0]
+        return (*ident, version)
+
+    def _close_watch(self) -> None:
+        if self._watch is not None:
+            self._watch.close()
+        self._watch, self._watch_file = None, None
+
+    def _stamp_now(self) -> tuple[object, ...]:
+        yaml = tuple(
+            (p.name, p.stat().st_mtime) for p in sorted(self.settings.catalog_dir.glob("*.yaml"))
+        )
+        return (yaml, self._db_stamp())
 
     def invalidate(self) -> None:
-        self._scheduler = None
+        with self._lock:
+            self._scheduler = None
 
     @property
     def base(self) -> Catalog:
@@ -92,25 +127,22 @@ class _Schedules:
         return self._library
 
     def __call__(self) -> Scheduler:
-        stamp = self._mtimes()
-        if self._scheduler is None or stamp != self._stamp:
+        with self._lock:
+            stamp = self._stamp_now()
+            if self._scheduler is not None and stamp == self._stamp:
+                return self._scheduler
             catalog = load_catalog(self.settings.catalog_dir)
             library = Library()
             overlay = Overlay()
-            if self.settings.db_path.exists():
-                db = connect(self.settings.db_path)
-                try:
-                    migrate(db)
-                    library = load_library(db)
-                    overlay = store.head(db).overlay
-                finally:
-                    db.close()
+            if self._watch is not None:
+                library = load_library(self._watch)
+                overlay = store.head(self._watch).overlay
             self._base, self._library = catalog, library
             self._scheduler = Scheduler(
                 apply_overlay(catalog, overlay), library, seed=self.settings.seed
             )
             self._stamp = stamp
-        return self._scheduler
+            return self._scheduler
 
 
 def _operation_id(route: APIRoute) -> str:
