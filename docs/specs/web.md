@@ -70,3 +70,11 @@ The first frontend is a browser app with the same TV interface, so agents can te
 - **Guide.** One request covers 12 hours from the current half hour. The grid shows 7 rows × 90 minutes. Cells are sized to real run times, and each bumper is folded into the cell before the next program. A cell that started before the window reads "from 7:52". Up and down keep the time anchor. Left and right move by cell and scroll the window by half hours. Enter tunes, Space opens the year picker, and Esc goes back. The details panel shows the focused cell, and the live picture plays as picture-in-picture.
 - **Year picker.** A 7 × 3 grid of years. The panel shows the dial for the focused year, with hidden channels marked "Hidden until …". Enter sets the year, retunes and returns to live TV. The year and channel are remembered in `localStorage`.
 - **Tests.** Vitest covers guide layout, channel stepping, time formatting and the app flow on a fake API. The Playwright flow `e2e/tv.spec.ts` runs launch → banner → guide → tune → change year, checks that the player is past the offset `/tune` returned, and checks that the banner and clock hide about 4 s after a tune and come back on I. Playwright starts the API through `tools/e2e-api.sh` on the demo database.
+
+## Implemented (Phase 7: Feel)
+
+- **Guide cell kicker.** After the start time: `NEW` in the focus gold, bold; `MOVIE` for movies; the holiday name in `color.holiday`, bold and upper case (`8:00 · NEW · HALLOWEEN`). On a focused cell the kicker uses `onFocus`. The words are always text, never color alone.
+- **Badges.** The info banner and the guide details show `NEW` (`.badge-new`) and the holiday (`.badge-holiday`: 2px holiday-color border and text, no fill). The details pane also shows a `MOVIE` outline badge. Bumpers and reruns never get NEW.
+- **Movies.** The line under the title reads the premiere year and running time ("1998 · 1h 25m") instead of season and episode (`src/lib/program.ts`). Cells keep their true length.
+- **Bumpers without media** show a station ID slate on `color.background`: number and call sign, channel name, and "Up next 8:27 Seinfeld". Bumpers with media play them.
+- **Tests.** `program.test.ts` (kicker and labels), `InfoBanner.test.tsx` (badges, movie line) and `Player.test.tsx` (bumper slate).

@@ -29,6 +29,8 @@ const slot: TunedSlot = {
   air_date: "1989-12-17",
   new: false,
   transplant: false,
+  holiday: null,
+  holiday_name: null,
   media_url: null,
 };
 

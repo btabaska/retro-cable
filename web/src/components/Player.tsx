@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { TunedSlot } from "../api/client";
+import { formatShortTime } from "../lib/time";
 
 export type PlayerMode = "live" | "pip" | "hidden";
 
 interface PlayerProps {
   slot: TunedSlot | null;
   next: TunedSlot | null;
+  /** "02 KTVU" */
   callSign: string;
+  channelName?: string;
+  timeZone?: string;
   mode: PlayerMode;
   muted: boolean;
   /** Simulated now in ms; the player seeks to (now - slot start). */
@@ -25,7 +29,17 @@ export const OVERRUN_TOLERANCE_MS = 5000;
 export const DURATION_MISMATCH_S = 3;
 
 /** Native <video> at the offset /tune returned, or a card for filler. Advances at slot end. */
-export function Player({ slot, next, callSign, mode, muted, simNow, onEnded }: PlayerProps) {
+export function Player({
+  slot,
+  next,
+  callSign,
+  channelName = "",
+  timeZone = "America/New_York",
+  mode,
+  muted,
+  simNow,
+  onEnded,
+}: PlayerProps) {
   const video = useRef<HTMLVideoElement>(null);
   const ended = useRef(onEnded);
   useEffect(() => {
@@ -129,6 +143,17 @@ export function Player({ slot, next, callSign, mode, muted, simNow, onEnded }: P
           onLoadedMetadata={onLoaded}
           data-testid="player-video"
         />
+      ) : slot?.kind === "bumper" ? (
+        // A bumper without media: the station ID slate, like a card between programs.
+        <div className="player-bumper" data-testid="bumper-slate">
+          <div className="bumper-number">{callSign}</div>
+          {channelName && <div className="bumper-name">{channelName}</div>}
+          {next && (
+            <div className="bumper-next">
+              Up next {formatShortTime(Date.parse(next.start), timeZone)} {next.title}
+            </div>
+          )}
+        </div>
       ) : (
         <div className="player-filler" data-testid="player-filler">
           <div className="bars" />

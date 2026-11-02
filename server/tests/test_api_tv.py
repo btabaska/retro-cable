@@ -93,6 +93,27 @@ def test_guide_returns_a_full_back_to_back_day(client: TestClient) -> None:
         assert all("path" not in s and "media_url" not in s for s in slots)
 
 
+def test_guide_labels_holiday_episodes(client: TestClient, tmp_path: Path) -> None:
+    db = connect(tmp_path / "rc.db")
+    db.execute(
+        "UPDATE episodes SET title = 'Treehouse of Horror ' || id"
+        " WHERE show_id = 'the-simpsons' AND episode = 5"
+    )
+    db.close()
+    body = client.get(
+        "/guide", params={"year": 1998, "date": "10-31", "start": "20:00", "hours": 3}
+    ).json()
+    ktvu = next(r for r in body["channels"] if r["channel"]["id"] == "ktvu")
+    themed = [s for s in ktvu["slots"] if s["holiday"] == "halloween"]
+    assert themed and all(s["holiday_name"] == "Halloween" for s in themed)
+    assert all("Treehouse" in s["episode_title"] for s in themed)
+    plain = [s for s in ktvu["slots"] if s["kind"] == "bumper"]
+    assert plain and all(s["holiday"] is None and s["holiday_name"] is None for s in plain)
+    # Outside the window nothing is labelled.
+    nov = client.get("/guide", params={"year": 1998, "date": "11-05", "hours": 6}).json()
+    assert not any(s["holiday"] for r in nov["channels"] for s in r["slots"])
+
+
 def test_guide_window(client: TestClient) -> None:
     body = client.get(
         "/guide", params={"year": 1998, "date": "10-31", "start": "20:00", "hours": 1.5}

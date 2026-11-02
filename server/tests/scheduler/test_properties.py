@@ -5,13 +5,17 @@ from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from retro_cable.catalog import Catalog
-from retro_cable.scheduler import Library, Program, Scheduler
+from retro_cable.catalog.holidays import holiday_date, in_season, in_window
+from retro_cable.scheduler import Library, Program, Scheduler, Slot
 from retro_cable.scheduler.engine import OFF_AIR, PAID_PROGRAMMING
+from tests.conftest import MakeCatalog
 from tests.scheduler.conftest import make_library
+from tests.scheduler.holiday_fixtures import holiday_catalog, holiday_library
 
 NY = ZoneInfo("America/New_York")
 CHANNELS = ["ktvu", "cartoon-network", "disney-movies"]
@@ -91,6 +95,73 @@ def test_midnight_is_continuous(catalog: Catalog, day: date, seed: int) -> None:
     after = sched.between("ktvu", midnight, midnight + timedelta(hours=1))
     # The program running at midnight is the same slot seen from either side.
     assert before[-1] == after[0] or before[-1].end == after[0].start
+
+
+# --- holidays (Phase 7) -------------------------------------------------------------------
+
+HOLIDAY_CHANNELS = ["ktvu", "disney", "disney-movies", "nick"]
+HOLIDAY_ITEMS = {
+    "halloweentown",
+    "under-wraps",
+    "the-luck-of-the-irish",
+    "peanuts-holiday-specials",
+}
+holiday_days = st.dates(min_value=date(1997, 9, 1), max_value=date(2002, 12, 31)) | st.sampled_from(
+    [date(1998, 10, 31), date(1998, 10, 25), date(2001, 3, 17), date(1999, 12, 24)]
+)
+
+
+@pytest.fixture
+def hcat(make_catalog: MakeCatalog) -> Catalog:
+    return holiday_catalog(make_catalog)
+
+
+@SETTINGS
+@given(day=holiday_days, channel=st.sampled_from(HOLIDAY_CHANNELS), seed=st.integers(0, 1000))
+def test_holiday_windows_pull_only_tagged_items(
+    hcat: Catalog, day: date, channel: str, seed: int
+) -> None:
+    sched = Scheduler(hcat, holiday_library(), seed=seed)
+    holidays = {h.id: h for h in hcat.holidays.holidays}
+    slots = sched.day(channel, day)
+    assert slots[0].start == datetime.combine(day, time(5), NY)
+    for a, b in itertools.pairwise(slots):
+        assert a.end == b.start
+    marathon = hcat.channel(channel).type == "movie" and any(
+        holiday_date(h, day.year) == day for h in holidays.values()
+    )
+    for s in slots:
+        local = s.start.astimezone(NY).date()
+        if s.kind in ("episode", "movie"):
+            assert s.air_date is not None and s.air_date <= local
+        # A holiday label names a holiday in force on that date. A movie channel's holiday
+        # marathon runs on the holiday's broadcast day, so past midnight to 5 a.m. too.
+        if s.holiday:
+            h = holidays[s.holiday]
+            on_the_day = marathon and holiday_date(h, day.year) == day
+            assert in_window(h, local) or in_season(h, local) or on_the_day
+        # Holiday movies and specials air only tagged for a holiday in season.
+        if s.show in HOLIDAY_ITEMS:
+            assert s.holiday is not None
+            h = holidays[s.holiday]
+            assert in_season(h, local) or (marathon and holiday_date(h, day.year) == day)
+        # On the holiday itself a movie channel airs only that holiday's movies.
+        if (
+            marathon
+            and s.kind == "movie"
+            and any(
+                holiday_date(h, day.year) == day and h.id in sched.tags(_movie(sched, s))
+                for h in holidays.values()
+            )
+        ):
+            assert s.holiday is not None and holiday_date(holidays[s.holiday], day.year) == day
+    # Holiday windows, specials and marathons never cut a program short.
+    _assert_full_runtime(sched, sched.library, channel, day)
+
+
+def _movie(sched: Scheduler, s: Slot) -> Program:
+    assert s.show is not None
+    return sched.library.movies[s.show]
 
 
 # --- Programs always air in full (Brandon, M1 review) ---------------------------------------

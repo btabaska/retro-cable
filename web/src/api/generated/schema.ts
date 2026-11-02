@@ -170,6 +170,16 @@ export interface components {
             /** Episode Title */
             episode_title: string;
             /**
+             * Holiday
+             * @description Holiday id this program is tagged for while that holiday is in force
+             */
+            holiday: string | null;
+            /**
+             * Holiday Name
+             * @description Display name of `holiday`, e.g. Halloween
+             */
+            holiday_name: string | null;
+            /**
              * Kind
              * @enum {string}
              */
@@ -250,6 +260,16 @@ export interface components {
             episode: number | null;
             /** Episode Title */
             episode_title: string;
+            /**
+             * Holiday
+             * @description Holiday id this program is tagged for while that holiday is in force
+             */
+            holiday: string | null;
+            /**
+             * Holiday Name
+             * @description Display name of `holiday`, e.g. Halloween
+             */
+            holiday_name: string | null;
             /**
              * Kind
              * @enum {string}

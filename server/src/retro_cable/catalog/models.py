@@ -151,7 +151,13 @@ class ShowOverride(Model):
     us_debut: date | None = Field(default=None, description="Imports: first US air date")
     exclude: bool = False
     episodes: dict[EpisodeKey, date] = Field(default={}, description="Per-episode air dates")
-    holiday_tags: dict[EpisodeKey, list[Slug]] = {}
+    holiday_tags: dict[EpisodeKey, list[Slug]] = Field(
+        default={}, description="Per-episode holiday ids, replacing the title tagger"
+    )
+    seasonal: bool = Field(
+        default=False,
+        description="Holiday specials show: tagged episodes air only in their holiday's season",
+    )
 
 
 class OverridesFile(Model):

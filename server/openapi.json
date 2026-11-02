@@ -172,6 +172,30 @@
             "title": "Episode Title",
             "type": "string"
           },
+          "holiday": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Holiday id this program is tagged for while that holiday is in force",
+            "title": "Holiday"
+          },
+          "holiday_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Display name of `holiday`, e.g. Halloween",
+            "title": "Holiday Name"
+          },
           "kind": {
             "enum": [
               "episode",
@@ -238,7 +262,9 @@
           "episode",
           "air_date",
           "new",
-          "transplant"
+          "transplant",
+          "holiday",
+          "holiday_name"
         ],
         "title": "GuideSlot",
         "type": "object"
@@ -381,6 +407,30 @@
             "title": "Episode Title",
             "type": "string"
           },
+          "holiday": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Holiday id this program is tagged for while that holiday is in force",
+            "title": "Holiday"
+          },
+          "holiday_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Display name of `holiday`, e.g. Halloween",
+            "title": "Holiday Name"
+          },
           "kind": {
             "enum": [
               "episode",
@@ -459,6 +509,8 @@
           "air_date",
           "new",
           "transplant",
+          "holiday",
+          "holiday_name",
           "media_url"
         ],
         "title": "TunedSlot",
