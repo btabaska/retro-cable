@@ -1,12 +1,27 @@
 """FastAPI application factory."""
 
+import logging
 import os
+import secrets
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
-from retro_cable import __version__
+from retro_cable import __version__, media, tv
+from retro_cable.catalog import load_catalog
+from retro_cable.db import connect, migrate
+from retro_cable.scheduler import Library, Scheduler, load_library
+
+log = logging.getLogger(__name__)
+REPO_CATALOG = Path(__file__).resolve().parents[3] / "catalog"
 
 
 class Health(BaseModel):
@@ -18,17 +33,79 @@ class Version(BaseModel):
     commit: str
 
 
+@dataclass(frozen=True)
+class Settings:
+    catalog_dir: Path
+    db_path: Path
+    media_dir: Path
+    media_secret: str = field(repr=False)
+    seed: int = 0
+
+    @staticmethod
+    def from_env() -> "Settings":
+        data = Path(os.environ.get("RC_DATA_DIR", "data"))
+        secret = os.environ.get("RC_MEDIA_SECRET")
+        if not secret:
+            log.warning("RC_MEDIA_SECRET is unset; media URLs last until the API restarts")
+            secret = secrets.token_hex(32)
+        return Settings(
+            catalog_dir=Path(os.environ.get("RC_CATALOG_DIR", REPO_CATALOG)),
+            db_path=Path(os.environ.get("RC_DB", data / "retro-cable.db")),
+            media_dir=Path(os.environ.get("RC_MEDIA_DIR", data / "media")),
+            media_secret=secret,
+            seed=int(os.environ.get("RC_SEED", "0")),
+        )
+
+
+class _Schedules:
+    """The current Scheduler, rebuilt when the catalog files or the database change."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self._stamp: tuple[float, ...] | None = None
+        self._scheduler: Scheduler | None = None
+
+    def _mtimes(self) -> tuple[float, ...]:
+        paths = sorted(self.settings.catalog_dir.glob("*.yaml"))
+        paths.append(self.settings.db_path)
+        return tuple(p.stat().st_mtime if p.exists() else 0.0 for p in paths)
+
+    def __call__(self) -> Scheduler:
+        stamp = self._mtimes()
+        if self._scheduler is None or stamp != self._stamp:
+            catalog = load_catalog(self.settings.catalog_dir)
+            library = Library()
+            if self.settings.db_path.exists():
+                db = connect(self.settings.db_path)
+                try:
+                    migrate(db)
+                    library = load_library(db)
+                finally:
+                    db.close()
+            self._scheduler = Scheduler(catalog, library, seed=self.settings.seed)
+            self._stamp = stamp
+        return self._scheduler
+
+
 def _operation_id(route: APIRoute) -> str:
     # The generated web and tvOS clients use these names, so keep them stable.
     return route.name
 
 
-def create_app() -> FastAPI:
+def _real_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def create_app(
+    settings: Settings | None = None, clock: Callable[[], datetime] = _real_now
+) -> FastAPI:
     app = FastAPI(
         title="Retro Cable",
         version=__version__,
         generate_unique_id_function=_operation_id,
     )
+    config = settings or Settings.from_env()
+    schedules = _Schedules(config)
 
     @app.get("/health", name="getHealth")
     def get_health() -> Health:
@@ -37,6 +114,23 @@ def create_app() -> FastAPI:
     @app.get("/version", name="getVersion")
     def get_version() -> Version:
         return Version(version=__version__, commit=os.environ.get("RC_GIT_SHA", "dev"))
+
+    def sign(path: str) -> str:
+        return media.sign(config.media_secret, path, now=time.time())
+
+    app.include_router(tv.router(schedules, clock, sign))
+
+    @app.get("/media/{path:path}", name="getMedia", include_in_schema=False)
+    def get_media(
+        path: str, exp: Annotated[int, Query()], sig: Annotated[str, Query()]
+    ) -> FileResponse:
+        # Dev and test server for media; behind Caddy the same check guards file_server.
+        if not media.verify(config.media_secret, path, exp, sig, now=time.time()):
+            raise HTTPException(403, "bad or expired media signature")
+        target = media.resolve(config.media_dir, path)
+        if target is None:
+            raise HTTPException(404, "no such media")
+        return FileResponse(target)
 
     return app
 

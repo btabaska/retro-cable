@@ -1,6 +1,261 @@
 {
   "components": {
     "schemas": {
+      "ChannelInfo": {
+        "properties": {
+          "call_sign": {
+            "title": "Call Sign",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "launch": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Launch"
+          },
+          "library": {
+            "title": "Library",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "on_air": {
+            "title": "On Air",
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "network",
+              "marathon",
+              "movie"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "number",
+          "call_sign",
+          "network",
+          "on_air",
+          "library",
+          "launch"
+        ],
+        "title": "ChannelInfo",
+        "type": "object"
+      },
+      "Guide": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/GuideRow"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "weekday",
+          "timezone",
+          "start",
+          "end",
+          "channels"
+        ],
+        "title": "Guide",
+        "type": "object"
+      },
+      "GuideRow": {
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/ChannelInfo"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/GuideSlot"
+            },
+            "title": "Slots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "channel",
+          "slots"
+        ],
+        "title": "GuideRow",
+        "type": "object"
+      },
+      "GuideSlot": {
+        "properties": {
+          "air_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Air Date"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "episode_title": {
+            "title": "Episode Title",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "episode",
+              "movie",
+              "bumper",
+              "filler"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "new": {
+            "title": "New",
+            "type": "boolean"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "integer"
+          },
+          "show": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "transplant": {
+            "title": "Transplant",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "start",
+          "end",
+          "seconds",
+          "title",
+          "show",
+          "episode_title",
+          "season",
+          "episode",
+          "air_date",
+          "new",
+          "transplant"
+        ],
+        "title": "GuideSlot",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "status": {
@@ -12,6 +267,241 @@
           "status"
         ],
         "title": "Health",
+        "type": "object"
+      },
+      "Lineup": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelInfo"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "date",
+          "weekday",
+          "now",
+          "timezone",
+          "channels"
+        ],
+        "title": "Lineup",
+        "type": "object"
+      },
+      "Tune": {
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/ChannelInfo"
+          },
+          "current": {
+            "$ref": "#/components/schemas/TunedSlot"
+          },
+          "next": {
+            "items": {
+              "$ref": "#/components/schemas/TunedSlot"
+            },
+            "title": "Next",
+            "type": "array"
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "offset_seconds": {
+            "title": "Offset Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "channel",
+          "now",
+          "offset_seconds",
+          "current",
+          "next"
+        ],
+        "title": "Tune",
+        "type": "object"
+      },
+      "TunedSlot": {
+        "properties": {
+          "air_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Air Date"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "episode_title": {
+            "title": "Episode Title",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "episode",
+              "movie",
+              "bumper",
+              "filler"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Url"
+          },
+          "new": {
+            "title": "New",
+            "type": "boolean"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "integer"
+          },
+          "show": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "transplant": {
+            "title": "Transplant",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "start",
+          "end",
+          "seconds",
+          "title",
+          "show",
+          "episode_title",
+          "season",
+          "episode",
+          "air_date",
+          "new",
+          "transplant",
+          "media_url"
+        ],
+        "title": "TunedSlot",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
         "type": "object"
       },
       "Version": {
@@ -39,6 +529,157 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/channels": {
+      "get": {
+        "description": "Every channel with its identity on that date; hidden ones have on_air false.",
+        "operationId": "getChannels",
+        "parameters": [
+          {
+            "description": "Simulated year",
+            "in": "query",
+            "name": "year",
+            "required": true,
+            "schema": {
+              "description": "Simulated year",
+              "maximum": 2010,
+              "minimum": 1990,
+              "title": "Year",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "MM-DD; defaults to today's date",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{2}-\\d{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "MM-DD; defaults to today's date",
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lineup"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Getchannels"
+      }
+    },
+    "/guide": {
+      "get": {
+        "description": "Back-to-back slots for every channel on the dial, from `start` for `hours`.",
+        "operationId": "getGuide",
+        "parameters": [
+          {
+            "description": "Simulated year",
+            "in": "query",
+            "name": "year",
+            "required": true,
+            "schema": {
+              "description": "Simulated year",
+              "maximum": 2010,
+              "minimum": 1990,
+              "title": "Year",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "MM-DD; defaults to today's date",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{2}-\\d{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "MM-DD; defaults to today's date",
+              "title": "Date"
+            }
+          },
+          {
+            "description": "Local HH:MM",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "default": "00:00",
+              "description": "Local HH:MM",
+              "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "exclusiveMinimum": 0,
+              "maximum": 36,
+              "title": "Hours",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Guide"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Getguide"
+      }
+    },
     "/health": {
       "get": {
         "operationId": "getHealth",
@@ -55,6 +696,74 @@
           }
         },
         "summary": "Gethealth"
+      }
+    },
+    "/tune/{channel_id}": {
+      "get": {
+        "description": "What is airing now on a channel, how far in, and what comes next.",
+        "operationId": "tune",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "title": "Channel Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Simulated year",
+            "in": "query",
+            "name": "year",
+            "required": true,
+            "schema": {
+              "description": "Simulated year",
+              "maximum": 2010,
+              "minimum": 1990,
+              "title": "Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "default": 3,
+              "maximum": 10,
+              "minimum": 0,
+              "title": "Count",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tune"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not on the dial"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Tune"
       }
     },
     "/version": {
