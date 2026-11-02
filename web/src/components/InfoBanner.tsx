@@ -1,4 +1,5 @@
 import type { ChannelInfo, GuideSlot, TunedSlot } from "../api/client";
+import { programLabel } from "../lib/program";
 import { formatShortTime } from "../lib/time";
 
 interface InfoBannerProps {
@@ -14,11 +15,9 @@ interface InfoBannerProps {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/** Episode title and S/E, or a movie's year and running time. */
 export function episodeLabel(slot: GuideSlot): string {
-  const parts = [];
-  if (slot.episode_title) parts.push(slot.episode_title);
-  if (slot.season !== null && slot.episode !== null) parts.push(`S${slot.season} E${slot.episode}`);
-  return parts.join(" · ");
+  return programLabel(slot);
 }
 
 /** Channel, what's on, progress and what's next: shown for 4 s on every tune. */
@@ -44,7 +43,12 @@ export function InfoBanner({ channel, slot, next, now, year, timeZone, onGuide, 
             {slot?.kind === "bumper" ? channel.name : (slot?.title ?? "Tuning…")}
           </span>
           {slot && slot.kind !== "bumper" && <span className="banner-episode">{episodeLabel(slot)}</span>}
-          {slot?.new && <span className="badge badge-new">NEW</span>}
+          {slot?.new && slot.kind !== "bumper" && <span className="badge badge-new">NEW</span>}
+          {slot?.holiday_name && slot.kind !== "bumper" && (
+            <span className="badge badge-holiday" data-testid="banner-holiday">
+              {slot.holiday_name.toUpperCase()}
+            </span>
+          )}
         </div>
         <div className="banner-progress-row">
           <span>{formatShortTime(start, timeZone)}</span>

@@ -96,6 +96,26 @@ def test_reports_gaps(db: sqlite3.Connection, make_catalog: MakeCatalog) -> None
     assert gaps.shows_without_tmdb_id == ["dragon-ball-z"]
     assert gaps.missing_movies == []
     assert gaps.in_plex_not_carried == ["Uncarried Show (2015)"]
+    assert gaps.untagged_specials == []
+
+
+def test_reports_untagged_specials(db: sqlite3.Connection, make_catalog: MakeCatalog) -> None:
+    # Gravity Falls marked seasonal: its episodes have no holiday tag, so they would never air.
+    catalog = load_catalog(
+        make_catalog(
+            overrides="""
+            shows:
+              - { show: gravity-falls, seasonal: true, holiday_tags: { S1E2: [halloween] } }
+            """
+        )
+    )
+    db.execute(
+        "INSERT INTO movies (id, title, premiere_date, runtime_seconds, file_path)"
+        " VALUES ('a-special', 'A Special', '1990-12-01', 1500, '/sp.mkv')"
+    )
+    gaps = build_inventory(catalog, db).gaps
+    # Short movies (TV specials) without a tag are listed too, carried or not.
+    assert gaps.untagged_specials == ["a-special (movie)", "gravity-falls S01E01"]
 
 
 def test_markdown_has_a_table_per_channel_and_the_gaps(

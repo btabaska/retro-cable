@@ -2,6 +2,13 @@
 # Holiday calendar. Rules: fixed (month/day) or nth_weekday (n, weekday, month).
 # window_days: days before the holiday (inclusive of the day) when tagged items are favored.
 # mode per channel: on | specials_only | off. Default applies when a channel isn't listed.
+#   on             tagged episodes are preferred, and holiday movies and specials air in prime
+#   specials_only  holiday movies and specials air in prime; episodes are not preferred
+#   off            nothing is injected
+# The season of a holiday is its window or its month up to the day, whichever is longer.
+# Holiday movies, and tagged episodes of `seasonal` shows in overrides.yaml (the Peanuts
+# specials), air only in season. Titles are tagged by keyword (server catalog/holidays.py);
+# `tagged` adds titles the keywords miss, and overrides.yaml holiday_tags fixes episodes.
 
 holidays:
   - id: halloween
@@ -10,6 +17,11 @@ holidays:
     window_days: 7
     strength: strong
     default_mode: "on"
+    tagged:
+      - { title: "Under Wraps", kind: movie, channel: disney, premiere: 1997 }
+      - { title: "Halloweentown", kind: movie, channel: disney, premiere: 1998 }
+      - { title: "Halloweentown II: Kalabar's Revenge", kind: movie, channel: disney, premiere: 2001 }
+      - { title: "Twitches", kind: movie, channel: disney, premiere: 2005 }
 
   - id: thanksgiving
     name: Thanksgiving
@@ -24,6 +36,9 @@ holidays:
     window_days: 25
     strength: strong
     default_mode: "on"
+    tagged:
+      - { title: "Rudolph the Red-Nosed Reindeer", kind: special, channel: kpix }
+      - { title: "Frosty the Snowman", kind: special, channel: kpix }
 
   - id: new-years-eve
     name: New Year's Eve

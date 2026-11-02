@@ -21,6 +21,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from retro_cable.catalog import Catalog, effective_dates
+from retro_cable.catalog.holidays import STRENGTH_BOOST, Tagger, mode_for
 from retro_cable.catalog.models import Carriage, Channel, DayPart, Identity, Template
 from retro_cable.scheduler.clock import broadcast_day, broadcast_day_bounds
 from retro_cable.scheduler.library import Bumper, Library, Program
@@ -33,6 +34,11 @@ CACHE_DAYS = 1024
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 PAID_PROGRAMMING = "Paid Programming"
 OFF_AIR = "Off Air"
+# Prime time for channels whose template has no primetime part that weekday (or no template):
+# where holiday movies and specials are injected.
+DEFAULT_PRIME = (time(19, 0), time(23, 0))
+
+ProgramKey = tuple[str, int | None, int | None]
 
 
 class ChannelOffAir(Exception):
@@ -53,6 +59,7 @@ class Slot:
     new: bool = False
     transplant: bool = False
     path: str | None = None  # relative to the media root; None for filler
+    holiday: str | None = None  # id of the in-season holiday this program is tagged for
 
     @property
     def seconds(self) -> int:
@@ -80,6 +87,20 @@ def _stable_int(*parts: object) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
+def _key(p: Program) -> ProgramKey:
+    return (p.show, p.season, p.episode)
+
+
+@dataclass(frozen=True)
+class _Holidays:
+    """What the holiday calendar asks of one channel at one moment."""
+
+    prefer: frozenset[str]  # holidays in window with mode "on": prefer tagged episodes
+    inject: frozenset[str]  # holidays in window with mode "on" or "specials_only"
+    boost: float  # weight multiplier for a show with preferred episodes left
+    prime: bool  # inside prime time, where specials are injected
+
+
 class Scheduler:
     """Schedules for one (catalog, library, seed). Days are memoized; nothing is stored."""
 
@@ -99,6 +120,16 @@ class Scheduler:
         self._programs = {
             show: self._effective(show, eps) for show, eps in library.episodes.items()
         }
+        self.tagger = Tagger(catalog)
+        self._tags: dict[ProgramKey, frozenset[str]] = {}
+        self._seasonal: set[ProgramKey] = set()
+        everything = [p for eps in self._programs.values() for p in eps]
+        for p in [*everything, *library.movies.values()]:
+            tags = self.tagger.tags(p.show, p.kind, p.title, p.episode_title, p.season, p.episode)
+            if tags:
+                self._tags[_key(p)] = tags
+            if self.tagger.is_seasonal(p.show, p.kind, p.title, tags):
+                self._seasonal.add(_key(p))
         self._cache: OrderedDict[tuple[str, date], tuple[Slot, ...]] = OrderedDict()
 
     # --- catalog lookups ------------------------------------------------------------------
@@ -193,16 +224,80 @@ class Scheduler:
             if show not in self._excluded
         ]
 
+    def tags(self, program: Program) -> frozenset[str]:
+        """Holiday ids a program is tagged for (see catalog/holidays.py)."""
+        return self._tags.get(_key(program), frozenset())
+
+    def _in_season(self, program: Program, day: date) -> bool:
+        if _key(program) not in self._seasonal:
+            return True
+        return bool(self.tags(program) & self.tagger.on(day).season)
+
     def _eligible(self, channel: Channel, source: _Source, day: date) -> list[Program]:
         if source.kind == "movie":
             movie = self.library.movies.get(source.show)
-            if movie and (movie.air_date is None or movie.air_date <= day):
+            if (
+                movie
+                and (movie.air_date is None or movie.air_date <= day)
+                and self._in_season(movie, day)
+            ):
                 return [movie]
             return []
         programs = self.programs(source.show)
         if channel.library or source.show in self._library_shows:
-            return list(programs)
-        return [p for p in programs if p.air_date is not None and p.air_date <= day]
+            found = list(programs)
+        else:
+            found = [p for p in programs if p.air_date is not None and p.air_date <= day]
+        if self._seasonal:
+            found = [p for p in found if self._in_season(p, day)]
+        return found
+
+    def _holiday_label(self, program: Program, day: date) -> str | None:
+        tags = self.tags(program)
+        if not tags:
+            return None
+        # Labelled inside the holiday's window; seasonal items also across their season.
+        cal = self.tagger.on(day)
+        live = {h.id for h in cal.window}
+        if _key(program) in self._seasonal:
+            live |= cal.season
+        return next((h for h in self.tagger.holidays if h in tags and h in live), None)
+
+    def _prime(self, channel_id: str, part: DayPart | None, local: datetime) -> bool:
+        if part is not None and part.primetime:
+            return True
+        template = self._template(channel_id, local.date())
+        weekday = WEEKDAYS[local.date().weekday()]
+        if template and any(p.primetime and p.weekday == weekday for p in template.parts):
+            return False  # the template says where prime is
+        now = local.time().replace(tzinfo=None)
+        return DEFAULT_PRIME[0] <= now < DEFAULT_PRIME[1]
+
+    def _holidays(
+        self, channel: Channel, part: DayPart | None, local: datetime
+    ) -> "_Holidays | None":
+        prefer: set[str] = set()
+        inject: set[str] = set()
+        boost = 1.0
+        for h in self.tagger.on(local.date()).window:
+            mode = mode_for(h, channel.id)
+            if mode == "off":
+                continue
+            inject.add(h.id)
+            if mode == "on":
+                prefer.add(h.id)
+                boost = max(boost, STRENGTH_BOOST[h.strength])
+        if not inject:
+            return None
+        return _Holidays(
+            prefer=frozenset(prefer),
+            inject=frozenset(inject),
+            boost=boost,
+            prime=self._prime(channel.id, part, local),
+        )
+
+    def _is_special(self, program: Program) -> bool:
+        return program.kind == "movie" or _key(program) in self._seasonal
 
     # --- building a day -------------------------------------------------------------------
 
@@ -224,7 +319,10 @@ class Scheduler:
         start, end = (b.astimezone(UTC) for b in broadcast_day_bounds(day, self.tz))
         slots: list[Slot] = []
         aired: Counter[str] = Counter()
-        premiered: set[tuple[str, int | None, int | None]] = set()
+        played: set[ProgramKey] = set()  # programs already aired this broadcast day
+        # Tagged episodes are preferred until each has aired once outside prime and once in
+        # prime, so Halloween prime time stays themed without looping one episode all day.
+        played_prime: set[ProgramKey] = set()
         t = start
         while t < end:
             local = t.astimezone(self.tz)
@@ -236,12 +334,22 @@ class Scheduler:
                 for s in self._pool(channel.id, part, sim_date)
                 if (progs := self._eligible(channel, s, sim_date))
             ]
-            if not candidates:
+            holidays = self._holidays(channel, part, local)
+            room = end - t
+            special = None
+            if holidays:
+                special = self._special(channel, part, sim_date, holidays, room, played)
+                candidates = self._hold_back(candidates, holidays)
+            if not candidates and special is None:
                 t = self._fill(slots, t, min(boundary, end), OFF_AIR)
                 continue
             bumper = self._bumper(channel, rng) if slots and slots[-1].kind != "filler" else None
-            room = end - t
-            pick = self._pick(channel, part, day, sim_date, candidates, room, rng, aired, slots)
+            pick: tuple[Program, bool] | None = (special, False) if special else None
+            if pick is None:
+                pick = self._pick(
+                    channel, part, day, sim_date, candidates, room, rng, aired, slots,
+                    holidays, played_prime if holidays and holidays.prime else played,
+                )  # fmt: skip
             if pick and bumper:
                 gap = timedelta(seconds=min(bumper.seconds, channel.bumper_seconds))
                 if pick[0].seconds + gap.total_seconds() <= room.total_seconds():
@@ -259,9 +367,10 @@ class Scheduler:
                 t = self._fill(slots, t, end, PAID_PROGRAMMING)
                 continue
             program, new = pick
-            if new:
-                premiered.add((program.show, program.season, program.episode))
             aired[program.show] += 1
+            played.add(_key(program))
+            if holidays and holidays.prime:
+                played_prime.add(_key(program))
             slot_end = t + timedelta(seconds=program.seconds)
             slots.append(
                 Slot(
@@ -277,10 +386,53 @@ class Scheduler:
                     new=new,
                     transplant=self._is_transplant(channel, program.show),
                     path=program.path,
+                    holiday=self._holiday_label(program, sim_date),
                 )
             )
             t = slot_end
         return tuple(slots)
+
+    def _special(
+        self,
+        channel: Channel,
+        part: DayPart | None,
+        day: date,
+        holidays: "_Holidays",
+        room: timedelta,
+        played: set[ProgramKey],
+    ) -> Program | None:
+        """In prime time inside a window, the next holiday movie or special not yet aired
+        today. Specials come from everything the channel carries outside blocks, plus the
+        part's own pool, so Halloweentown reaches a primetime part that names only series."""
+        if not holidays.prime:
+            return None
+        sources = {(s.show, s.kind): s for s in self._pool(channel.id, None, day)}
+        for s in self._pool(channel.id, part, day):
+            sources.setdefault((s.show, s.kind), s)
+        found = [
+            p
+            for s in sources.values()
+            for p in self._eligible(channel, s, day)
+            if self._is_special(p)
+            and self.tags(p) & holidays.inject
+            and _key(p) not in played
+            and p.seconds <= room.total_seconds()
+        ]
+        if not found:
+            return None
+        return min(found, key=lambda p: _stable_int(self.seed, channel.id, day, *_key(p)))
+
+    def _hold_back(
+        self, candidates: list[tuple[_Source, list[Program]]], holidays: "_Holidays"
+    ) -> list[tuple[_Source, list[Program]]]:
+        """Inside a window, holiday specials wait for prime time instead of airing whenever
+        the dice say, unless nothing else is left to show."""
+        kept = [
+            (s, [p for p in progs if not (self._is_special(p) and self.tags(p) & holidays.inject)])
+            for s, progs in candidates
+        ]
+        kept = [(s, progs) for s, progs in kept if progs]
+        return kept or candidates
 
     def _fill(self, slots: list[Slot], start: datetime, end: datetime, title: str) -> datetime:
         if slots and slots[-1].kind == "filler" and slots[-1].title == title:
@@ -312,6 +464,8 @@ class Scheduler:
         rng: Random,
         aired: Counter[str],
         slots: list[Slot],
+        holidays: "_Holidays | None" = None,
+        played: set[ProgramKey] | None = None,
     ) -> tuple[Program, bool] | None:
         """Choose the next program that fits in `room`, and whether it is a NEW premiere."""
         limit = room.total_seconds()
@@ -333,14 +487,31 @@ class Scheduler:
             index = ((day - EPOCH).days * per_day + sum(aired.values())) % len(movies)
             return movies[index], False
 
+        # Inside an "on" window, a show's tagged episodes not yet aired today come first, and
+        # shows that have some get a boost by the holiday's strength.
+        preferred: dict[str, list[Program]] = {}
+        if holidays and holidays.prefer:
+            seen = played or set()
+            for s, progs in fitting:
+                if s.kind == "show":
+                    keep = [
+                        p for p in progs if self.tags(p) & holidays.prefer and _key(p) not in seen
+                    ]
+                    if keep:
+                        preferred[s.show] = keep
+        boost = holidays.boost if holidays else 1.0
+
         previous = next((s.show for s in reversed(slots) if s.show), None)
         weights = [
-            s.weight * (0.25 if s.show == previous and len(fitting) > 1 else 1.0)
+            s.weight
+            * (0.25 if s.show == previous and len(fitting) > 1 else 1.0)
+            * (boost if s.show in preferred else 1.0)
             for s, _ in fitting
         ]
         source, progs = rng.choices(fitting, weights=weights)[0]
         if source.kind == "movie":
             return progs[0], False
+        progs = preferred.get(source.show, progs)
         offset = _stable_int(self.seed, channel.id, source.show) % len(progs)
         index = (offset + (day - EPOCH).days * RERUN_STRIDE + aired[source.show]) % len(progs)
         return progs[index], False

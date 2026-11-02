@@ -25,12 +25,15 @@ def test_seed_demo_fills_every_carried_show(make_catalog: MakeCatalog, tmp_path:
     root = make_catalog()
     db_path = tmp_path / "demo.db"
     stats = seed_demo(db_path, root, media)
-    assert stats["shows"] == 5 and stats["movies"] == 1
+    # Five carried shows, plus two uncarried library shows for the admin show picker
+    # (Gravity Falls is one of the demo's uncarried shows, but this catalog carries it).
+    assert stats["shows"] == 7 and stats["movies"] == 1
 
     db = connect(db_path)
     library = load_library(db)
     assert set(library.episodes) == {
-        "the-simpsons", "x-men", "dexters-laboratory", "dragon-ball-z", "gravity-falls"
+        "the-simpsons", "x-men", "dexters-laboratory", "dragon-ball-z", "gravity-falls",
+        "recess", "over-the-garden-wall",
     }  # fmt: skip
     simpsons = library.episodes["the-simpsons"]
     assert simpsons[0].air_date is not None and simpsons[0].air_date < date(1990, 1, 1)
@@ -57,3 +60,23 @@ def test_seed_demo_refuses_shrunken_feeds(make_catalog: MakeCatalog, tmp_path: P
     with pytest.raises(ValueError, match="half-hour"):
         seed_demo(tmp_path / "demo.db", make_catalog(), media)
     assert not (tmp_path / "demo.db").exists()
+
+
+def test_demo_has_holiday_episodes_and_real_dcom_premieres(
+    make_catalog: MakeCatalog, tmp_path: Path
+) -> None:
+    media = tmp_path / "media"
+    write_manifest(media)
+    root = make_catalog()
+    db_path = tmp_path / "demo.db"
+    seed_demo(db_path, root, media)
+    library = load_library(connect(db_path))
+    # Halloweentown premiered on Disney Channel on 1998-10-17, not on its carriage date.
+    assert library.movies["halloweentown"].air_date == date(1998, 10, 17)
+    # An episode airing in Halloween week is a Halloween episode, so the tagger finds it.
+    simpsons = library.episodes["the-simpsons"]
+    halloween = [p for p in simpsons if "Halloween" in p.episode_title]
+    assert halloween
+    for p in halloween:
+        assert p.air_date is not None and (p.air_date.month, p.air_date.day) >= (10, 25)
+    assert any("Thanksgiving" in p.episode_title for p in simpsons)

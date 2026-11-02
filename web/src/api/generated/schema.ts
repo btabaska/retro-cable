@@ -4,6 +4,154 @@
  */
 
 export interface paths {
+    "/admin/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Adminlistchannels
+         * @description Every channel, YAML and custom, by number.
+         */
+        get: operations["adminListChannels"];
+        put?: never;
+        /**
+         * Admincreatechannel
+         * @description Check and save a new custom channel. The catalog version changes.
+         */
+        post: operations["adminCreateChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admingetchannel */
+        get: operations["adminGetChannel"];
+        /**
+         * Adminupdatechannel
+         * @description Check and save changes to a custom channel.
+         */
+        put: operations["adminUpdateChannel"];
+        post?: never;
+        /**
+         * Admindeletechannel
+         * @description Remove a custom channel. The YAML files are never touched.
+         */
+        delete: operations["adminDeleteChannel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admincheck
+         * @description Run the save checks on a draft without saving it.
+         */
+        post: operations["adminCheck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Adminlibrary
+         * @description Every show and movie in the library, including ones no channel carries.
+         */
+        get: operations["adminLibrary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adminpreview
+         * @description A week (Sunday to Saturday) of the draft channel's guide, with the draft applied in
+         *     memory only. The days are empty when the checks fail.
+         */
+        post: operations["adminPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Adminstate */
+        get: operations["adminState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adminundo
+         * @description Revert the last save or delete: the previous inputs, so the same catalog version
+         *     and the same schedules.
+         */
+        post: operations["adminUndo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/channels": {
         parameters: {
             query?: never;
@@ -102,6 +250,96 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminChannel */
+        AdminChannel: {
+            /** Custom */
+            custom: boolean;
+            draft: components["schemas"]["ChannelDraft"];
+            /** Id */
+            id: string;
+        };
+        /** AdminChannelList */
+        AdminChannelList: {
+            /** Channels */
+            channels: components["schemas"]["AdminChannelRow"][];
+            state: components["schemas"]["AdminState"];
+        };
+        /** AdminChannelRow */
+        AdminChannelRow: {
+            /** Call Sign */
+            call_sign: string;
+            /**
+             * Custom
+             * @description Made in /admin (editable); YAML channels are read-only
+             */
+            custom: boolean;
+            /** Id */
+            id: string;
+            /** Launch */
+            launch: string | null;
+            /** Library */
+            library: boolean;
+            /** Name */
+            name: string;
+            /** Number */
+            number: number;
+            /**
+             * Shows
+             * @description Shows and movies carried, in any year
+             */
+            shows: number;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "network" | "marathon" | "movie";
+        };
+        /** AdminState */
+        AdminState: {
+            /** Can Undo */
+            can_undo: boolean;
+            /** Catalog Version */
+            catalog_version: string;
+            /** Revision */
+            revision: number;
+        };
+        /** ChangeResult */
+        ChangeResult: {
+            /** Message */
+            message: string;
+            state: components["schemas"]["AdminState"];
+        };
+        /**
+         * ChannelDraft
+         * @description What the admin form edits. Checked by POST /admin/check before any save.
+         */
+        ChannelDraft: {
+            /** Call Sign */
+            call_sign: string;
+            /**
+             * Launch Year
+             * @description Required unless library
+             */
+            launch_year?: number | null;
+            /**
+             * Library
+             * @description Always on the dial, every episode eligible
+             * @default false
+             */
+            library: boolean;
+            /** Name */
+            name: string;
+            /** Number */
+            number: number;
+            /** Shows */
+            shows?: components["schemas"]["DraftShow"][];
+            /**
+             * Type
+             * @default network
+             * @enum {string}
+             */
+            type: "network" | "marathon" | "movie";
+        };
         /** ChannelInfo */
         ChannelInfo: {
             /** Call Sign */
@@ -125,6 +363,74 @@ export interface components {
              * @enum {string}
              */
             type: "network" | "marathon" | "movie";
+        };
+        /** CheckIssue */
+        CheckIssue: {
+            /**
+             * Field
+             * @description Form field: number, call_sign, name, launch_year, shows or shows.<i>
+             */
+            field: string | null;
+            /** Message */
+            message: string;
+        };
+        /** CheckResult */
+        CheckResult: {
+            /**
+             * Catalog Version
+             * @description The version this draft would produce
+             */
+            catalog_version: string | null;
+            /** Errors */
+            errors: components["schemas"]["CheckIssue"][];
+            /** Ok */
+            ok: boolean;
+            /** Warnings */
+            warnings: components["schemas"]["CheckIssue"][];
+        };
+        /** DraftRequest */
+        DraftRequest: {
+            /**
+             * Channel Id
+             * @description The channel being edited, if any
+             */
+            channel_id?: string | null;
+            /**
+             * Date
+             * @description MM-DD of the week; default today's
+             */
+            date?: string | null;
+            draft: components["schemas"]["ChannelDraft"];
+            /**
+             * Year
+             * @description Year to check
+             * @default 2000
+             */
+            year: number;
+        };
+        /** DraftShow */
+        DraftShow: {
+            /**
+             * From Year
+             * @description First year carried; default launch
+             */
+            from_year?: number | null;
+            /**
+             * Kind
+             * @default show
+             * @enum {string}
+             */
+            kind: "show" | "movie";
+            /**
+             * Show
+             * @description Library id (catalog slug) of a show or movie
+             */
+            show: string;
+            /**
+             * Until Year
+             * @description Last year carried; default open
+             */
+            until_year?: number | null;
         };
         /** Guide */
         Guide: {
@@ -170,6 +476,16 @@ export interface components {
             /** Episode Title */
             episode_title: string;
             /**
+             * Holiday
+             * @description Holiday id this program is tagged for while that holiday is in force
+             */
+            holiday: string | null;
+            /**
+             * Holiday Name
+             * @description Display name of `holiday`, e.g. Halloween
+             */
+            holiday_name: string | null;
+            /**
              * Kind
              * @enum {string}
              */
@@ -202,6 +518,46 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** LibraryChannel */
+        LibraryChannel: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Number */
+            number: number;
+        };
+        /** LibraryEntry */
+        LibraryEntry: {
+            /**
+             * Channels
+             * @description Channels that carry it, in any year
+             */
+            channels: components["schemas"]["LibraryChannel"][];
+            /**
+             * Episodes
+             * @description Episodes (or the movie) on disk
+             */
+            episodes: number;
+            /** First Year */
+            first_year: number | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "show" | "movie";
+            /** Last Year */
+            last_year: number | null;
+            /** Title */
+            title: string;
+        };
+        /** LibraryList */
+        LibraryList: {
+            /** Items */
+            items: components["schemas"]["LibraryEntry"][];
+        };
         /** Lineup */
         Lineup: {
             /** Channels */
@@ -222,6 +578,36 @@ export interface components {
             weekday: string;
             /** Year */
             year: number;
+        };
+        /** Preview */
+        Preview: {
+            channel: components["schemas"]["ChannelInfo"] | null;
+            check: components["schemas"]["CheckResult"];
+            /** Days */
+            days: components["schemas"]["PreviewDay"][];
+        };
+        /** PreviewDay */
+        PreviewDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** On Air */
+            on_air: boolean;
+            /** Slots */
+            slots: components["schemas"]["GuideSlot"][];
+            /** Weekday */
+            weekday: string;
+        };
+        /** SaveResult */
+        SaveResult: {
+            /** Channel Id */
+            channel_id: string;
+            check: components["schemas"]["CheckResult"];
+            /** Message */
+            message: string;
+            state: components["schemas"]["AdminState"];
         };
         /** Tune */
         Tune: {
@@ -250,6 +636,16 @@ export interface components {
             episode: number | null;
             /** Episode Title */
             episode_title: string;
+            /**
+             * Holiday
+             * @description Holiday id this program is tagged for while that holiday is in force
+             */
+            holiday: string | null;
+            /**
+             * Holiday Name
+             * @description Display name of `holiday`, e.g. Halloween
+             */
+            holiday_name: string | null;
             /**
              * Kind
              * @enum {string}
@@ -304,6 +700,354 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    adminListChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelList"];
+                };
+            };
+        };
+    };
+    adminCreateChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveResult"];
+                };
+            };
+            /** @description The checks failed; nothing was saved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adminGetChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adminUpdateChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveResult"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The checks failed; nothing was saved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adminDeleteChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeResult"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adminCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adminLibrary: {
+        parameters: {
+            query?: {
+                /** @description Title search */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adminPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adminState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminState"];
+                };
+            };
+        };
+    };
+    adminUndo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeResult"];
+                };
+            };
+            /** @description Nothing to undo */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getChannels: {
         parameters: {
             query: {

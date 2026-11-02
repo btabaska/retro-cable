@@ -5,6 +5,7 @@
 #   episodes      per-episode air dates (SxxEyy: date), for one-off fixes
 #   holiday_tags  per-episode holiday ids, overriding the tagger
 #   exclude       never schedule this show
+#   seasonal      a holiday specials show: tagged episodes air only in their holiday's season
 # US debut dates are best-effort from memory: verify before relying on them.
 
 shows:
@@ -21,3 +22,6 @@ shows:
   - { show: "naruto", us_debut: 2005-09-10 }
   - { show: "bleach", us_debut: 2006-09-09 }
   - { show: "death-note", us_debut: 2007-10-20 }
+
+  # Peanuts holiday specials only air around their holiday (no Great Pumpkin in July).
+  - { show: "peanuts-holiday-specials", seasonal: true }

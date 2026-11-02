@@ -22,6 +22,7 @@
         },
         "holiday_tags": {
           "default": {},
+          "description": "Per-episode holiday ids, replacing the title tagger",
           "patternProperties": {
             "^S\\d{1,3}E\\d{1,4}$": {
               "items": {
@@ -46,6 +47,12 @@
           "default": null,
           "description": "Plex title if not the carriage title",
           "title": "Plex Title"
+        },
+        "seasonal": {
+          "default": false,
+          "description": "Holiday specials show: tagged episodes air only in their holiday's season",
+          "title": "Seasonal",
+          "type": "boolean"
         },
         "show": {
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",

@@ -22,6 +22,7 @@ from retro_cable.catalog import (
     is_library_show,
     load_catalog,
 )
+from retro_cable.catalog.holidays import Tagger
 from retro_cable.catalog.models import Carriage, Channel
 from retro_cable.db import connect, migrate
 from retro_cable.ingest.cli import default_db
@@ -50,6 +51,7 @@ class Gaps:
     shows_without_tmdb_id: list[str] = field(default_factory=list)
     missing_movies: list[str] = field(default_factory=list)
     in_plex_not_carried: list[str] = field(default_factory=list)
+    untagged_specials: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -117,7 +119,36 @@ def _gaps(catalog: Catalog, db: sqlite3.Connection, episodes: dict[str, list[_Ep
         gaps.in_plex_not_carried = sorted(
             stats.get("unmatched_shows", []) + stats.get("unmatched_movies", [])
         )
+    gaps.untagged_specials = _untagged_specials(catalog, db)
     return gaps
+
+
+SPECIAL_MAX_SECONDS = 60 * 60  # a "movie" this short is a TV special (Rudolph, Frosty)
+
+
+def _untagged_specials(catalog: Catalog, db: sqlite3.Connection) -> list[str]:
+    """Specials the holiday tagger couldn't place: episodes of seasonal shows (which never
+    air untagged) and short movies. Fix them with holiday_tags or holidays.yaml `tagged`."""
+    tagger = Tagger(catalog)
+    found = []
+    for r in db.execute(
+        "SELECT e.show_id, e.season, e.episode, e.title, s.title AS show_title FROM episodes e"
+        " JOIN shows s ON s.id = e.show_id ORDER BY e.show_id, e.season, e.episode"
+    ):
+        if r["show_id"] not in tagger.seasonal_shows:
+            continue
+        tags = tagger.tags(
+            r["show_id"], "episode", r["show_title"], r["title"], r["season"], r["episode"]
+        )
+        if not tags:
+            found.append(f"{r['show_id']} S{r['season']:02d}E{r['episode']:02d}")
+    for r in db.execute(
+        "SELECT id, title FROM movies WHERE runtime_seconds > 0 AND runtime_seconds <= ?",
+        (SPECIAL_MAX_SECONDS,),
+    ):
+        if not tagger.tags(r["id"], "movie", r["title"]):
+            found.append(f"{r['id']} (movie)")
+    return sorted(found)
 
 
 def build_inventory(catalog: Catalog, db: sqlite3.Connection) -> Inventory:
@@ -178,6 +209,7 @@ _GAP_TITLES = {
     "shows_without_tmdb_id": "No TMDB id (expected counts are Plex-only)",
     "missing_movies": "Carried movies not on disk",
     "in_plex_not_carried": "In Plex but not carried (prune or add carriage)",
+    "untagged_specials": "Specials without a holiday tag (seasonal shows' episodes never air)",
 }
 
 

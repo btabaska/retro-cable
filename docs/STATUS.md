@@ -1,6 +1,23 @@
 # Status
 
-**Current phase:** 3–6 in review (scheduler, tuning, live TV, guide) — playable on demo media with `make demo`
+**Current phase:** Milestone M1 — phases 3–7 in review (scheduler through Feel), playable on demo media with `make demo`
+
+## Phase 10 (part) — Custom channels in /admin (in review, stacked on Phase 7)
+
+- [x] Admin edits stored as an append-only overlay in SQLite, merged into the catalog and its version; YAML untouched
+- [x] Admin API: channel list and drafts, library search (incl. shows no channel carries), checks, week preview, create/edit/delete, undo
+- [x] `/admin` phone UI: channel list, editor, show picker, week preview, inline check errors, undo toast
+- [ ] Brandon's check: make "Brandon's Toons" on the phone, preview, save, tune it, undo
+- [ ] Later in Phase 10: holidays editor, editing YAML channels, synthetic premieres, device pairing, nightly YAML export
+
+## Phase 7 — Feel (in review, stacked on Phase 5)
+
+- [x] Holiday calendar (`catalog/holidays.yaml`), windows and seasons, per-channel modes
+- [x] Holiday tags: overrides, `tagged` titles and a keyword tagger; untagged specials in the inventory
+- [x] Tagged episodes preferred in the window; holiday movies and specials injected into prime; seasonal specials kept to their season
+- [x] Bumpers between programs, NEW badges, holiday kicker and badges in the guide and banner; bumper slate when a bumper has no media
+- [x] Golden day Oct 31 1998 (Halloween episodes and Halloweentown) and the Hypothesis property "holiday windows pull only tagged items"
+- [ ] Brandon's check: Oct 31 1998 feels like Halloween 1998
 
 ## Phases 3–6 — Scheduler through guide (in review, stacked on Phase 2)
 

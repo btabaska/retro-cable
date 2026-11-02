@@ -41,6 +41,8 @@ const slot = (title: string, start: string, end: string): TunedSlot => ({
   air_date: "1998-09-24",
   new: false,
   transplant: false,
+  holiday: null,
+  holiday_name: null,
   media_url: null,
 });
 

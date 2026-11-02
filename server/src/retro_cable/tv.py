@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from retro_cable.catalog.models import Channel
 from retro_cable.scheduler import ChannelOffAir, Scheduler, Slot, simulated_now
@@ -52,6 +52,10 @@ class GuideSlot(BaseModel):
     air_date: date | None
     new: bool
     transplant: bool
+    holiday: str | None = Field(
+        description="Holiday id this program is tagged for while that holiday is in force"
+    )
+    holiday_name: str | None = Field(description="Display name of `holiday`, e.g. Halloween")
 
 
 class TunedSlot(GuideSlot):
@@ -80,6 +84,53 @@ class Tune(BaseModel):
     next: list[TunedSlot]
 
 
+def info(s: Scheduler, channel: Channel, day: date) -> ChannelInfo:
+    ident = s.identity(channel.id, day)
+    return ChannelInfo(
+        id=channel.id,
+        name=channel.name,
+        type=channel.type,
+        number=ident.number,
+        call_sign=ident.call_sign,
+        network=ident.network,
+        on_air=s.on_air(channel, day),
+        library=channel.library,
+        launch=channel.launch,
+    )
+
+
+def resolve_date(real_now: datetime, s: Scheduler, year: int, month_day: str | None) -> date:
+    """The simulated date for `year` and an optional MM-DD (default: today's)."""
+    if month_day is None:
+        return simulated_now(real_now, year, s.tz).date()
+    month, day = (int(x) for x in month_day.split("-"))
+    if month == 2 and day == 29 and not calendar.isleap(year):
+        day = 28
+    try:
+        return date(year, month, day)
+    except ValueError as e:
+        raise HTTPException(422, f"bad date: {month_day}") from e
+
+
+def guide_slot(s: Scheduler, slot: Slot) -> dict[str, object]:
+    return {
+        "kind": slot.kind,
+        "start": slot.start.astimezone(s.tz),
+        "end": slot.end.astimezone(s.tz),
+        "seconds": slot.seconds,
+        "title": slot.title,
+        "show": slot.show,
+        "episode_title": slot.episode_title,
+        "season": slot.season,
+        "episode": slot.episode,
+        "air_date": slot.air_date,
+        "new": slot.new,
+        "transplant": slot.transplant,
+        "holiday": slot.holiday,
+        "holiday_name": s.tagger.holidays[slot.holiday].name if slot.holiday else None,
+    }
+
+
 def router(
     scheduler: Callable[[], Scheduler],
     clock: Callable[[], datetime],
@@ -87,46 +138,8 @@ def router(
 ) -> APIRouter:
     api = APIRouter()
 
-    def info(s: Scheduler, channel: Channel, day: date) -> ChannelInfo:
-        ident = s.identity(channel.id, day)
-        return ChannelInfo(
-            id=channel.id,
-            name=channel.name,
-            type=channel.type,
-            number=ident.number,
-            call_sign=ident.call_sign,
-            network=ident.network,
-            on_air=s.on_air(channel, day),
-            library=channel.library,
-            launch=channel.launch,
-        )
-
     def sim_date(s: Scheduler, year: int, month_day: str | None) -> date:
-        if month_day is None:
-            return simulated_now(clock(), year, s.tz).date()
-        month, day = (int(x) for x in month_day.split("-"))
-        if month == 2 and day == 29 and not calendar.isleap(year):
-            day = 28
-        try:
-            return date(year, month, day)
-        except ValueError as e:
-            raise HTTPException(422, f"bad date: {month_day}") from e
-
-    def guide_slot(s: Scheduler, slot: Slot) -> dict[str, object]:
-        return {
-            "kind": slot.kind,
-            "start": slot.start.astimezone(s.tz),
-            "end": slot.end.astimezone(s.tz),
-            "seconds": slot.seconds,
-            "title": slot.title,
-            "show": slot.show,
-            "episode_title": slot.episode_title,
-            "season": slot.season,
-            "episode": slot.episode,
-            "air_date": slot.air_date,
-            "new": slot.new,
-            "transplant": slot.transplant,
-        }
+        return resolve_date(clock(), s, year, month_day)
 
     def tuned(s: Scheduler, slot: Slot) -> TunedSlot:
         return TunedSlot.model_validate(
