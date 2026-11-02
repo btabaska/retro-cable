@@ -3,6 +3,7 @@ import type { Guide as GuideData, TvApi } from "../api/client";
 import { episodeLabel } from "../components/InfoBanner";
 import { useKeys } from "../hooks/useKeys";
 import { cellIndexAt, HALF_HOUR_MS, layoutRow, WINDOW_MS, windowStartFor } from "../lib/guide";
+import { kicker } from "../lib/program";
 import { formatAirDate, formatClock, formatGuideDay, formatLongDate, formatShortTime, zonedParts } from "../lib/time";
 
 const VISIBLE_ROWS = 7;
@@ -130,6 +131,8 @@ export function Guide({ api, year, now, timeZone, channelId, onTune, onYear, onB
                 </span>
               )}
               {slot.new && <span className="badge badge-new">NEW</span>}
+              {slot.kind === "movie" && <span className="badge badge-outline">MOVIE</span>}
+              {slot.holiday_name && <span className="badge badge-holiday">{slot.holiday_name.toUpperCase()}</span>}
               {slot.transplant && <span className="badge badge-outline">◇ TRANSPLANT</span>}
               <span className="details-aired">
                 {slot.kind === "filler"
@@ -184,7 +187,12 @@ export function Guide({ api, year, now, timeZone, channelId, onTune, onYear, onB
                     >
                       <span className="time">
                         {cell.clippedStart ? `from ${formatShortTime(cell.start, timeZone)}` : formatShortTime(cell.start, timeZone)}
-                        {cell.slot.new && " · NEW"}
+                        {kicker(cell.slot).map((part) => (
+                          <span key={part.text} className={`kicker kicker-${part.tone}`}>
+                            {" · "}
+                            {part.text}
+                          </span>
+                        ))}
                       </span>
                       <span className="title">
                         {cell.slot.transplant && "◇ "}

@@ -196,6 +196,8 @@ export function App({ api = liveApi }: AppProps) {
           slot={tuner.slot}
           next={tuner.upcoming.find((s) => s.kind !== "bumper") ?? null}
           callSign={channel ? `${String(channel.number).padStart(2, "0")} ${channel.call_sign}` : ""}
+          channelName={channel?.name ?? ""}
+          timeZone={timeZone}
           mode={mode}
           muted={mode !== "live" && mode !== "pip"}
           simNow={simNow}

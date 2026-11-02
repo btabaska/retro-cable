@@ -1,6 +1,15 @@
 # Status
 
-**Current phase:** 3–6 in review (scheduler, tuning, live TV, guide) — playable on demo media with `make demo`
+**Current phase:** Milestone M1 — phases 3–7 in review (scheduler through Feel), playable on demo media with `make demo`
+
+## Phase 7 — Feel (in review, stacked on Phase 5)
+
+- [x] Holiday calendar (`catalog/holidays.yaml`), windows and seasons, per-channel modes
+- [x] Holiday tags: overrides, `tagged` titles and a keyword tagger; untagged specials in the inventory
+- [x] Tagged episodes preferred in the window; holiday movies and specials injected into prime; seasonal specials kept to their season
+- [x] Bumpers between programs, NEW badges, holiday kicker and badges in the guide and banner; bumper slate when a bumper has no media
+- [x] Golden day Oct 31 1998 (Halloween episodes and Halloweentown) and the Hypothesis property "holiday windows pull only tagged items"
+- [ ] Brandon's check: Oct 31 1998 feels like Halloween 1998
 
 ## Phases 3–6 — Scheduler through guide (in review, stacked on Phase 2)
 

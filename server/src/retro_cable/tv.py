@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from retro_cable.catalog.models import Channel
 from retro_cable.scheduler import ChannelOffAir, Scheduler, Slot, simulated_now
@@ -52,6 +52,10 @@ class GuideSlot(BaseModel):
     air_date: date | None
     new: bool
     transplant: bool
+    holiday: str | None = Field(
+        description="Holiday id this program is tagged for while that holiday is in force"
+    )
+    holiday_name: str | None = Field(description="Display name of `holiday`, e.g. Halloween")
 
 
 class TunedSlot(GuideSlot):
@@ -126,6 +130,8 @@ def router(
             "air_date": slot.air_date,
             "new": slot.new,
             "transplant": slot.transplant,
+            "holiday": slot.holiday,
+            "holiday_name": s.tagger.holidays[slot.holiday].name if slot.holiday else None,
         }
 
     def tuned(s: Scheduler, slot: Slot) -> TunedSlot:

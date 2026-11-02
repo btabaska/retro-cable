@@ -82,6 +82,29 @@ button {
   border: 2px solid var(--rc-color-text-muted);
 }
 
+/* Holiday: the mockup's outlined chip, in the holiday color (about 5:1 on the cell). */
+.badge-holiday {
+  border: 2px solid var(--rc-color-holiday);
+  color: var(--rc-color-holiday);
+  background: transparent;
+}
+
+/* Guide cell kicker: "8:00 · NEW · HALLOWEEN". */
+.kicker-new {
+  color: var(--rc-color-focus);
+  font-weight: 700;
+}
+
+.kicker-holiday {
+  color: var(--rc-color-holiday);
+  font-weight: 700;
+}
+
+.cell-focused .kicker-new,
+.cell-focused .kicker-holiday {
+  color: var(--rc-color-on-focus);
+}
+
 .clock {
   text-align: right;
 }
@@ -233,6 +256,34 @@ button {
 
 .player {
   container-type: size;
+}
+
+/* Station ID slate for a bumper that has no media. */
+.player-bumper {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2cqh;
+  background: var(--rc-color-background);
+  text-align: center;
+}
+
+.bumper-number {
+  font-family: var(--rc-font-grid);
+  font-size: var(--rc-font-size-title);
+  font-weight: 700;
+}
+
+.bumper-name {
+  font-size: var(--rc-font-size-label);
+}
+
+.bumper-next {
+  font-size: var(--rc-font-size-label);
+  color: var(--rc-color-text-muted);
 }
 
 .player-slate {

@@ -184,4 +184,11 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
   - carried shows without a TMDB id;
   - carried movies not on disk;
   - titles in Plex that aren't carried (from the last Plex import).
-- Untagged specials join the report in Phase 7, with holiday tagging.
+  - untagged specials: episodes of `seasonal` shows the tagger can't place (they never air) and movies of an hour or less (TV specials) with no holiday tag. Fix them with `holiday_tags` or a `tagged` entry.
+
+## Implemented (Phase 7: holidays)
+
+- `holidays.yaml` has Halloween, Thanksgiving, Christmas, New Year's Eve, Valentine's Day, St. Patrick's Day and Independence Day. Halloween lists the Halloween DCOMs the keywords miss (Under Wraps, Twitches) and Christmas lists Rudolph and Frosty as `special`s. The St. Patrick's Day config shows per-channel modes (`specials_only` by default, `on` for the Disney channels).
+- `overrides.yaml` gains `seasonal: true` per show: a holiday specials show whose episodes air only in their holiday's season. The Peanuts holiday specials are marked.
+- Tagging is at read time, not in the database, like overrides and synthetic dates: the tagger runs over the library's titles whenever the scheduler is built, so editing a keyword or override never needs a re-import. The plan's "classification pass at ingest" with a review list for low-confidence tags is not built; the keyword tagger plus overrides covers it until a local model joins in Phase 11. How tags and seasons drive the schedule is in `scheduler.md` (Phase 7).
+- The demo seed titles every episode that airs in the week up to a holiday for it ("Episode 57: Halloween"), gives the Peanuts specials their real titles and dates, and gives the holiday DCOMs their real premieres (Halloweentown 1998-10-17).

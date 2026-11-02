@@ -15,6 +15,8 @@ const slot = (kind: GuideSlot["kind"], start: string, end: string, title: string
   air_date: null,
   new: false,
   transplant: false,
+  holiday: null,
+  holiday_name: null,
 });
 
 const T = (hhmmss: string) => `1998-10-31T${hhmmss}-05:00`;
