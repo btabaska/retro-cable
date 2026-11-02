@@ -221,3 +221,10 @@ All use `set -euo pipefail` and are covered by `ops/tests/`.
 
 - `make fixtures` runs `tools/fixtures/generate.py`: 3 shows × 3 episodes of 60 s and 2 bumpers of 5 s, 640×480 H.264 + AAC with faststart and a keyframe every second, in Plex naming under `.fixtures/` (bumpers under `.fixtures/_bumpers/<channel>/fixture/`), plus `manifest.json`.
 - Each frame shows the show, the episode and a timecode to the tenth of a second. Frames are drawn with Pillow and piped to ffmpeg, so ffmpeg needs no drawtext/freetype support (Homebrew's build lacks it). Reruns skip clips that already exist.
+
+## Implemented (Phase 4: media)
+
+- **Worker.** `ops/compose.yml` has a `worker` service on the api image, in the `jobs` profile, so `up` doesn't start it: `docker compose --profile jobs run --rm worker python -m retro_cable.ingest scan|normalize ...`. The api image now includes Debian's `ffmpeg` for it.
+- **Mounts.** `catalog/` (or `RC_CATALOG_SRC`) is mounted read-only at `/catalog` in api and worker. `RC_MEDIA_DIR` is mounted read-only in api (`/media`) and web (`/srv/media`) and read-write only in the worker. Raw sources (`RC_SOURCE_DIR`) are read-only in the worker at `/sources`; `RC_SOURCE_MAP` rewrites recorded source paths to them. `ops/.env.example` documents these and `RC_MEDIA_SECRET`.
+- **Media signatures.** The web container's Caddy (`web/Caddyfile`) serves `/media/*` with `route { forward_auth api /media-auth; uri strip_prefix /media; file_server }`, so nothing is served before the API accepts the signature. It keeps no access log. The host snippet (`ops/caddy/retro-cable.caddy`) is unchanged: it only proxies to the web port.
+- **local-test** fails when the stack logs contain `sig=`.

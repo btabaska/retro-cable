@@ -1,6 +1,7 @@
 """The TV endpoints: /channels, /guide, /tune and signed /media."""
 
 import itertools
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -146,3 +147,77 @@ def test_media_urls_are_signed_and_expire(client: TestClient) -> None:
         403,
         404,
     )
+
+
+def test_media_auth_checks_the_signature_caddy_forwards(client: TestClient) -> None:
+    """Caddy's forward_auth sends the original URI in X-Forwarded-Uri; a 2xx lets file_server
+    answer, anything else goes back to the client as is."""
+    body = client.get("/tune/ktvu", params={"year": 1998}).json()
+    signed = next(
+        s["media_url"] for s in [body["current"], *body["next"]] if s["kind"] == "episode"
+    )
+    query = parse_qs(urlparse(signed).query)
+
+    def auth(uri: str, method: str = "GET") -> int:
+        response = client.request(method, "/media-auth", headers={"X-Forwarded-Uri": uri})
+        return response.status_code
+
+    assert auth(signed) == 204
+    assert auth(signed, "HEAD") == 204
+    assert auth(signed.replace(query["sig"][0], "f" * 64)) == 403  # tampered signature
+    assert auth(signed.replace("simpsons.mp4", "dexter.mp4")) == 403  # tampered path
+    assert auth(signed.replace(f"exp={query['exp'][0]}", "exp=1")) == 403  # expired
+    assert auth(signed.split("?")[0]) == 403  # no signature
+    assert auth("/elsewhere/simpsons.mp4?" + urlparse(signed).query) == 403
+    assert client.get("/media-auth").status_code == 403  # no header at all
+
+
+def test_schedules_pick_up_writes_still_in_the_wal(make_catalog: MakeCatalog, tmp_path: Path) -> None:
+    """A long ingest run keeps its connection open, so its commits sit in the -wal file and
+    the main database file's mtime doesn't move until a checkpoint."""
+    media = tmp_path / "media"
+    media.mkdir()
+    db_path = tmp_path / "rc.db"
+    seed_db(db_path, media)
+    settings = Settings(make_catalog(), db_path, media, media_secret="k", seed=7)
+    app = TestClient(create_app(settings, clock=lambda: REAL_NOW))
+
+    def media_paths() -> set[str]:
+        body = app.get("/tune/ktvu", params={"year": 1998}).json()
+        slots = [body["current"], *body["next"]]
+        return {urlparse(s["media_url"]).path for s in slots if s["kind"] == "episode"}
+
+    assert media_paths() == {"/media/simpsons.mp4"}
+    writer = connect(db_path)
+    writer.execute("PRAGMA wal_autocheckpoint = 0")
+    writer.execute("UPDATE episodes SET media_path = 'tv/n.mp4', media_seconds = 1320")
+    wal = db_path.with_name(db_path.name + "-wal")
+    assert wal.exists()
+    stamp = wal.stat().st_mtime + 5
+    os.utime(wal, (stamp, stamp))  # coarse filesystem clocks: make the change visible
+    assert media_paths() == {"/media/tv/n.mp4"}
+    writer.close()
+
+
+def test_tune_plays_the_normalized_file_when_there_is_one(
+    make_catalog: MakeCatalog, tmp_path: Path
+) -> None:
+    media = tmp_path / "media"
+    media.mkdir()
+    db_path = tmp_path / "rc.db"
+    seed_db(db_path, media)
+    db = connect(db_path)
+    db.execute(
+        "UPDATE episodes SET file_path = '/volume3/tv/The Simpsons/S01E01.mkv',"
+        " media_path = 'tv/the-simpsons/s01/the-simpsons-s01e01.mp4', media_seconds = 1320"
+        " WHERE show_id = 'the-simpsons'"
+    )
+    db.close()
+    settings = Settings(make_catalog(), db_path, media, media_secret="k", seed=7)
+    app = TestClient(create_app(settings, clock=lambda: REAL_NOW))
+    body = app.get("/tune/ktvu", params={"year": 1998}).json()
+    slots = [body["current"], *body["next"]]
+    urls = [s["media_url"] for s in slots if s["kind"] == "episode"]
+    assert urls
+    paths = {urlparse(u).path for u in urls}
+    assert paths == {"/media/tv/the-simpsons/s01/the-simpsons-s01e01.mp4"}

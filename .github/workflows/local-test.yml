@@ -38,6 +38,13 @@ jobs:
         run: |
           mkdir -p web/test-results
           docker compose -f ops/compose.yml -f ops/compose.test.yml logs --no-color > web/test-results/stack.log 2>&1 || true
+      - name: No signed media URLs in the logs
+        if: always()
+        run: |
+          if grep -n 'sig=' web/test-results/stack.log > /dev/null; then
+            echo "stack.log contains signed media URLs (sig=); never log them" >&2
+            exit 1
+          fi
       - uses: actions/upload-artifact@v7
         if: always()
         with:

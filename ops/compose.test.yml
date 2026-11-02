@@ -24,6 +24,13 @@ services:
       - ../catalog:/catalog:ro
       - ../.fixtures:/media:ro
 
+  worker:
+    image: retro-cable-api:test
+    volumes:
+      - api-data:/data
+      - ../.fixtures:/media:rw
+      - ../.fixtures:/sources:ro
+
   web:
     image: retro-cable-web:test
     build:

@@ -82,9 +82,12 @@ def _episodes(catalog: Catalog, db: sqlite3.Connection) -> dict[str, list[_Episo
     ):
         air = date.fromisoformat(r["air_date"]) if r["air_date"] else None
         by_show[r["show_id"]].append((r["season"], r["episode"], air, bool(r["on_disk"])))
+    years = {r["id"]: r["year"] for r in db.execute("SELECT id, year FROM shows")}
     out: dict[str, list[_Episode]] = {}
     for show, rows in by_show.items():
-        dates = effective_dates(catalog, show, [(s, e, d) for s, e, d, _ in rows])
+        dates = effective_dates(
+            catalog, show, [(s, e, d) for s, e, d, _ in rows], first_year=years.get(show)
+        )
         out[show] = [_Episode(d, row[3]) for d, row in zip(dates, rows, strict=True)]
     return out
 

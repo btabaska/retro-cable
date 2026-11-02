@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
@@ -67,7 +67,9 @@ class _Schedules:
 
     def _mtimes(self) -> tuple[float, ...]:
         paths = sorted(self.settings.catalog_dir.glob("*.yaml"))
-        paths.append(self.settings.db_path)
+        db = self.settings.db_path
+        # Commits from a long-running ingest sit in the WAL until a checkpoint.
+        paths += [db, db.with_name(db.name + "-wal")]
         return tuple(p.stat().st_mtime if p.exists() else 0.0 for p in paths)
 
     def __call__(self) -> Scheduler:
@@ -131,6 +133,19 @@ def create_app(
         if target is None:
             raise HTTPException(404, "no such media")
         return FileResponse(target)
+
+    @app.api_route(
+        "/media-auth", methods=["GET", "HEAD"], name="mediaAuth", include_in_schema=False
+    )
+    def media_auth(
+        x_forwarded_uri: Annotated[str | None, Header()] = None,
+    ) -> Response:
+        # Caddy's forward_auth (web/Caddyfile) asks here before file_server answers /media/*.
+        if x_forwarded_uri is None or not media.verify_uri(
+            config.media_secret, x_forwarded_uri, now=time.time()
+        ):
+            return Response(status_code=403)
+        return Response(status_code=204)
 
     return app
 

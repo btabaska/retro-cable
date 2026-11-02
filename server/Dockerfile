@@ -8,6 +8,10 @@ COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable
 
 FROM python:3.12-slim
+# ffmpeg/ffprobe for the worker's normalize job (the worker runs this same image).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --system --uid 10001 --no-create-home app \
     && mkdir /data && chown app:app /data
 COPY --from=build /app/.venv /app/.venv

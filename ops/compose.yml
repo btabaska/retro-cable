@@ -1,5 +1,6 @@
 # Production stack. Deployed by ops/deploy.sh, which sets RC_VERSION.
 # The host Caddy (ops/caddy/retro-cable.caddy) proxies tv.home.tabaska.us to the web port.
+# Paths come from ops/.env (see ops/.env.example). Only the worker writes the media root.
 name: retro-cable
 
 services:
@@ -11,8 +12,12 @@ services:
         required: false
     environment:
       RC_DATA_DIR: /data
+      RC_CATALOG_DIR: /catalog
+      RC_MEDIA_DIR: /media
     volumes:
       - ${RC_DATA_DIR:-./data}:/data
+      - ${RC_CATALOG_SRC:-../catalog}:/catalog:ro
+      - ${RC_MEDIA_DIR:-./media}:/media:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
@@ -20,7 +25,8 @@ services:
       retries: 3
       start_period: 5s
 
-  # Static browser app plus a reverse proxy: /api/* -> api, /media/* -> media files.
+  # Static browser app plus a reverse proxy: /api/* -> api, /media/* -> media files once the
+  # api has checked the signature (web/Caddyfile).
   web:
     image: ghcr.io/btabaska/retro-cable-web:${RC_VERSION:-edge}
     restart: unless-stopped
@@ -29,8 +35,30 @@ services:
         condition: service_healthy
     ports:
       - "${RC_WEB_BIND:-127.0.0.1}:${RC_WEB_PORT:-8080}:80"
+    volumes:
+      - ${RC_MEDIA_DIR:-./media}:/srv/media:ro
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
       interval: 10s
       timeout: 3s
       retries: 3
+
+  # Ingest jobs, run on demand (not by `up`), e.g.
+  #   docker compose --profile jobs run --rm worker python -m retro_cable.ingest scan --tv /sources/tv
+  #   docker compose --profile jobs run --rm worker python -m retro_cable.ingest normalize
+  # Sources are read-only; the media root is the only place it writes besides /data.
+  worker:
+    image: ghcr.io/btabaska/retro-cable-api:${RC_VERSION:-edge}
+    profiles: ["jobs"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RC_DATA_DIR: /data
+      RC_CATALOG_DIR: /catalog
+      RC_MEDIA_DIR: /media
+    volumes:
+      - ${RC_DATA_DIR:-./data}:/data
+      - ${RC_CATALOG_SRC:-../catalog}:/catalog:ro
+      - ${RC_MEDIA_DIR:-./media}:/media:rw
+      - ${RC_SOURCE_DIR:-./sources}:/sources:ro

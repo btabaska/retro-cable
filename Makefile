@@ -10,7 +10,7 @@ RC_DB ?= $(CURDIR)/data/retro-cable.db
 
 .PHONY: help bootstrap fixtures dev lint lint-server lint-web test test-server test-web \
 	test-tools test-ops e2e e2e-stack api api-check stack-up stack-down \
-	catalog-check catalog-schema ingest inventory demo demo-db
+	catalog-check catalog-schema ingest scan normalize inventory demo demo-db
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -82,6 +82,14 @@ catalog-schema: ## Regenerate catalog/schema/*.json from the models
 ingest: ## Import from Plex, then fill gaps from TMDB (needs PLEX_URL, PLEX_TOKEN, TMDB_TOKEN)
 	cd server && uv run python -m retro_cable.ingest plex --db $(RC_DB) --catalog ../catalog
 	cd server && uv run python -m retro_cable.ingest tmdb --db $(RC_DB)
+
+scan: ## Read Plex-named folders off the disk, no Plex needed (RC_TV_DIR, optional RC_MOVIES_DIR)
+	cd server && uv run python -m retro_cable.ingest scan --db $(RC_DB) --catalog ../catalog \
+		--tv "$${RC_TV_DIR:?set RC_TV_DIR}" $${RC_MOVIES_DIR:+--movies "$$RC_MOVIES_DIR"}
+
+normalize: ## Encode playable MP4s into RC_MEDIA_DIR (RC_ENCODER=x264|nvenc, RC_SOURCE_MAP)
+	cd server && uv run python -m retro_cable.ingest normalize --db $(RC_DB) \
+		--media-dir "$${RC_MEDIA_DIR:?set RC_MEDIA_DIR}"
 
 inventory: ## Write reports/inventory.md and .json from the catalog DB
 	cd server && uv run python -m retro_cable.inventory --db $(RC_DB) --catalog ../catalog --out ../reports
