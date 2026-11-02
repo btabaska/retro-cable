@@ -16,6 +16,38 @@ export type SaveResult = S["SaveResult"];
 export type ChangeResult = S["ChangeResult"];
 
 export type DraftRequest = S["DraftRequest"];
+export type AdminChannelShow = S["AdminChannelShow"];
+export type PremiereResult = S["PremiereResult"];
+
+/** A pretend premiere either lands or comes back with the reason it was refused. */
+export type PremiereOutcome = { saved: true; result: PremiereResult } | { saved: false; check: CheckResult };
+
+/**
+ * Conversion progress on the rig (GET /api/admin/media/progress). eng-media owns the endpoint;
+ * until it lands this shape is the proposal in docs/specs/api.md, so it is typed here rather
+ * than in the generated client. A 404 means the server doesn't have it yet.
+ */
+export interface MediaProgress {
+  done: number;
+  total: number;
+  failed: number;
+  /** "gpu", "cpu", or "paused"; gpu_busy says CPU was chosen because the GPU was in use. */
+  encoder: "gpu" | "cpu" | "paused";
+  gpu_busy: boolean;
+  /** Wall-clock seconds of the most recent finished files, newest last (up to 20). */
+  recent_seconds: number[];
+  shows: MediaShowProgress[];
+}
+
+export interface MediaShowProgress {
+  title: string;
+  done: number;
+  total: number;
+  failed: number;
+  state: "converting" | "queued" | "done";
+}
+
+export class NotAvailable extends Error {}
 
 /** A save either lands or comes back with the checks that failed. */
 export type SaveOutcome = { saved: true; result: SaveResult } | { saved: false; check: CheckResult };
@@ -71,6 +103,23 @@ export async function deleteChannel(id: string): Promise<ChangeResult> {
   return data;
 }
 
+export async function setPremiere(channelId: string, show: string, premiere: string | null): Promise<PremiereOutcome> {
+  const { data, error, response } = await api.PUT("/admin/channels/{channel_id}/premieres/{show}", {
+    params: { path: { channel_id: channelId, show } },
+    body: { premiere },
+  });
+  if (data) return { saved: true, result: data };
+  if (response.status === 409 && error && "ok" in error) return { saved: false, check: error };
+  throw fail("premiere", response.status);
+}
+
+export async function getMediaProgress(): Promise<MediaProgress> {
+  const response = await fetch(`${window.location.origin}/api/admin/media/progress`);
+  if (response.status === 404) throw new NotAvailable("no conversion status");
+  if (!response.ok) throw fail("media progress", response.status);
+  return (await response.json()) as MediaProgress;
+}
+
 export async function undo(): Promise<ChangeResult> {
   const { data, response } = await api.POST("/admin/undo");
   if (!data) throw fail("undo", response.status);
@@ -86,6 +135,8 @@ export interface AdminApi {
   preview: typeof preview;
   saveChannel: typeof saveChannel;
   deleteChannel: typeof deleteChannel;
+  setPremiere: typeof setPremiere;
+  getMediaProgress: typeof getMediaProgress;
   undo: typeof undo;
 }
 
@@ -97,5 +148,7 @@ export const liveAdminApi: AdminApi = {
   preview,
   saveChannel,
   deleteChannel,
+  setPremiere,
+  getMediaProgress,
   undo,
 };

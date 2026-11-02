@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AdminApi, ChannelDraft, Preview } from "./api";
-import { dayChip, FIRST_YEAR, LAST_YEAR } from "./draft";
+import { dayChip, dayChipParts, FIRST_YEAR, LAST_YEAR } from "./draft";
 import { Sheet } from "./Sheet";
 
 interface WeekPreviewProps {
@@ -111,12 +111,14 @@ export function WeekPreview({ api, draft, channelId, initialYear, onClose }: Wee
                   type="button"
                   role="tab"
                   aria-selected={d.date === picked}
+                  aria-label={dayChip(d.date)}
                   className={`adm-chip${d.date === picked ? " adm-chip-on" : ""}`}
                   onClick={() => {
                     setPicked(d.date);
                   }}
                 >
-                  {dayChip(d.date)}
+                  <span className="adm-chip-day">{dayChipParts(d.date).day}</span>
+                  <span className="adm-chip-date">{dayChipParts(d.date).date}</span>
                 </button>
               ))}
             </div>

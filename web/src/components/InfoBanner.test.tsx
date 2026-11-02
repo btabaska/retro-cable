@@ -55,6 +55,20 @@ describe("InfoBanner", () => {
     expect(screen.getByTestId("banner-holiday")).toHaveTextContent("HALLOWEEN");
   });
 
+  it("badges a pretend premiere after the holiday, with the CSS mark (M2 A7)", () => {
+    renderBanner(slot({ transplant: true, holiday: "halloween", holiday_name: "Halloween" }));
+    const badge = screen.getByTestId("banner-transplant");
+    expect(badge).toHaveTextContent("PRETEND PREMIERE");
+    expect(badge.querySelector(".transplant-mark")).not.toBeNull();
+    expect(badge.textContent).not.toContain("◇");
+    expect(screen.getByTestId("banner-holiday").compareDocumentPosition(badge)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("never marks a show without a pretend premiere", () => {
+    renderBanner(slot({}));
+    expect(screen.queryByTestId("banner-transplant")).toBeNull();
+  });
+
   it("never badges a rerun", () => {
     renderBanner(slot({}));
     expect(screen.queryByText("NEW")).toBeNull();

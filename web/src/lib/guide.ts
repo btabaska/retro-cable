@@ -53,3 +53,21 @@ export function windowStartFor(t: number): number {
 }
 
 export const HALF_HOUR_MS = HALF_HOUR;
+
+/** Stage pixels the cells span: 1920 less two gutters (64), the channel column (260) and the
+ * gap between them (6). The stage is a fixed 1920 x 1080, scaled as a whole. */
+export const CELLS_PX = 1920 - 2 * 64 - 260 - 6;
+/** Below this a cell drops its time and kicker and keeps only the ellipsised title. */
+export const NARROW_PX = 120;
+/** Below this a cell shows no text at all; aria-label carries the title (M2 D28). */
+export const SLIVER_PX = 40;
+
+export type CellSize = "full" | "narrow" | "sliver";
+
+/** How much text a cell of `width` (a fraction of the window) has room for. */
+export function cellSize(width: number, cellsPx: number = CELLS_PX): CellSize {
+  const px = width * cellsPx;
+  if (px < SLIVER_PX) return "sliver";
+  if (px < NARROW_PX) return "narrow";
+  return "full";
+}

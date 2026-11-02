@@ -2,7 +2,18 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AdminApp } from "./AdminApp";
-import type { AdminApi, AdminChannelList, AdminChannelRow, CheckResult, DraftRequest, LibraryEntry, Preview } from "./api";
+import {
+  type AdminApi,
+  type AdminChannel,
+  type AdminChannelList,
+  type AdminChannelRow,
+  type CheckResult,
+  type DraftRequest,
+  type LibraryEntry,
+  type MediaProgress,
+  NotAvailable,
+  type Preview,
+} from "./api";
 
 const row = (id: string, number: number, name: string, custom = false): AdminChannelRow => ({
   id,
@@ -17,7 +28,7 @@ const row = (id: string, number: number, name: string, custom = false): AdminCha
 });
 
 const LIBRARY: LibraryEntry[] = [
-  { id: "courage", title: "Courage the Cowardly Dog", kind: "show", first_year: 1999, last_year: 2002, episodes: 52, channels: [] },
+  { id: "courage", title: "Courage the Cowardly Dog", kind: "show", first_year: 1999, last_year: 2002, debut: "1999-11-12", episodes: 52, channels: [] },
   { id: "johnny-bravo", title: "Johnny Bravo", kind: "show", first_year: 1997, last_year: 2004, episodes: 67, channels: [] },
   {
     id: "the-simpsons",
@@ -109,6 +120,8 @@ function fakeApi(): AdminApi & { channels: AdminChannelRow[] } {
       });
     }),
     deleteChannel: vi.fn(() => Promise.reject(new Error("unused"))),
+    setPremiere: vi.fn(() => Promise.reject(new Error("unused"))),
+    getMediaProgress: vi.fn(() => Promise.reject(new NotAvailable("no"))),
     undo: vi.fn(() => {
       channels.pop();
       return Promise.resolve({ message: "Restored", state: state(10, false) });
@@ -275,5 +288,258 @@ describe("AdminApp", () => {
     expect(await screen.findByText("Couldn't load channels.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByTestId("admin-channels")).toBeInTheDocument();
+  });
+});
+
+const disney = (over: Partial<AdminChannel> = {}): AdminChannel => ({
+  id: "disney",
+  custom: false,
+  draft: {
+    number: 30,
+    call_sign: "DISN",
+    name: "Disney Channel",
+    type: "network",
+    library: false,
+    launch_year: 1990,
+    shows: [
+      { show: "johnny-bravo", kind: "show", premiere: null },
+      { show: "courage", kind: "show", until_year: 1997, premiere: null },
+    ],
+  },
+  shows: [
+    {
+      show: "johnny-bravo",
+      kind: "show",
+      debut: "1997-07-07",
+      premiere: null,
+      premiere_source: null,
+      first_air: "1997-07-07",
+      last_air: "2004-08-27",
+      on_air_until: null,
+      airs: true,
+    },
+    {
+      show: "courage",
+      kind: "show",
+      debut: "1999-11-12",
+      premiere: null,
+      premiere_source: null,
+      first_air: "1999-11-12",
+      last_air: "2002-11-22",
+      on_air_until: "1997-12-31",
+      airs: false,
+    },
+  ],
+  ...over,
+});
+
+const progress = (over: Partial<MediaProgress> = {}): MediaProgress => ({
+  done: 1240,
+  total: 2000,
+  failed: 2,
+  encoder: "cpu",
+  gpu_busy: true,
+  recent_seconds: Array.from({ length: 20 }, () => 30),
+  shows: [
+    { title: "Johnny Bravo", done: 67, total: 67, failed: 0, state: "done" },
+    { title: "Courage the Cowardly Dog", done: 0, total: 52, failed: 0, state: "queued" },
+    { title: "Dexter's Laboratory", done: 38, total: 52, failed: 2, state: "converting" },
+  ],
+  ...over,
+});
+
+describe("AdminApp M2", () => {
+  it("shows read-only rows without chevrons and saves a pretend premiere on a YAML channel", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    vi.mocked(api.getChannel).mockResolvedValue(disney());
+    vi.mocked(api.setPremiere).mockResolvedValueOnce({
+      saved: true,
+      result: {
+        message: "Set the pretend premiere of Johnny Bravo",
+        warnings: [],
+        state: state(11, true),
+        show: {
+          show: "johnny-bravo",
+          kind: "show",
+          debut: "1997-07-07",
+          premiere: "1995-09-08",
+          premiere_source: "admin",
+          first_air: "1995-09-08",
+          last_air: "2002-10-28",
+          on_air_until: null,
+          airs: true,
+        },
+      },
+    });
+    render(<AdminApp api={api} />);
+    await user.click(await screen.findByTestId("admin-channel-disney"));
+    const shows = await screen.findByTestId("editor-shows");
+    // D26: plain rows, no chevrons, no expand buttons.
+    expect(within(shows).queryByText("⌄")).toBeNull();
+    expect(within(shows).queryAllByRole("button", { expanded: false })).toHaveLength(0);
+
+    const date = within(shows).getAllByLabelText("Pretend premiere")[0];
+    if (!date) throw new Error("no premiere field");
+    await user.type(date, "1995-09-08");
+    await user.click(within(shows).getAllByRole("button", { name: "Set" })[0] as HTMLElement);
+    expect(api.setPremiere).toHaveBeenCalledWith("disney", "johnny-bravo", "1995-09-08");
+    expect(await screen.findByRole("status")).toHaveTextContent("Set the pretend premiere of Johnny Bravo");
+    expect(screen.getByTestId("show-meta-0")).toHaveTextContent("Pretend premiere Sep 1995 · really Jul 1997");
+    expect(screen.getByTestId("premiere-run-0")).toHaveTextContent("S1E1 airs Sep 8, 1995 · last episode Oct 2002");
+  });
+
+  it("flags a show that debuts after the channel stops carrying it", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    vi.mocked(api.getChannel).mockResolvedValue(disney());
+    render(<AdminApp api={api} />);
+    await user.click(await screen.findByTestId("admin-channel-disney"));
+    const meta = await screen.findByTestId("show-meta-1");
+    expect(meta).toHaveTextContent("Debuts Nov 1999 · won't air. Set a pretend premiere.");
+    expect(meta.closest("li")).toHaveClass("adm-show-flag");
+  });
+
+  it("shows a refused premiere inline", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    vi.mocked(api.getChannel).mockResolvedValue(disney());
+    vi.mocked(api.setPremiere).mockResolvedValueOnce({
+      saved: false,
+      check: {
+        ok: false,
+        errors: [{ field: "premiere", message: "Pick a date from 1990 to 2010." }],
+        warnings: [],
+        catalog_version: null,
+      },
+    });
+    render(<AdminApp api={api} />);
+    await user.click(await screen.findByTestId("admin-channel-disney"));
+    const date = (await screen.findAllByLabelText("Pretend premiere"))[0] as HTMLElement;
+    await user.type(date, "2012-06-15");
+    await user.click(screen.getAllByRole("button", { name: "Set" })[0] as HTMLElement);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Pick a date from 1990 to 2010.");
+    expect(date).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("sets a pretend premiere on a custom channel's show and saves it with the channel", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    render(<AdminApp api={api} />);
+    await fillNewChannel(user, "50");
+    await user.click(screen.getByRole("button", { name: /Courage the Cowardly Dog/ }));
+    const date = screen.getByLabelText("Pretend premiere");
+    expect(date).toHaveAttribute("min", "1990-01-01");
+    expect(date).toHaveAttribute("max", "2010-12-31");
+    await user.type(date, "1996-09-06");
+    expect(screen.getByTestId("show-meta-0")).toHaveTextContent("Pretend premiere Sep 1996 · really Nov 1999");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("status");
+    const saved = vi.mocked(api.saveChannel).mock.calls[0]?.[0];
+    expect(saved?.draft.shows?.[0]).toMatchObject({ show: "courage", premiere: "1996-09-06" });
+  });
+
+  it("clears a field's error as soon as it is edited, and the summary with it", async () => {
+    const user = userEvent.setup();
+    render(<AdminApp api={fakeApi()} />);
+    await fillNewChannel(user, "30");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByTestId("check-errors")).toBeInTheDocument();
+    const number = screen.getByLabelText("Number");
+    await user.clear(number);
+    await user.type(number, "51");
+    expect(number).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByTestId("check-errors")).toBeNull();
+  });
+
+  it("opens the show row an error links to", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    vi.mocked(api.saveChannel).mockResolvedValueOnce({
+      saved: false,
+      check: {
+        ok: false,
+        errors: [{ field: "shows.1.premiere", message: "Pick a date from 1990 to 2010." }],
+        warnings: [],
+        catalog_version: null,
+      },
+    });
+    render(<AdminApp api={api} />);
+    await fillNewChannel(user, "50");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(await screen.findByRole("link", { name: "Pick a date from 1990 to 2010." }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Pretend premiere")).toHaveFocus();
+    });
+  });
+
+  it("gives focus back to the opener when a sheet closes, and to the title after a save", async () => {
+    const user = userEvent.setup();
+    render(<AdminApp api={fakeApi()} />);
+    await fillNewChannel(user, "50");
+    expect(screen.getByRole("button", { name: "+ Add show" })).toHaveFocus();
+    const previewButton = screen.getByRole("button", { name: "Preview week" });
+    await user.click(previewButton);
+    await screen.findByTestId("preview-day");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(previewButton).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("status");
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1, name: "Retro Cable" })).toHaveFocus();
+    });
+  });
+
+  it("draws saved custom channels with a solid border, not the draft dashes", async () => {
+    const api = fakeApi();
+    api.channels.push(row("custom-toons", 50, "Toons", true));
+    render(<AdminApp api={api} />);
+    const custom = await screen.findByTestId("admin-channel-custom-toons");
+    expect(custom).toHaveClass("adm-row-custom");
+    expect(custom).not.toHaveClass("adm-row-draft");
+    expect(custom).toHaveTextContent("Custom ·");
+  });
+
+  it("splits week-preview day chips over two lines", async () => {
+    const user = userEvent.setup();
+    render(<AdminApp api={fakeApi()} />);
+    await fillNewChannel(user, "50");
+    await user.click(screen.getByRole("button", { name: "Preview week" }));
+    const chip = await screen.findByRole("tab", { name: "Sun 29" });
+    expect(within(chip).getByText("Sun")).toHaveClass("adm-chip-day");
+    expect(within(chip).getByText("29")).toHaveClass("adm-chip-date");
+  });
+
+  it("shows conversion progress on the Media tab", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    vi.mocked(api.getMediaProgress).mockResolvedValue(progress());
+    render(<AdminApp api={api} />);
+    await user.click(await screen.findByRole("button", { name: "Media" }));
+    const summary = await screen.findByTestId("media-summary");
+    expect(summary).toHaveTextContent("62%");
+    // 760 files left at 30 s each: 6 h 20 m, rounded to ten minutes.
+    expect(summary).toHaveTextContent("1,240 of 2,000 files · about 6 h 20 m left");
+    expect(summary).toHaveTextContent("Encoding on CPU (GPU busy)");
+    const rows = within(screen.getByTestId("media-shows")).getAllByRole("listitem");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("Dexter's Laboratory"),
+      expect.stringContaining("Courage the Cowardly Dog"),
+      expect.stringContaining("✓ 67 / 67"),
+    ]);
+    expect(rows[0]).toHaveTextContent("2 failed");
+    expect(screen.getByRole("heading", { level: 1, name: "Media" })).toHaveFocus();
+  });
+
+  it("says when the server has no conversion status yet, or nothing to convert", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    render(<AdminApp api={api} />);
+    await user.click(await screen.findByRole("button", { name: "Media" }));
+    expect(await screen.findByText(/isn't available on this server yet/)).toBeInTheDocument();
+    vi.mocked(api.getMediaProgress).mockResolvedValue(progress({ done: 0, total: 0, shows: [] }));
+    await user.click(screen.getByRole("button", { name: "Channels" }));
+    await user.click(await screen.findByRole("button", { name: "Media" }));
+    expect(await screen.findByText("Nothing to convert.")).toBeInTheDocument();
   });
 });

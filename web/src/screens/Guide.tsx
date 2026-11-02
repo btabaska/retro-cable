@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Guide as GuideData, TvApi } from "../api/client";
 import { episodeLabel } from "../components/InfoBanner";
 import { useKeys } from "../hooks/useKeys";
-import { cellIndexAt, HALF_HOUR_MS, layoutRow, WINDOW_MS, windowStartFor } from "../lib/guide";
+import { cellIndexAt, cellSize, HALF_HOUR_MS, layoutRow, WINDOW_MS, windowStartFor } from "../lib/guide";
 import { kicker } from "../lib/program";
 import { formatAirDate, formatClock, formatGuideDay, formatLongDate, formatShortTime, zonedParts } from "../lib/time";
 
@@ -133,11 +133,20 @@ export function Guide({ api, year, now, timeZone, channelId, onTune, onYear, onB
               {slot.new && <span className="badge badge-new">NEW</span>}
               {slot.kind === "movie" && <span className="badge badge-outline">MOVIE</span>}
               {slot.holiday_name && <span className="badge badge-holiday">{slot.holiday_name.toUpperCase()}</span>}
-              {slot.transplant && <span className="badge badge-outline">◇ TRANSPLANT</span>}
+              {slot.transplant && (
+                <span className="badge badge-outline badge-transplant" data-testid="details-transplant">
+                  <span className="transplant-mark" aria-hidden="true" />
+                  PRETEND PREMIERE
+                </span>
+              )}
               <span className="details-aired">
                 {slot.kind === "filler"
                   ? "No programming scheduled"
-                  : `${slot.new ? "New" : "Rerun"}${slot.air_date ? ` · first aired ${formatAirDate(slot.air_date)}` : ""}`}
+                  : `${slot.new ? "New" : "Rerun"}${
+                      slot.air_date
+                        ? ` · first aired ${formatAirDate(slot.air_date)}${slot.transplant ? " (pretend)" : ""}`
+                        : ""
+                    }`}
               </span>
             </div>
             {slot.kind !== "filler" && <div className="details-synopsis">{episodeLabel(slot) || slot.title}</div>}
@@ -174,30 +183,43 @@ export function Guide({ api, year, now, timeZone, channelId, onTune, onYear, onB
                 ).map((cell) => {
                   const isFocused =
                     rowIndex === focus.row && focusedCell !== undefined && cell.start === focusedCell.start;
+                  const size = cellSize(cell.width);
+                  const classes = [
+                    "cell",
+                    isFocused ? "cell-focused" : "",
+                    cell.end <= now ? "cell-past" : "",
+                    size === "full" ? "" : `cell-${size}`,
+                    cell.slot.holiday ? "cell-holiday" : "",
+                  ].filter(Boolean);
                   return (
                     <div
                       key={cell.slot.start}
                       role="gridcell"
                       aria-selected={isFocused}
-                      className={`cell${isFocused ? " cell-focused" : ""}${cell.end <= now ? " cell-past" : ""}`}
+                      aria-label={size === "sliver" ? cell.slot.title : undefined}
+                      className={classes.join(" ")}
                       style={{ left: `${cell.left * 100}%`, width: `${cell.width * 100}%` }}
                       onClick={() => {
                         onTune(row.channel.id);
                       }}
                     >
-                      <span className="time">
-                        {cell.clippedStart ? `from ${formatShortTime(cell.start, timeZone)}` : formatShortTime(cell.start, timeZone)}
-                        {kicker(cell.slot).map((part) => (
-                          <span key={part.text} className={`kicker kicker-${part.tone}`}>
-                            {" · "}
-                            {part.text}
-                          </span>
-                        ))}
-                      </span>
-                      <span className="title">
-                        {cell.slot.transplant && "◇ "}
-                        {cell.slot.title}
-                      </span>
+                      {size === "full" && (
+                        <span className="time">
+                          {cell.clippedStart ? `from ${formatShortTime(cell.start, timeZone)}` : formatShortTime(cell.start, timeZone)}
+                          {kicker(cell.slot).map((part) => (
+                            <span key={part.text} className={`kicker kicker-${part.tone}`}>
+                              {" · "}
+                              {part.text}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                      {size !== "sliver" && (
+                        <span className="title">
+                          {cell.slot.transplant && <span className="transplant-mark" data-testid="transplant-mark" />}
+                          {cell.slot.title}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -217,7 +239,9 @@ export function Guide({ api, year, now, timeZone, channelId, onTune, onYear, onB
         <span>
           <strong>ESC</strong> Back
         </span>
-        <span className="footer-right">◇ Transplant (synthetic air date)</span>
+        <span className="footer-right">
+          <span className="transplant-mark" aria-hidden="true" /> Pretend premiere
+        </span>
       </footer>
     </div>
   );
