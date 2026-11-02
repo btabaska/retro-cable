@@ -1,7 +1,8 @@
 """Read Plex-named folders straight off the disk: `python -m retro_cable.ingest scan`.
 
-A stopgap while there is no Plex token: it finds carried shows' episode files (and carried
-movies) by name, without air dates. Undated episodes get conservative dates when the schedule
+A stopgap while there is no Plex token: it finds episode files by name, without air dates, for
+carried shows and (stored as uncarried, so /admin can put them on new channels) every other
+show folder; and carried movies. Undated episodes get conservative dates when the schedule
 is read (catalog.air_dates.synthesize_undated). A later Plex import or TMDB fill replaces them.
 
 TV layout: `<root>/<Show (Year)>/Season NN/<Show (Year)> - SxxEyy - Title.ext`, plus the
@@ -13,6 +14,7 @@ import json
 import os
 import re
 import sqlite3
+import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -137,11 +139,13 @@ def _folders(root: Path) -> list[Path]:
 
 @dataclass
 class ScanStats:
-    shows: int = 0
-    episodes: int = 0
+    shows: int = 0  # carried
+    episodes: int = 0  # of carried shows
     duplicates: int = 0
     detached: int = 0
-    unmatched_folders: list[str] = field(default_factory=list)
+    uncarried: list[str] = field(default_factory=list)  # folders stored as uncarried shows
+    uncarried_episodes: int = 0
+    unmatched_folders: list[str] = field(default_factory=list)  # stored nowhere
     unparsed: list[str] = field(default_factory=list)
 
 
@@ -163,55 +167,206 @@ def _pick(found: list[_Found]) -> dict[tuple[int, int], _Found]:
     return best
 
 
+_RELEASE = re.compile(
+    r"[ ._-](?:S\d{1,2}(?:E\d{1,3})?|Season[ ._]?\d+|Complete|\d{3,4}p|WEB(?:-?DL|Rip)?|HDTV|"
+    r"DVDRip|BluRay|BDRip|x26[45]|HEVC)(?=$|[ ._-])",
+    re.I,
+)
+
+
+def show_title(folder: str) -> str:
+    """A show's title from its folder name: `Office, The (2005)` -> `The Office`,
+    `Russian.Doll.S01E01.720p.HEVC.x265-MeGusta` -> `Russian Doll`. Drops the `(year)`,
+    release tags and private-use characters (Synology's stand-ins for a trailing dot or space),
+    and moves a trailing article to the front."""
+    name = "".join(ch for ch in folder if unicodedata.category(ch) != "Co").strip()
+    if " " not in name:
+        name = name.replace(".", " ").replace("_", " ")
+    m = _RELEASE.search(name)
+    if m and m.start() > 0:
+        name = name[: m.start()]
+    name = re.sub(r"\s*\((?:19|20)\d{2}\)\s*$", "", name).strip(" -._")
+    m = re.match(r"^(.*),\s*(the|a|an)$", name, re.I)
+    return (f"{m[2]} {m[1]}" if m else name) or folder
+
+
+def _slug(title: str) -> str:
+    return "-".join(normalize_title(title).split()) or "show"
+
+
+def _excluded(catalog: Catalog) -> set[str]:
+    """Normalized titles of carried shows that overrides.yaml excludes from import."""
+    gone = {o.show for o in catalog.overrides.shows if o.exclude}
+    keys = {normalize_title(c.title) for c in catalog.carriage.carriage if c.show in gone}
+    keys |= {normalize_title(o.plex_title) for o in catalog.overrides.shows
+             if o.show in gone and o.plex_title}  # fmt: skip
+    return keys | {k.replace(" ", "") for k in keys}
+
+
+def _collect(folder: Path, root: Path, stats: ScanStats) -> tuple[list[Path], list[_Found]]:
+    files = _video_files(folder)
+    found = []
+    for f in files:
+        parsed = parse_episode(f.parent.name, f.name)
+        if parsed is None:
+            stats.unparsed.append(f.relative_to(root).as_posix())
+            continue
+        season, episode, title = parsed
+        canonical = _season_of(f.parent.name) is not None
+        found.append(_Found(season, episode, title, f, f.stat().st_size, canonical))
+    return files, found
+
+
+def _best(found: list[_Found], stats: ScanStats) -> dict[tuple[int, int], _Found]:
+    best = _pick(found)
+    stats.duplicates += len(found) - len(best)
+    return best
+
+
+@dataclass
+class _Uncarried:
+    """Folders that hold one uncarried show: same title and same `(year)` in the name."""
+
+    title: str
+    year: int | None
+    folders: list[Path] = field(default_factory=list)
+    files: list[Path] = field(default_factory=list)
+    found: list[_Found] = field(default_factory=list)
+
+
+def _store(
+    db: sqlite3.Connection,
+    show: str,
+    title: str,
+    year: int | None,
+    best: dict[tuple[int, int], _Found],
+    now: datetime | None,
+) -> None:
+    with transaction(db):
+        db.execute(
+            "INSERT INTO shows (id, title, year, updated_at) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (id) DO UPDATE SET year = COALESCE(shows.year, excluded.year)",
+            (show, title, year, now.isoformat() if now else None),
+        )
+        for (season, episode), pick in sorted(best.items()):
+            db.execute(
+                """INSERT INTO episodes (show_id, season, episode, title, file_path, file_size)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT (show_id, season, episode) DO UPDATE SET
+                     title = CASE WHEN episodes.title = '' THEN excluded.title
+                             ELSE episodes.title END,
+                     file_path = excluded.file_path, file_size = excluded.file_size""",
+                (show, season, episode, pick.title, str(pick.path), pick.size),
+            )
+
+
+def _previous_id(db: sqlite3.Connection, folders: list[Path], skip: set[str]) -> str | None:
+    """The uncarried id an earlier scan gave these folders, so ids stay put across re-scans."""
+    for folder in folders:
+        prefix = str(folder) + "/"
+        for r in db.execute(
+            "SELECT show_id, COUNT(*) AS n FROM episodes WHERE substr(file_path, 1, ?) = ?"
+            " GROUP BY show_id ORDER BY n DESC, show_id",
+            (len(prefix), prefix),
+        ):
+            if r["show_id"] not in skip:
+                return str(r["show_id"])
+    return None
+
+
+def _new_id(title: str, year: int | None, taken: set[str]) -> tuple[str, str]:
+    """(id, title) for a show seen for the first time: the title's slug, else with its year
+    (`doctor-who-1963`, titled `Doctor Who (1963)`), else numbered."""
+    base = _slug(title)
+    if base not in taken:
+        return base, title
+    if year is not None and f"{base}-{year}" not in taken:
+        return f"{base}-{year}", f"{title} ({year})"
+    n = 2
+    while f"{base}-{n}" in taken:
+        n += 1
+    return f"{base}-{n}", f"{title} ({n})"
+
+
 def scan_tv(
-    db: sqlite3.Connection, root: Path, catalog: Catalog, now: datetime | None = None
+    db: sqlite3.Connection,
+    root: Path,
+    catalog: Catalog,
+    now: datetime | None = None,
+    *,
+    carried_only: bool = False,
 ) -> ScanStats:
-    """Attach every carried show's episode files under `root`. Air dates are left alone."""
+    """Attach every show's episode files under `root`. Air dates are left alone.
+
+    Folders that match a carried show attach to its catalog id. The rest are stored as
+    uncarried shows (in the library, on no channel) so the admin can build channels from them,
+    unless `carried_only` is set or overrides.yaml excludes the title. Their ids are slugs of
+    the folder title and stay the same across re-scans.
+    """
     stats = ScanStats()
     index, titles = _Index(catalog, "show"), _titles(catalog)
-    seen: set[str] = set()
+    excluded = _excluded(catalog)
+    carried = {c.show for c in catalog.carriage.carriage}
+    seen: set[tuple[str, str]] = set()
+    groups: dict[tuple[str, int | None], _Uncarried] = {}
     for folder in _folders(root):
         slug = index.match(folder.name)
-        if slug is None:
+        if slug is None and (
+            carried_only
+            or any(k in excluded or k.replace(" ", "") in excluded for k in _keys(folder.name))
+        ):
             stats.unmatched_folders.append(folder.name)
             continue
-        files = _video_files(folder)
-        found = []
-        for f in files:
-            parsed = parse_episode(f.parent.name, f.name)
-            if parsed is None:
-                stats.unparsed.append(f.relative_to(root).as_posix())
+        files, found = _collect(folder, root, stats)
+        if slug is None:
+            if not found:
+                stats.unmatched_folders.append(folder.name)
                 continue
-            season, episode, title = parsed
-            canonical = _season_of(f.parent.name) is not None
-            found.append(_Found(season, episode, title, f, f.stat().st_size, canonical))
-        best = _pick(found)
-        stats.duplicates += len(found) - len(best)
+            # Release folders of one show (`Russian Doll`, `Russian.Doll.S01E01.720p...`) merge;
+            # a `(year)` in the name keeps remakes apart (`Doctor Who (1963)`, `(2005)`).
+            title, folder_year = show_title(folder.name), show_year(folder.name, [])
+            group = groups.setdefault((_slug(title), folder_year), _Uncarried(title, folder_year))
+            group.folders.append(folder)
+            group.files += files
+            group.found += found
+            continue
+        best = _best(found, stats)
         year = show_year(folder.name, [f.name for f in files])
-        with transaction(db):
-            db.execute(
-                "INSERT INTO shows (id, title, year, updated_at) VALUES (?, ?, ?, ?)"
-                " ON CONFLICT (id) DO UPDATE SET year = COALESCE(shows.year, excluded.year)",
-                (slug, titles.get(slug, folder.name), year, now.isoformat() if now else None),
-            )
-            for (season, episode), pick in sorted(best.items()):
-                db.execute(
-                    """INSERT INTO episodes (show_id, season, episode, title, file_path, file_size)
-                       VALUES (?, ?, ?, ?, ?, ?)
-                       ON CONFLICT (show_id, season, episode) DO UPDATE SET
-                         title = CASE WHEN episodes.title = '' THEN excluded.title
-                                 ELSE episodes.title END,
-                         file_path = excluded.file_path, file_size = excluded.file_size""",
-                    (slug, season, episode, pick.title, str(pick.path), pick.size),
-                )
-                seen.add(str(pick.path))
+        _store(db, slug, titles.get(slug, folder.name), year, best, now)
+        seen |= {(slug, str(f.path)) for f in best.values()}
         stats.shows += 1
         stats.episodes += len(best)
-    # Files under this root that weren't found again are detached; their rows stay.
+
+    # Uncarried shows: reuse the id an earlier scan gave their folders, then name the new ones.
+    pending = list(groups.values())
+    ids: dict[int, str] = {}
+    for i, group in enumerate(pending):
+        previous = _previous_id(db, group.folders, carried | set(ids.values()))
+        if previous is not None:
+            ids[i] = previous
+    taken = carried | {r["id"] for r in db.execute("SELECT id FROM shows")} | set(ids.values())
+    for i, group in enumerate(pending):
+        year = group.year or show_year("", [f.name for f in group.files])
+        if i in ids:
+            row = db.execute("SELECT title FROM shows WHERE id = ?", (ids[i],)).fetchone()
+            title = row["title"] if row else group.title
+        else:
+            ids[i], title = _new_id(group.title, group.year, taken)
+            taken.add(ids[i])
+        best = _best(group.found, stats)
+        _store(db, ids[i], title, year, best, now)
+        seen |= {(ids[i], str(f.path)) for f in best.values()}
+        stats.uncarried += [f.name for f in group.folders]
+        stats.uncarried_episodes += len(best)
+
+    # Files under this root that weren't found again for the same show are detached (a file
+    # that moved to a carried show leaves its old uncarried row); the rows themselves stay.
     prefix = str(root).rstrip("/") + "/"
     with transaction(db):
-        for r in db.execute("SELECT id, file_path FROM episodes WHERE file_path IS NOT NULL"):
-            if r["file_path"].startswith(prefix) and r["file_path"] not in seen:
+        for r in db.execute(
+            "SELECT id, show_id, file_path FROM episodes WHERE file_path IS NOT NULL"
+        ).fetchall():
+            if r["file_path"].startswith(prefix) and (r["show_id"], r["file_path"]) not in seen:
                 db.execute(
                     "UPDATE episodes SET file_path = NULL, file_size = NULL WHERE id = ?",
                     (r["id"],),

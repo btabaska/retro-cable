@@ -17,7 +17,9 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from retro_cable.catalog import CatalogError, load_catalog
+from retro_cable.admin import store
+from retro_cable.catalog import Catalog, CatalogError, load_catalog
+from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.db import connect, migrate
 from retro_cable.ingest.normalize import ENCODERS, detect_crop, no_crop, normalize
 from retro_cable.ingest.plex import PlexClient, import_plex
@@ -69,7 +71,18 @@ def _parser() -> argparse.ArgumentParser:
     norm.add_argument("--crop", choices=["auto", "off"], default="auto",
                       help="auto: remove black bars baked into the picture (default)")  # fmt: skip
     norm.add_argument("--dry-run", action="store_true", help="print the ffmpeg commands")
+    norm.add_argument("--all", action="store_true",
+                      help="also shows no channel carries (default: carried shows only, "
+                           "including those on /admin channels)")  # fmt: skip
+    scan.add_argument("--carried-only", action="store_true",
+                      help="skip show folders no channel carries (default: keep)")  # fmt: skip
     return parser
+
+
+def carried_shows(db: sqlite3.Connection, catalog: Catalog) -> frozenset[str]:
+    """Shows some channel carries: the YAML catalog plus the /admin overlay's channels."""
+    effective = apply_overlay(catalog, store.head(db).overlay)
+    return frozenset(c.show for c in effective.carriage.carriage)
 
 
 def main(argv: list[str]) -> int:
@@ -91,7 +104,7 @@ def main(argv: list[str]) -> int:
     elif args.job == "scan" and not (args.tv or args.movies):
         print("scan needs --tv DIR and/or --movies DIR", file=sys.stderr)
         return 2
-    if args.job in ("plex", "scan"):
+    if args.job in ("plex", "scan") or (args.job == "normalize" and not args.all):
         try:
             catalog = load_catalog(args.catalog)
         except CatalogError as err:
@@ -113,17 +126,20 @@ def main(argv: list[str]) -> int:
         assert catalog is not None
         out: dict[str, object] = {}
         if args.tv:
-            out["tv"] = asdict(scan_tv(db, args.tv, catalog, now))
+            out["tv"] = asdict(scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only))
         if args.movies:
             out["movies"] = asdict(scan_movies(db, args.movies, catalog, now))
         stats = out
     else:
-        stats = _normalize(db, args)
+        shows = None if args.all or catalog is None else carried_shows(db, catalog)
+        stats = _normalize(db, args, shows)
     print(json.dumps(stats, indent=2))
     return 0
 
 
-def _normalize(db: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+def _normalize(
+    db: sqlite3.Connection, args: argparse.Namespace, shows: frozenset[str] | None
+) -> dict[str, object]:
 
     media = args.media_dir or Path(os.environ.get("RC_MEDIA_DIR", "data/media"))
     root = args.source_root or (
@@ -141,6 +157,7 @@ def _normalize(db: sqlite3.Connection, args: argparse.Namespace) -> dict[str, ob
         dry_run=args.dry_run,
         crop=detect_crop if args.crop == "auto" else no_crop,
         progress=lambda label: print(f"encoding {label}", file=sys.stderr, flush=True),
+        shows=shows,
     )
     if args.dry_run:
         for cmd in result.commands:

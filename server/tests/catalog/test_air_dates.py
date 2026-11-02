@@ -5,6 +5,8 @@ from hypothesis import strategies as st
 
 from retro_cable.catalog import effective_dates, is_library_show, load_catalog, shift_air_dates
 from retro_cable.catalog.air_dates import synthesize_undated
+from retro_cable.catalog.models import Carriage, Channel
+from retro_cable.catalog.overlay import Overlay, apply_overlay
 from tests.conftest import OVERRIDES, SYNTHETIC, MakeCatalog
 
 
@@ -125,3 +127,37 @@ def test_synthesized_dates_never_precede_the_bound_and_follow_air_order(
     assert len(known) == len(keys)
     assert all(d >= date(year, 12, 31) for d in known)
     assert known == sorted(known)
+
+
+def test_an_uncarried_show_is_bounded_by_its_folder_year_or_stays_undated(
+    make_catalog: MakeCatalog,
+) -> None:
+    catalog = load_catalog(make_catalog())
+    # Scanned from "Johnny Bravo (1997)" but carried by no channel.
+    assert effective_dates(catalog, "johnny-bravo", [(1, 1, None)], first_year=1997) == [
+        date(1997, 12, 31)
+    ]
+    assert effective_dates(catalog, "johnny-bravo", [(1, 1, None)]) == [None]
+
+
+def test_custom_channel_carriage_never_bounds_a_debut(make_catalog: MakeCatalog) -> None:
+    # Putting a show on an admin-made channel says nothing about when it first aired: a custom
+    # channel launching in 1990 must not date an undated show 1990-12-31.
+    catalog = load_catalog(make_catalog())
+    custom = Channel.model_validate(
+        {"id": "custom-toons", "name": "Toons", "type": "network", "launch": "1990-01-01",
+         "identity": [{"from": "1990-01-01", "number": 50, "call_sign": "TOONS"}]}
+    )  # fmt: skip
+    carriage = [
+        Carriage.model_validate(
+            {"show": show, "title": title, "channel": "custom-toons", "from": "1990-01-01"}
+        )
+        for show, title in (
+            ("johnny-bravo", "Johnny Bravo"),
+            ("dexters-laboratory", "Dexter's Laboratory"),
+        )
+    ]
+    effective = apply_overlay(catalog, Overlay(channels=[custom], carriage=carriage))
+    assert effective_dates(effective, "johnny-bravo", [(1, 1, None)]) == [None]
+    # YAML carriage still bounds it: Cartoon Network from 1996.
+    assert effective_dates(effective, "dexters-laboratory", [(1, 1, None)]) == [date(1996, 12, 31)]

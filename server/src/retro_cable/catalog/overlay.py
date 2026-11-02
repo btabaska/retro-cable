@@ -14,9 +14,25 @@ from dataclasses import replace
 from pydantic import Field
 
 from retro_cable.catalog.load import Catalog
-from retro_cable.catalog.models import Carriage, CarriageFile, Channel, ChannelsFile, Model
+from retro_cable.catalog.models import (
+    CUSTOM_PREFIX,
+    Carriage,
+    CarriageFile,
+    Channel,
+    ChannelsFile,
+    Model,
+)
 
-CUSTOM_PREFIX = "custom-"
+__all__ = [
+    "CUSTOM_PREFIX",
+    "Overlay",
+    "apply_overlay",
+    "canonical",
+    "overlay_version",
+    "parse",
+    "with_channel",
+    "without_channel",
+]
 
 
 class Overlay(Model):

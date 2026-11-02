@@ -275,6 +275,12 @@ def test_plan_lists_every_item_with_a_source_file(db: sqlite3.Connection, librar
     ]
 
 
+def test_plan_can_keep_to_some_shows(db: sqlite3.Connection, library: Path) -> None:
+    # Uncarried shows from `scan` wait until a channel carries them; movies and bumpers stay.
+    assert [i.table for i in plan(db, shows={"fixture-friends"})] == ["episodes"] * 3 + ["bumpers"]
+    assert [i.table for i in plan(db, shows=set())] == ["bumpers"]
+
+
 @needs_ffmpeg
 def test_normalize_writes_playable_480p_mp4s_and_records_them(
     db: sqlite3.Connection, library: Path, tmp_path: Path

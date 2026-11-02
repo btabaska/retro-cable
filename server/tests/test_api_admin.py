@@ -257,3 +257,71 @@ def test_launched_channel_hidden_before_launch(client: TestClient) -> None:
         for c in client.get("/channels", params={"year": 2002}).json()["channels"]
     }
     assert on[channel_id] is True
+
+
+def add_scanned(path: Path, *, normalized: bool, year: int | None) -> None:
+    """An uncarried show as `ingest scan` stores it: raw absolute paths, no dates, no runtime."""
+    db = connect(path)
+    db.execute(
+        "INSERT INTO shows (id, title, year) VALUES ('ed-edd-n-eddy', 'Ed, Edd n Eddy', ?)",
+        (year,),
+    )
+    for i in range(3):
+        db.execute(
+            "INSERT INTO episodes (show_id, season, episode, file_path, media_path, media_seconds)"
+            " VALUES ('ed-edd-n-eddy', 1, ?, ?, ?, ?)",
+            (i + 1, f"/volume3/tv/Ed, Edd n Eddy/Season 1/S01E0{i + 1}.mkv",
+             f"tv/ed-edd-n-eddy/s01/ed-edd-n-eddy-s01e0{i + 1}.mp4" if normalized else None,
+             1320 if normalized else None),
+        )  # fmt: skip
+    db.close()
+
+
+def scanned_client(
+    catalog_dir: Path, tmp_path: Path, *, normalized: bool, year: int | None
+) -> TestClient:
+    media = tmp_path / "media"
+    media.mkdir(parents=True)
+    db = tmp_path / "rc.db"
+    seed_db(db, media)
+    add_scanned(db, normalized=normalized, year=year)
+    settings = Settings(
+        catalog_dir=catalog_dir, db_path=db, media_dir=media, media_secret="s", seed=7
+    )
+    return TestClient(create_app(settings, clock=lambda: REAL_NOW))
+
+
+def eddy(client: TestClient) -> dict[str, Any]:
+    items = client.get("/admin/library", params={"q": "eddy"}).json()["items"]
+    item: dict[str, Any] = items[0]
+    return item
+
+
+def test_a_scanned_show_counts_episodes_once_normalized(catalog_dir: Path, tmp_path: Path) -> None:
+    raw = scanned_client(catalog_dir, tmp_path / "raw", normalized=False, year=1999)
+    assert eddy(raw)["episodes"] == 0  # raw sources can't play yet
+    draft = toons(shows=[{"show": "ed-edd-n-eddy"}])
+    warnings = raw.post("/admin/check", json={"draft": draft}).json()["warnings"]
+    assert any("Ed, Edd n Eddy has no playable files yet" in w["message"] for w in warnings)
+
+    done = scanned_client(catalog_dir, tmp_path / "done", normalized=True, year=1999)
+    item = eddy(done)
+    assert item["episodes"] == 3 and item["first_year"] == 1999  # Dec 31 of the folder year
+    saved = done.post("/admin/channels", json={"draft": draft})
+    assert saved.status_code == 200, saved.text
+    tuned = done.get(f"/tune/{saved.json()['channel_id']}", params={"year": 2003}).json()
+    assert tuned["current"]["show"] == "ed-edd-n-eddy"
+
+
+def test_an_undated_show_warns_on_a_channel_that_is_not_library(
+    catalog_dir: Path, tmp_path: Path
+) -> None:
+    client = scanned_client(catalog_dir, tmp_path, normalized=True, year=None)
+    draft = toons(library=False, launch_year=1995, shows=[{"show": "ed-edd-n-eddy"}])
+    warnings = client.post("/admin/check", json={"draft": draft, "year": 2000}).json()["warnings"]
+    assert any(w["field"] == "shows.0" and "no air dates" in w["message"] for w in warnings), (
+        warnings
+    )
+    # On a library channel every episode is eligible, so it airs without a warning.
+    library = toons(shows=[{"show": "ed-edd-n-eddy"}])
+    assert client.post("/admin/check", json={"draft": library}).json()["warnings"] == []

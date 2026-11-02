@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
+from retro_cable.catalog.models import CUSTOM_PREFIX
+
 if TYPE_CHECKING:
     from retro_cable.catalog.load import Catalog
 
@@ -76,15 +78,18 @@ def synthesize_undated(
 def _debut_bound(catalog: "Catalog", show: str, first_year: int | None) -> date | None:
     """A date the show had certainly debuted by: its synthetic premiere or US debut, else Dec 31
     of its premiere year, else Dec 31 of the year it was first carried on a network channel
-    (library channels carry shows long after their debut, so they say nothing)."""
+    (library channels carry shows long after their debut, so they say nothing; nor do custom
+    channels made in /admin, whose carriage is Brandon's choice, not broadcast history)."""
     anchor = _anchor(catalog, show)
     if anchor is not None:
         return anchor
     if first_year is not None:
         return date(first_year, 12, 31)
-    library = {c.id for c in catalog.channels.channels if c.library}
+    ignored = {
+        c.id for c in catalog.channels.channels if c.library or c.id.startswith(CUSTOM_PREFIX)
+    }
     starts = [
-        c.from_ for c in catalog.carriage.carriage if c.show == show and c.channel not in library
+        c.from_ for c in catalog.carriage.carriage if c.show == show and c.channel not in ignored
     ]
     return date(min(starts).year, 12, 31) if starts else None
 

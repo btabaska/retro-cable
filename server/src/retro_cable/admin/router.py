@@ -143,7 +143,11 @@ def library_index(db: sqlite3.Connection, sched: Scheduler) -> dict[str, Library
     for r in db.execute(
         "SELECT s.id, s.title, MIN(e.air_date) AS first, MAX(e.air_date) AS last,"
         " COUNT(e.id) AS known,"
-        " SUM(CASE WHEN e.file_path IS NOT NULL AND e.runtime_seconds > 0 THEN 1 ELSE 0 END)"
+        # Playable as load_library sees it: a normalized file, or one already under the media
+        # root with a runtime. Raw sources from `ingest scan` count once normalize has run.
+        " SUM(CASE WHEN e.media_path IS NOT NULL AND e.media_seconds > 0 THEN 1"
+        "  WHEN e.media_path IS NULL AND e.file_path NOT LIKE '/%' AND e.runtime_seconds > 0"
+        "  THEN 1 ELSE 0 END)"
         " AS on_disk FROM shows s LEFT JOIN episodes e ON e.show_id = s.id GROUP BY s.id"
     ):
         dated = [p.air_date for p in sched.programs(r["id"]) if p.air_date]
@@ -158,9 +162,16 @@ def library_index(db: sqlite3.Connection, sched: Scheduler) -> dict[str, Library
             episodes=r["on_disk"] or 0,
             known=r["known"],
         )
-    for r in db.execute("SELECT id, title, premiere_date, runtime_seconds, file_path FROM movies"):
+    for r in db.execute(
+        "SELECT id, title, premiere_date, runtime_seconds, file_path, media_path, media_seconds"
+        " FROM movies"
+    ):
         premiere = date.fromisoformat(r["premiere_date"]) if r["premiere_date"] else None
-        on_disk = 1 if r["file_path"] and (r["runtime_seconds"] or 0) > 0 else 0
+        if r["media_path"]:
+            on_disk = 1 if (r["media_seconds"] or 0) > 0 else 0
+        else:
+            relative = r["file_path"] and not r["file_path"].startswith("/")
+            on_disk = 1 if relative and (r["runtime_seconds"] or 0) > 0 else 0
         items.setdefault(
             r["id"],
             LibraryItem(r["id"], r["title"], "movie", premiere, premiere, on_disk, 1),

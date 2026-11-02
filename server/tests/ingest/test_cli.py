@@ -71,9 +71,53 @@ def test_scan_then_normalize_dry_run(
         "normalize",
         lambda db, media, **kw: _capture(kw),
     )
-    assert cli.main(["normalize", "--db", db, "--media-dir", str(tmp_path / "media")]) == 0
+    media = ["--media-dir", str(tmp_path / "media")]
+    assert cli.main(["normalize", "--db", db, "--catalog", catalog, *media]) == 0
     assert CAPTURED["encoder"] == "nvenc"
     assert CAPTURED["source_map"] == [(str(tmp_path / "tv"), str(tmp_path / "mnt" / "tv"))]
+    # By default only shows a channel carries are encoded; --all takes the whole library.
+    shows = CAPTURED["shows"]
+    assert isinstance(shows, frozenset) and "the-simpsons" in shows
+    assert cli.main(["normalize", "--db", db, "--catalog", catalog, "--all", *media]) == 0
+    assert CAPTURED["shows"] is None
+
+
+def test_normalize_includes_shows_on_custom_channels(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import UTC, datetime
+
+    from retro_cable.admin import store
+    from retro_cable.catalog.models import Carriage, Channel
+    from retro_cable.catalog.overlay import Overlay
+    from retro_cable.db import connect, migrate
+
+    db_path = tmp_path / "rc.db"
+    db = connect(db_path)
+    migrate(db)
+    custom = Channel.model_validate(
+        {"id": "custom-toons", "name": "Toons", "type": "network", "library": True,
+         "identity": [{"from": "1990-01-01", "number": 50, "call_sign": "TOONS"}]}
+    )  # fmt: skip
+    bravo = Carriage.model_validate(
+        {"show": "johnny-bravo", "title": "Johnny Bravo", "channel": "custom-toons",
+         "from": "1990-01-01"}
+    )  # fmt: skip
+    store.save(db, Overlay(channels=[custom], carriage=[bravo]), "add", datetime.now(UTC))
+    db.close()
+    monkeypatch.setattr(cli, "normalize", lambda db, media, **kw: _capture(kw))
+    args = ["normalize", "--db", str(db_path), "--catalog", str(make_catalog())]
+    assert cli.main([*args, "--media-dir", str(tmp_path / "media")]) == 0
+    shows = CAPTURED["shows"]
+    assert isinstance(shows, frozenset) and {"johnny-bravo", "the-simpsons"} <= shows
+
+
+def test_normalize_needs_a_catalog_unless_all(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args = ["normalize", "--db", str(tmp_path / "rc.db"), "--catalog", str(tmp_path / "nope")]
+    assert cli.main([*args, "--media-dir", str(tmp_path / "m"), "--dry-run"]) == 1
+    assert cli.main([*args, "--media-dir", str(tmp_path / "m"), "--dry-run", "--all"]) == 0
 
 
 CAPTURED: dict[str, object] = {}

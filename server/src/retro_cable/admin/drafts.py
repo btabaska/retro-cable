@@ -61,7 +61,7 @@ class LibraryItem:
     kind: Literal["show", "movie"]
     first_air: date | None
     last_air: date | None
-    episodes: int  # on disk with a runtime
+    episodes: int  # playable: normalized, or under the media root with a runtime
     known: int  # all known, on disk or not
 
 
@@ -209,7 +209,19 @@ def check_fields(
         if s.from_year and s.until_year and s.until_year < s.from_year:
             err(where, f"{item.title}: the last year is before the first.")
         if item.episodes == 0:
-            warnings.append(CheckIssue(field=where, message=f"{item.title} has no files yet."))
+            # Raw files from `ingest scan` play once the normalize job, which encodes every
+            # carried show, has run.
+            warnings.append(
+                CheckIssue(field=where, message=f"{item.title} has no playable files yet.")
+            )
+        elif not draft.library and item.first_air is None and s.kind == "show":
+            warnings.append(
+                CheckIssue(
+                    field=where,
+                    message=f"{item.title} has no air dates yet, so it airs only on library"
+                    " channels.",
+                )
+            )
         elif not draft.library and item.first_air:
             carried_from = date(s.from_year, 1, 1) if s.from_year else start
             if item.first_air > carried_from:

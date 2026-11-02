@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from retro_cable.catalog import load_catalog
-from retro_cable.ingest.scan import parse_episode, scan_movies, scan_tv, show_year
+from retro_cable.ingest.scan import parse_episode, scan_movies, scan_tv, show_title, show_year
 from tests.conftest import CARRIAGE, MakeCatalog
 
 
@@ -68,18 +68,26 @@ def rows(db: sqlite3.Connection, sql: str) -> list[tuple[object, ...]]:
     return [tuple(r) for r in db.execute(sql).fetchall()]
 
 
-def test_scan_imports_carried_shows_and_reports_the_rest(
+def test_scan_imports_carried_shows_and_keeps_the_rest_as_uncarried(
     db: sqlite3.Connection, tree: Path, make_catalog: MakeCatalog
 ) -> None:
     catalog = load_catalog(make_catalog())
+    touch(tree / "Only Extras" / "Season 1" / "Making Of.mkv")  # nothing numbered: not stored
     stats = scan_tv(db, tree, catalog)
     assert stats.shows == 2
     assert stats.episodes == 3
-    assert stats.unmatched_folders == ["Not Carried (2001)"]
-    assert stats.unparsed == ["Dexters Laboratory/Season 1/Dexter - extras.avi"]
+    # A show no channel carries is stored too, so the admin can put it on a new channel.
+    assert stats.uncarried == ["Not Carried (2001)"]
+    assert stats.uncarried_episodes == 1
+    assert stats.unmatched_folders == ["Only Extras"]
+    assert stats.unparsed == [
+        "Dexters Laboratory/Season 1/Dexter - extras.avi",
+        "Only Extras/Season 1/Making Of.mkv",
+    ]
     assert stats.duplicates == 1
     assert rows(db, "SELECT id, title, year FROM shows ORDER BY id") == [
         ("dexters-laboratory", "Dexter's Laboratory", None),
+        ("not-carried", "Not Carried", 2001),
         ("the-simpsons", "The Simpsons", 1989),
     ]
     assert rows(
@@ -89,11 +97,118 @@ def test_scan_imports_carried_shows_and_reports_the_rest(
     ) == [
         ("dexters-laboratory", 1, 1, "Changes", None,
          str(tree / "Dexters Laboratory/Season 1/101 - Changes.avi")),
+        ("not-carried", 1, 1, "", None,
+         str(tree / "Not Carried (2001)/Season 1/Not Carried - S01E01.mkv")),
         ("the-simpsons", 1, 1, "Simpsons Roasting", None,
          str(tree / "The Simpsons/Season 01/The Simpsons (1989) - S01E01 - Simpsons Roasting [WEBDL].mkv")),
         ("the-simpsons", 1, 2, "Bart the Genius", None,
          str(tree / "The Simpsons/Season 01/The Simpsons (1989) - S01E02 - Bart the Genius [WEBDL].mkv")),
     ]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("folder", "title"),
+    [
+        ("Office, The (2005)", "The Office"),
+        ("Grim Adventures of Billy and Mandy, The -", "The Grim Adventures of Billy and Mandy"),
+        ("Gossip.Girl", "Gossip Girl"),
+        ("Russian.Doll.S01E01.720p.HEVC.x265-MeGusta", "Russian Doll"),
+        ("Scooby Doo Mystery Incorporated Complete Season 1 720p x264 Salman Sk SilverRG",
+         "Scooby Doo Mystery Incorporated"),
+        ("The Serpent Queen S01 web hevc-d3g", "The Serpent Queen"),
+        ("Why.Didnt.They.Ask.Evans.S01.1080p.WEB-DL.DDP5.1.H.264-squalor",
+         "Why Didnt They Ask Evans"),
+        ("Reign (2013)", "Reign"),  # Synology's stand-in for a trailing dot or space
+        ("Clone High 2023", "Clone High 2023"),  # a bare year can be part of the title
+        ("Schmigadoon!", "Schmigadoon!"),
+    ],
+)  # fmt: skip
+def test_show_title_cleans_release_folder_names(folder: str, title: str) -> None:
+    assert show_title(folder) == title
+
+
+def test_folders_of_one_uncarried_show_merge(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    root = tmp_path / "tv"
+    touch(root / "Russian Doll" / "Season 1" / "Russian Doll - S01E02.mkv")
+    touch(root / "Russian.Doll.S01E01.720p.HEVC.x265-MeGusta" / "Russian.Doll.S01E01.mkv")
+    touch(root / "Roseanne" / "Season 1" / "S01E01.mkv")
+    touch(root / "Roseanne" / "Season 2" / "S02E01.mkv")
+    stats = scan_tv(db, root, load_catalog(make_catalog()))
+    assert stats.uncarried_episodes == 4
+    assert rows(
+        db, "SELECT show_id, season, episode FROM episodes ORDER BY show_id, season, episode"
+    ) == [("roseanne", 1, 1), ("roseanne", 2, 1), ("russian-doll", 1, 1), ("russian-doll", 1, 2)]
+    assert rows(db, "SELECT id, title FROM shows ORDER BY id") == [
+        ("roseanne", "Roseanne"),
+        ("russian-doll", "Russian Doll"),
+    ]
+
+
+def test_carried_only_skips_uncarried_folders(
+    db: sqlite3.Connection, tree: Path, make_catalog: MakeCatalog
+) -> None:
+    stats = scan_tv(db, tree, load_catalog(make_catalog()), carried_only=True)
+    assert stats.uncarried == []
+    assert stats.unmatched_folders == ["Not Carried (2001)"]
+    assert rows(db, "SELECT id FROM shows ORDER BY id") == [
+        ("dexters-laboratory",),
+        ("the-simpsons",),
+    ]
+
+
+def test_uncarried_ids_are_slugs_that_stay_stable_across_rescans(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    catalog = load_catalog(make_catalog())
+    root = tmp_path / "tv"
+    touch(root / "Doctor Who (2005)" / "Season 01" / "Doctor Who (2005) - S01E01 - Rose.mkv")
+    touch(root / "Office, The (2005)" / "Season 1" / "S01E01.mkv")
+    # Halloweentown is a carried movie: a TV folder with that name can't take its id.
+    touch(root / "Halloweentown (2004)" / "Season 1" / "S01E01.mkv")
+    scan_tv(db, root, catalog)
+    first = rows(db, "SELECT id, title FROM shows ORDER BY id")
+    assert first == [
+        ("doctor-who", "Doctor Who"),
+        ("halloweentown-2004", "Halloweentown (2004)"),
+        ("the-office", "The Office"),
+    ]
+
+    # A second Doctor Who arrives: the first keeps its id, the new one takes its year.
+    touch(root / "Doctor Who (1963)" / "Season 01" / "Doctor Who - S01E01.mkv")
+    stats = scan_tv(db, root, catalog)
+    assert stats.uncarried_episodes == 4
+    assert rows(db, "SELECT id, title FROM shows ORDER BY id") == [
+        ("doctor-who", "Doctor Who"),
+        ("doctor-who-1963", "Doctor Who (1963)"),
+        ("halloweentown-2004", "Halloweentown (2004)"),
+        ("the-office", "The Office"),
+    ]
+    assert rows(
+        db,
+        "SELECT show_id, file_path LIKE '%(1963)%' FROM episodes WHERE show_id LIKE 'doctor%'"
+        " ORDER BY show_id",
+    ) == [("doctor-who", 0), ("doctor-who-1963", 1)]
+
+
+def test_an_uncarried_show_that_becomes_carried_moves_its_files(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    root = tmp_path / "tv"
+    touch(root / "Johnny Bravo (1997)" / "Season 1" / "S01E01.mkv")
+    scan_tv(db, root, load_catalog(make_catalog()))
+    assert rows(db, "SELECT show_id FROM episodes WHERE file_path IS NOT NULL") == [
+        ("johnny-bravo",)
+    ]
+
+    carriage = CARRIAGE + (
+        '  - { show: bravo, title: "Johnny Bravo", channel: cartoon-network, from: 1997-07-14 }\n'
+    )
+    stats = scan_tv(db, root, load_catalog(make_catalog(carriage=carriage)))
+    assert stats.shows == 1 and stats.uncarried == []
+    # The carried id now has the file; the old uncarried row keeps no file, so nothing airs twice.
+    assert rows(db, "SELECT show_id FROM episodes WHERE file_path IS NOT NULL") == [("bravo",)]
 
 
 def test_rescan_keeps_plex_and_tmdb_data_and_detaches_files_that_are_gone(
@@ -142,6 +257,7 @@ def test_scan_respects_plex_title_overrides_and_exclusions(
     assert stats.shows == 1
     assert rows(db, "SELECT id FROM shows") == [("the-simpsons",)]
     assert stats.unmatched_folders == ["X-Men (1992)"]
+    assert stats.uncarried == []  # excluded means not imported at all
 
 
 def test_titles_match_without_spaces_or_a_trailing_article(

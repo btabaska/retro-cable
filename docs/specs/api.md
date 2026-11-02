@@ -60,7 +60,7 @@ Admin routes live under `/admin/*` (`/api/admin/*` behind Caddy) and appear in `
 | --- | --- | --- |
 | `GET /admin/channels` | `adminListChannels` | Every channel by number, with `custom` (editable) and a show count, plus `state` (revision, catalog version, can_undo) |
 | `GET /admin/channels/{id}` | `adminGetChannel` | The channel as a `ChannelDraft` (YAML channels too, read-only) |
-| `GET /admin/library?q=` | `adminLibrary` | Every show and movie in the database, filtered by title. Uncarried items come first. Each has years, episodes on disk and the channels carrying it |
+| `GET /admin/library?q=` | `adminLibrary` | Every show and movie in the database, filtered by title. Uncarried items come first. Each has years, playable episodes (normalized, or already under the media root with a runtime; raw `ingest scan` sources count once normalized) and the channels carrying it |
 | `POST /admin/check` | `adminCheck` | Runs the save checks on a draft without saving |
 | `POST /admin/preview` | `adminPreview` | The checks plus a Sunday–Saturday week of the draft's guide for `year` (and `date`, default today), with the draft applied in memory only |
 | `POST /admin/channels` | `adminCreateChannel` | Check, then save. Returns 409 with the `CheckResult` when the checks fail |
@@ -77,4 +77,4 @@ Admin routes live under `/admin/*` (`/api/admin/*` behind Caddy) and appear in `
 - The catalog's own cross-file validation fails.
 - The one-week invariant smoke test on the same engine fails: every day runs 5 a.m. to 5 a.m. with no gaps or overlaps, and nothing airs before its date on a non-library channel.
 
-Warnings don't block saving: a show with no files, or a show whose debut comes after its carriage start ("Kim Possible won't air before its 2002 debut.").
+Warnings don't block saving: a show with no playable files yet, a show with no air dates on a channel that isn't library (it airs only on library channels), or a show whose debut comes after its carriage start ("Kim Possible won't air before its 2002 debut.").

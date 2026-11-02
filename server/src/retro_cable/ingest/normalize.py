@@ -18,7 +18,7 @@ import os
 import re
 import sqlite3
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
@@ -254,8 +254,9 @@ class Item:
     source_mtime_ns: int | None
 
 
-def plan(db: sqlite3.Connection) -> list[Item]:
-    """Every episode, movie and bumper with a source file, in a stable order."""
+def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[Item]:
+    """Every episode, movie and bumper with a source file, in a stable order. With `shows`,
+    only those shows' episodes (the CLI passes the shows some channel carries)."""
     items = [
         Item("episodes", r["id"], f"{r['show_id']} S{r['season']:02d}E{r['episode']:02d}",
              r["file_path"],
@@ -266,6 +267,7 @@ def plan(db: sqlite3.Connection) -> list[Item]:
             " media_source_mtime_ns FROM episodes WHERE file_path IS NOT NULL"
             " ORDER BY show_id, season, episode"
         )
+        if shows is None or r["show_id"] in shows
     ]  # fmt: skip
     items += [
         Item("movies", r["id"], r["id"], r["file_path"],
@@ -347,10 +349,11 @@ def normalize(
     probe: Prober = probe,
     crop: CropDetector = detect_crop,
     progress: Callable[[str], None] | None = None,
+    shows: Collection[str] | None = None,
 ) -> NormalizeStats:
     """Encode every item that has no up-to-date output. `limit` caps the encodes in this run."""
     stats = NormalizeStats()
-    for item in plan(db):
+    for item in plan(db, shows):
         if limit is not None and stats.encoded >= limit:
             break
         src = resolve_source(item.file_path, source_root, source_map)
