@@ -65,6 +65,14 @@ def test_test_compose_builds_from_source_and_mounts_fixtures_read_only() -> None
     assert "../.fixtures:/srv/media:ro" in services["web"]["volumes"]
 
 
+def test_test_compose_api_runs_on_the_demo_catalog() -> None:
+    api = load("compose.test.yml")["services"]["api"]
+    assert "../catalog:/catalog:ro" in api["volumes"]
+    assert "../.fixtures:/media:ro" in api["volumes"]
+    assert api["environment"]["RC_DB"] == "/data/demo.db"
+    assert "retro_cable.demo" in api["command"][-1]
+
+
 # --- caddy -------------------------------------------------------------------
 
 

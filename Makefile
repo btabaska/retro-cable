@@ -10,7 +10,7 @@ RC_DB ?= $(CURDIR)/data/retro-cable.db
 
 .PHONY: help bootstrap fixtures dev lint lint-server lint-web test test-server test-web \
 	test-tools test-ops e2e e2e-stack api api-check stack-up stack-down \
-	catalog-check catalog-schema ingest inventory
+	catalog-check catalog-schema ingest inventory demo demo-db
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -27,7 +27,22 @@ fixtures: ## Generate fake media into .fixtures/
 
 dev: fixtures ## Run the API and web dev server on fixtures
 	@trap 'kill 0' EXIT; \
-	(cd server && uv run uvicorn retro_cable.app:app --reload --host 127.0.0.1 --port 8000) & \
+	(cd server && uv run uvicorn retro_cable.app:app --reload --host 127.0.0.1 --port 8000 --no-access-log) & \
+	(cd web && npm run dev -- --host 127.0.0.1) & \
+	wait
+
+DEMO_DB := $(CURDIR)/data/demo.db
+DEMO_SCALE ?= 1
+
+demo-db: ## Demo feeds in .fixtures/_demo and a demo database (data/demo.db) for every carried show
+	$(UV) python tools/fixtures/generate.py --out .fixtures --demo --demo-scale $(DEMO_SCALE)
+	mkdir -p data
+	cd server && uv run python -m retro_cable.demo --db $(DEMO_DB) --catalog ../catalog --media ../.fixtures
+
+demo: demo-db ## Play with the app on demo media: http://127.0.0.1:5173
+	@trap 'kill 0' EXIT; \
+	(cd server && RC_DB=$(DEMO_DB) RC_MEDIA_DIR=$(CURDIR)/.fixtures \
+		uv run uvicorn retro_cable.app:app --host 127.0.0.1 --port 8000 --no-access-log) & \
 	(cd web && npm run dev -- --host 127.0.0.1) & \
 	wait
 
@@ -79,7 +94,8 @@ api: ## Regenerate server/openapi.json and the web client
 api-check: api ## Fail if the committed spec or client is stale
 	git diff --exit-code -- server/openapi.json web/src/api/generated
 
-stack-up: fixtures ## Build and start ops/compose.test.yml on 127.0.0.1:8080
+stack-up: fixtures ## Build and start ops/compose.test.yml on 127.0.0.1:8080 (demo feeds)
+	test -f .fixtures/_demo/manifest.json || $(MAKE) demo-db DEMO_SCALE=0.02
 	RC_GIT_SHA=$$(git rev-parse --short HEAD) $(COMPOSE_TEST) up -d --build --wait
 
 stack-down:
