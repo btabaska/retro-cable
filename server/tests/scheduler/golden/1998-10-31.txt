@@ -197,35 +197,35 @@
 04:52:00   480s [filler] Paid Programming
 
 ## disney-movies
-05:00:00  5400s [movie] Brink!
+05:00:00  5400s [movie halloween] Under Wraps
 06:30:00    10s [bumper] Disney Movies
-06:30:10  5400s [movie] Brink!
+06:30:10  5400s [movie halloween] Halloweentown
 08:00:10    10s [bumper] Disney Movies
-08:00:20  5400s [movie] Brink!
+08:00:20  5400s [movie halloween] Under Wraps
 09:30:20    10s [bumper] Disney Movies
-09:30:30  5400s [movie] Brink!
+09:30:30  5400s [movie halloween] Halloweentown
 11:00:30    10s [bumper] Disney Movies
-11:00:40  5400s [movie] Brink!
+11:00:40  5400s [movie halloween] Under Wraps
 12:30:40    10s [bumper] Disney Movies
-12:30:50  5400s [movie] Brink!
+12:30:50  5400s [movie halloween] Halloweentown
 14:00:50    10s [bumper] Disney Movies
-14:01:00  5400s [movie] Brink!
+14:01:00  5400s [movie halloween] Under Wraps
 15:31:00    10s [bumper] Disney Movies
-15:31:10  5400s [movie] Brink!
+15:31:10  5400s [movie halloween] Halloweentown
 17:01:10    10s [bumper] Disney Movies
-17:01:20  5400s [movie] Brink!
+17:01:20  5400s [movie halloween] Under Wraps
 18:31:20    10s [bumper] Disney Movies
-18:31:30  5400s [movie] Brink!
+18:31:30  5400s [movie halloween] Halloweentown
 20:01:30    10s [bumper] Disney Movies
 20:01:40  5400s [movie halloween] Under Wraps
 21:31:40    10s [bumper] Disney Movies
 21:31:50  5400s [movie halloween] Halloweentown
 23:01:50    10s [bumper] Disney Movies
-23:02:00  5400s [movie] Brink!
+23:02:00  5400s [movie halloween] Under Wraps
 00:32:00    10s [bumper] Disney Movies
-00:32:10  5400s [movie] Brink!
+00:32:10  5400s [movie halloween] Halloweentown
 02:02:10    10s [bumper] Disney Movies
-02:02:20  5400s [movie] Brink!
+02:02:20  5400s [movie halloween] Under Wraps
 03:32:20  5260s [filler] Paid Programming
 
 ## cartoon-network

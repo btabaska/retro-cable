@@ -5,6 +5,7 @@ changes it on purpose, regenerate it with `RC_UPDATE_GOLDEN=1 make test-server` 
 diff in the PR.
 """
 
+import itertools
 import os
 from datetime import date, datetime, time
 from pathlib import Path
@@ -85,3 +86,47 @@ def test_oct_31_1998_airs_halloween_episodes(sched: Scheduler) -> None:
         for s in sched.day(channel, OCT31):
             if s.start.astimezone(NY).date() == OCT31:
                 assert s.holiday in (None, "halloween"), s
+
+
+# --- Holiday movies are seasonal everywhere; the holiday itself is a marathon (M1 review) ---
+
+HALLOWEEN_MOVIES = {"halloweentown", "under-wraps", "halloweentown-ii-kalabars-revenge", "twitches"}
+
+
+def test_oct_31_1998_disney_movies_is_a_halloween_marathon(sched: Scheduler) -> None:
+    """On Halloween the movie channel runs every eligible Halloween movie back to back,
+    repeating, through the whole broadcast day (5 a.m. to 5 a.m.)."""
+    slots = sched.day("disney-movies", OCT31)
+    movies = [s for s in slots if s.kind == "movie"]
+    shows = {s.show for s in movies}
+    # Every Halloween movie in the demo seed that had premiered by Oct 31 1998.
+    assert shows == {"halloweentown", "under-wraps"}
+    assert all(s.holiday == "halloween" for s in movies)
+    # Repeating as needed: each airs several times, never twice in a row.
+    assert all(sum(s.show == show for s in movies) >= 3 for show in shows)
+    assert all(a.show != b.show for a, b in itertools.pairwise(movies))
+    # Back to back from 5 a.m., with only bumpers between and filler at the very end.
+    assert slots[0].kind == "movie" and slots[0].start == at(5)
+    assert all(s.kind in ("movie", "bumper") for s in slots[:-1])
+
+
+def test_nov_7_1998_disney_movies_airs_no_halloween_movies(sched: Scheduler) -> None:
+    slots = sched.day("disney-movies", date(1998, 11, 7))
+    assert any(s.kind == "movie" for s in slots)
+    for s in slots:
+        assert s.show not in HALLOWEEN_MOVIES, s
+        assert s.holiday is None, s
+
+
+def test_halloween_movies_stay_in_season_on_every_channel(sched: Scheduler) -> None:
+    for day in (date(1998, 7, 4), date(1998, 11, 7), date(1999, 3, 17), date(1998, 12, 24)):
+        for channel in CHANNELS:
+            for s in sched.day(channel, day):
+                assert s.show not in HALLOWEEN_MOVIES, (channel, s)
+
+
+def test_oct_24_1998_in_season_but_not_the_holiday_is_no_marathon(sched: Scheduler) -> None:
+    """Before the day itself, Halloween movies only get prime time; the rest of the day
+    runs the usual rotation."""
+    movies = [s for s in sched.day("disney-movies", date(1998, 10, 24)) if s.kind == "movie"]
+    assert any(s.show not in HALLOWEEN_MOVIES for s in movies)

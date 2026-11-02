@@ -58,11 +58,24 @@ The schedule is a pure function of (channel, simulated date, catalog version, se
 
 The `/tune` endpoint is specified in `api.md` (Tuning in).
 
+## Invariants (never break)
+
+These extend the list in `CLAUDE.md` and are each covered by a Hypothesis property in `server/tests/scheduler/test_properties.py`.
+
+- A schedule is a pure function of (channel, simulated date, catalog version, seed). The scheduler never reads the wall clock.
+- No episode airs before its US debut or synthetic premiere date.
+- No channel appears before its launch, except channels marked `library: true`.
+- Programs run back to back: no gaps, no overlaps, correct across midnight and DST.
+- **Programs always air in full** (Brandon, M1 review, Nov 2 2026). Every episode or movie slot lasts exactly the program's full runtime: `media_seconds` when the file has been normalized, otherwise the catalog runtime. Nothing truncates a program: not a day-part change, not a template block ending, not a holiday window opening or closing, not the 5 a.m. end of the broadcast day. Schedule alignment flexes; the program never does. A TV episode plays through even when it doesn't land on a half hour.
+- **Only filler and bumpers absorb leftover time.** "Paid Programming" and "Off Air" filler and the between-program bumper are the only slots whose length is set by the clock rather than by a file. A program that doesn't fit before 5 a.m. is not picked; the remainder becomes filler.
+- **Day parts and blocks are soft.** A part or block starts when the program already running ends. A program that starts inside a block runs to completion even past the block's end (X-Men started in Fox Kids at 7:40 finishes at 8:10; primetime starts then).
+- Admin edits and the AI manager change inputs (catalog, weights), never generated schedules.
+
 ## Testing
 
 | Layer | Tests | Runs |
 | --- | --- | --- |
-| Scheduler invariants | Hypothesis property tests: no episode before its debut; no hidden channel; no gaps or overlaps; deterministic; midnight and DST safe; holiday windows pull only tagged items | Every PR |
+| Scheduler invariants | Hypothesis property tests: no episode before its debut; no hidden channel; no gaps or overlaps; deterministic; midnight and DST safe; holiday windows pull only tagged items; every program slot equals the program's full runtime, including with odd runtimes that line up with nothing | Every PR |
 | Scheduler golden days | Snapshots for Oct 31 1998, Dec 24 2003, Sep 2 2001 (Adult Swim launch), Jan 1 2002 (NBC switch) | Every PR |
 
 ## Implemented (Phase 3)
@@ -88,10 +101,12 @@ Holidays live in `server/src/retro_cable/catalog/holidays.py` (dates, windows, t
 - **Window and season.** A holiday's window is the `window_days` up to and including the day (Halloween, 7 days: Oct 25–31; Oct 31 1998 was a Saturday). Its season is the window or, if longer, its month up to the day (Halloween: Oct 1–31). `nth_weekday` with `n: -1` is the last one in the month; a fifth weekday a month doesn't have falls back to the fourth.
 - **Tags.** In order: `overrides.yaml` `holiday_tags` for the episode (replaces the rest, so `[]` untags); `holidays.yaml` `tagged` titles; a keyword pass over the episode title, or the movie title, on word boundaries and case- and accent-insensitive. Every holiday matches its own name, and known ids add keywords (`treehouse of horror`, `great pumpkin`, `rudolph`, `leprechaun`…). Keywords are kept specific: "santa" alone would tag Santa Barbara.
 - **Seasonal items** air only in season: movies with a holiday tag, `tagged` items of kind `special`, and every episode of a show marked `seasonal: true` in `overrides.yaml` (the Peanuts specials). An untagged episode of a seasonal show never airs and is listed in the inventory's untagged specials. Regular shows' holiday episodes are not seasonal: Treehouse of Horror reruns aired all year.
+- **Seasonal everywhere.** The season rule holds on every channel, including `library: true` channels and the always-on Disney Movies channel: a library channel lifts episode air-date limits, never the season. Halloweentown and Under Wraps air on Disney Movies only Oct 1–31 (and never before their premiere), so Nov 7 1998 has none of them (Brandon, M1 review, Nov 2 2026).
+- **Holiday marathon.** On the holiday itself (the holiday's date, not the rest of its window), a channel of `type: movie` whose mode for that holiday isn't `off` runs a marathon: every movie it carries that is tagged for the holiday and has premiered, back to back in carriage order (the channel's curated order), repeating as needed, never the same movie twice in a row, through the whole broadcast day (5 a.m. to 5 a.m., so past midnight too, labelled with the holiday). Each movie airs in full with the usual bumper between; time before 5 a.m. too short for any of them becomes Paid Programming. A channel with no eligible movie for the holiday runs its normal day. Like 1998 cable: Oct 31 1998 on Disney Movies is Under Wraps and Halloweentown alternating all day. Other channel types keep the prime-time specials rule below.
 - **Channel mode.** Per holiday, `channels.<id>` or `default_mode`: `on` prefers tagged episodes and injects specials, `specials_only` only injects specials, `off` does neither (seasonal items still keep to their season).
 - **Prime time** is the template's `primetime` parts; for a weekday whose template has none (or a channel with no template) it is 19:00–23:00.
 - **Specials in prime.** Inside a window, at each pick in prime time the engine first airs a tagged movie or seasonal special the channel carries (outside other blocks, plus the part's own pool) that hasn't aired that broadcast day and fits before 5 a.m., in a seeded order. Outside prime those specials are held back, unless nothing else is eligible. So on Oct 31 1998 Disney Channel airs Halloweentown once, in prime, at full length, and never before its Oct 17 1998 premiere.
 - **Preferred episodes.** Inside an `on` window, a picked show airs one of its tagged episodes not yet aired that day, outside prime and again in prime counted separately, so prime stays themed without one episode looping all day. Shows with such episodes get their pool weight multiplied by the holiday's strength (low 1.5, medium 2, strong 3). When they run out the show reruns as usual. Outside every window a day is exactly what it would be with no holidays (seasonal items aside).
 - **Labels.** A slot's `holiday` is the first holiday (catalog order) it is tagged for whose window contains the date, or, for seasonal items, whose season does. The guide shows it as `8:00 · HALLOWEEN`.
 - **Bumpers and NEW** are unchanged from Phase 3: one bumper between consecutive programs when the channel has bumpers, never past 5 a.m., and NEW only in primetime on the debut date. A special injected into prime comes before a NEW episode, which then airs at the next pick.
-- **Tests.** `tests/scheduler/test_holidays.py` (scenarios on a holiday fixture library), the Hypothesis property "holiday windows pull only tagged items" in `test_properties.py`, and the golden day `tests/scheduler/golden/1998-10-31.txt`: the checked-in catalog with the demo seed for ktvu, disney, disney-movies, cartoon-network and kpix. Regenerate it after an intended catalog change with `RC_UPDATE_GOLDEN=1 make test-server` and review the diff.
+- **Tests.** `tests/scheduler/test_holidays.py` (scenarios on a holiday fixture library), the Hypothesis property "holiday windows pull only tagged items" in `test_properties.py` (which also checks marathons and full runtimes), golden tests that Oct 31 1998 Disney Movies is a Halloween-only marathon and Nov 7 1998 airs none of them, and the golden day `tests/scheduler/golden/1998-10-31.txt`: the checked-in catalog with the demo seed for ktvu, disney, disney-movies, cartoon-network and kpix. Regenerate it after an intended catalog change with `RC_UPDATE_GOLDEN=1 make test-server` and review the diff.
