@@ -73,6 +73,25 @@ def test_test_compose_api_runs_on_the_demo_catalog() -> None:
     assert "retro_cable.demo" in api["command"][-1]
 
 
+def test_api_image_owns_data_dir_so_named_volumes_are_writable() -> None:
+    # A fresh named volume copies the image's /data ownership. Without this the
+    # non-root api user cannot create /data/demo.db and the container exits at once.
+    text = (OPS.parent / "server" / "Dockerfile").read_text()
+    final_stage = text.rsplit("FROM ", 1)[1]
+    user_at = final_stage.index("USER app")
+    chown = [line for line in final_stage.splitlines() if "/data" in line and "chown" in line]
+    assert chown, "final stage must create /data owned by the app user"
+    assert "app" in chown[0]
+    assert final_stage.index(chown[0]) < user_at
+
+
+def test_local_test_workflow_collects_logs_even_when_stack_fails() -> None:
+    wf = yaml.safe_load((OPS.parent / ".github" / "workflows" / "local-test.yml").read_text())
+    steps = wf["jobs"]["local-test"]["steps"]
+    (step,) = [s for s in steps if s.get("name") == "Collect stack logs"]
+    assert "mkdir -p web/test-results" in step["run"]
+
+
 # --- caddy -------------------------------------------------------------------
 
 
