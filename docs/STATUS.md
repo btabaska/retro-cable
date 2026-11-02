@@ -1,6 +1,21 @@
 # Status
 
-**Current phase:** Milestone M1 — phases 3–7 in review (scheduler through Feel), playable on demo media with `make demo`
+**Current phase:** Milestone M2: real media on the mini. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+
+## Milestone M2: real library, debut rule everywhere, LAN deploy (in review, #16)
+
+- [x] Debut rule on every channel, including library and custom ones; `library: true` only keeps a channel on the dial before its launch (#15)
+- [x] Pretend premieres per (show, channel) in `/admin`: set, edit and clear them; the transplant mark and NEW follow the shifted dates (#15)
+- [x] M1 rough edges: Cartoon Network evenings, Disney Movies rotation, focus return, errors, borders, chevrons, 360 px chips, narrow cells, holiday colour (#15)
+- [x] Rig worker (`ops/rig/`): GPU-aware encoder (NVENC only when the GPU is idle and ComfyUI's queue is empty, otherwise x264 at low priority), priority order, resumable, manifest (#14)
+- [x] Mini: read-only automount of `//192.168.10.4/tv/.retro-cable` at `/mnt/nas-retro-cable`; the `media-index` service records new encodes from `manifest.json` every 5 minutes, with no redeploy (#14)
+- [x] Deployed to the mini with `ops/deploy.sh` (build mode, `sha-7cf2c9d`), LAN only at https://tv.home.tabaska.us through the homelab Caddy; the web port stays on loopback
+- [ ] Conversion of the real library: running on the rig since Nov 2. Carried shows first, then uncarried ones; about 40–50 s per episode, so about 1.5 days for the 2,980 carried episodes and about 4–5 days for all 8,414. 50 were done at 20:33 UTC on Nov 2
+- [ ] `/admin` Media tab: needs `GET /api/admin/media/progress` (eng-media); it says status isn't available until then
+- [ ] Plex import and TMDB fill: waiting on `PLEX_URL`, `PLEX_TOKEN` and a TMDB key in the mini's `ops/.env` (the code reads `TMDB_TOKEN`). Until then air dates are unknown, so the library comes from the disk scan
+- [ ] Brandon's check: open the TV from a LAN device; real episodes play on their channels, and at least three channels tune and play past a program boundary
+
+Waiting on Brandon: the show lineup (`catalog/carriage.yaml` is unchanged), the Plex/TMDB keys, and the M2 questions in #16 (library channels keep their shows; weekly cadence for undated episodes after a pretend premiere; label and colours; whether uncarried shows convert too; NVENC bitrate).
 
 ## Phase 10 (part) — Custom channels in /admin (in review, stacked on Phase 7)
 
