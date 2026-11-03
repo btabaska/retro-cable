@@ -62,9 +62,10 @@ fi
 
 export RC_VERSION=$version
 if [[ $source == build ]]; then
-  docker compose -f "$here/compose.yml" -f "$here/compose.build.yml" build
+  # --profile jobs: the worker image too, so `run worker` matches this version.
+  docker compose -f "$here/compose.yml" -f "$here/compose.build.yml" --profile jobs build
 else
-  docker compose -f "$here/compose.yml" pull
+  docker compose -f "$here/compose.yml" --profile jobs pull
 fi
 docker compose -f "$here/compose.yml" up -d --wait
 

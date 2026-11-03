@@ -41,6 +41,12 @@ jobs:
           - name: api
             context: server
             file: server/Dockerfile
+            target: api
+          # The api image plus ffmpeg, for the jobs-profile worker.
+          - name: worker
+            context: server
+            file: server/Dockerfile
+            target: worker
           - name: web
             context: .
             file: web/Dockerfile
@@ -70,6 +76,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}

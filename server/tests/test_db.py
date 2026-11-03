@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -74,3 +75,38 @@ def test_transaction_commits_or_rolls_back(db: sqlite3.Connection) -> None:
         db.execute("INSERT INTO shows (id, title) VALUES ('b', 'B')")
         raise RuntimeError("boom")
     assert [r[0] for r in db.execute("SELECT id FROM shows")] == ["a"]
+
+
+def test_two_processes_migrating_at_once_both_succeed(tmp_path: Path) -> None:
+    # Right after a deploy the api and media-index can both open the database and migrate
+    # it. Each pending migration must apply once; the loser must see it done, not re-run it
+    # ("duplicate column name") and fail its caller.
+    path = tmp_path / "rc.db"
+
+    def run(start: threading.Barrier, errors: list[sqlite3.Error]) -> None:
+        db = connect(path)
+        start.wait()
+        try:
+            migrate(db)
+        except sqlite3.Error as e:
+            errors.append(e)
+        finally:
+            db.close()
+
+    for trial in range(20):
+        path.unlink(missing_ok=True)
+        old = connect(path)
+        migrate(old, MIGRATIONS[:3])
+        old.close()
+        start = threading.Barrier(2)
+        errors: list[sqlite3.Error] = []
+        threads = [threading.Thread(target=run, args=(start, errors)) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert errors == [], f"trial {trial}"
+        db = connect(path)
+        done = [r[0] for r in db.execute("SELECT version FROM schema_migrations")]
+        db.close()
+        assert done == [m.version for m in MIGRATIONS]

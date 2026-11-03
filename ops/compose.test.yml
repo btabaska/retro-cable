@@ -6,6 +6,7 @@ services:
     image: retro-cable-api:test
     build:
       context: ../server
+      target: api
       args:
         RC_GIT_SHA: ${RC_GIT_SHA:-test}
     environment:
@@ -25,7 +26,12 @@ services:
       - ../.fixtures:/media:ro
 
   worker:
-    image: retro-cable-api:test
+    image: retro-cable-worker:test
+    build:
+      context: ../server
+      target: worker
+      args:
+        RC_GIT_SHA: ${RC_GIT_SHA:-test}
     volumes:
       - api-data:/data
       - ../.fixtures:/media:rw
