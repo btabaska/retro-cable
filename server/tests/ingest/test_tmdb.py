@@ -2,7 +2,7 @@ import json
 import sqlite3
 from datetime import UTC, date, datetime
 
-from retro_cable.ingest.tmdb import EpisodeFacts, TmdbClient, fill_gaps
+from retro_cable.ingest.tmdb import Candidate, EpisodeFacts, MovieFacts, TmdbClient, fill_gaps
 from tests.ingest.conftest import RecordedFetch
 
 NOW = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
@@ -19,6 +19,8 @@ def test_client_parses_episodes(tmdb_fetch: RecordedFetch) -> None:
 
 
 class FakeSource:
+    name = "tmdb"
+
     def __init__(
         self, data: dict[int, dict[int, list[EpisodeFacts]]], broken: frozenset[int] = frozenset()
     ) -> None:
@@ -32,6 +34,15 @@ class FakeSource:
 
     def season(self, tmdb_id: int, number: int) -> list[EpisodeFacts]:
         return self.data[tmdb_id][number]
+
+    def search_tv(self, title: str) -> list[Candidate]:
+        return []
+
+    def search_movies(self, title: str) -> list[Candidate]:
+        return []
+
+    def movie(self, tmdb_id: int) -> MovieFacts:
+        return MovieFacts(None, None)
 
 
 def seed(db: sqlite3.Connection) -> None:

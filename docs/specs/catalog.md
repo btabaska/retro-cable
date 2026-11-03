@@ -154,12 +154,20 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
 
 ### TMDB gap filling (`python -m retro_cable.ingest tmdb`)
 
-- Reads `TMDB_TOKEN` (a v4 read access token, sent as a bearer header). This is the app's only runtime call outside the LAN, made by the worker.
-- **Interface:** `MetadataSource` (`seasons`, `season`), with `TmdbClient` as the implementation. Tests use recorded responses and a fake.
+- **Provider** (`pick_source`): TMDB is the only external metadata source, used only by the worker. It is reached:
+  - directly when `TMDB_TOKEN` is set (a v4 read access token, sent as a bearer header; the app's only runtime call outside the LAN);
+  - else through Brandon's LAN Seerr (v3.2, the Overseerr/Jellyseerr successor, which proxies and caches TMDB) when `SEERR_URL` and `SEERR_API_KEY` are both set. The key goes only in the `X-Api-Key` header. A trailing `/api/v1` on the URL is accepted;
+  - else the job prints which variables to set and exits 2 without touching the database. It prints the provider it chose, never a value.
+- **Interface:** `MetadataSource` (`seasons`, `season`, `search_tv`, `search_movies`, `movie`), with `TmdbClient` (`/3/tv/{id}`, `/3/tv/{id}/season/{n}`, `/3/search/tv`, `/3/search/movie`, `/3/movie/{id}`) and `SeerrClient` (`/api/v1/tv/{id}`, `/api/v1/tv/{id}/season/{n}`, `/api/v1/search?query=&page=1&language=en` filtered by `mediaType`, `/api/v1/movie/{id}`) as implementations. Seerr camel-cases TMDB's fields (`seasonNumber`, `episodeNumber`, `airDate`, `firstAirDate`, `releaseDate`) and has no per-episode runtime, so through Seerr episode runtimes stay as Plex or the files left them. Tests use recorded responses, fakes and a fake HTTP transport.
+- **Finding the TMDB id:** a show or movie without one (everything the disk scan and the mini's media index created) is searched for by title. A hit must have the same title ignoring case, accents, punctuation and a trailing `(year)`; with a known year it must be from that year, else a year either side, else there is no match; without a year the most popular same-title hit wins. A match is stored in `tmdb_id`, so later runs skip the search. Unmatched shows and movies are listed.
 - **For every show with a TMDB id:**
   - fills only empty air dates (source `tmdb`), runtimes and titles;
-  - adds episodes Plex doesn't have, with no file, which gives the inventory its expected-versus-on-disk counts.
-- A show that fails is listed and skipped. Shows without a TMDB id are listed.
+  - adds episodes Plex doesn't have, with no file, which gives the inventory its expected-versus-on-disk counts;
+  - an episode TMDB doesn't list, or lists without a date, is left as it is.
+- **For every movie missing a premiere date or runtime:** fills only the empty ones from TMDB's release date and runtime.
+- **Failures:** a show or movie whose lookup fails is listed in `failed` and skipped; a season that fails (TMDB lists it but can't serve it) is listed in `failed_seasons` and the show's other seasons still fill. Transport errors become `FetchError`, which names only the status and the API path: never a credential, the base URL or the original exception. Credentials never appear in URLs, logs, errors or stats.
+- **Caching and rate:** none in the app: one search per show without an id, one show and one call per season, one call per movie, in sequence. Seerr caches TMDB responses itself.
+- The run is recorded in `import_runs` as source `tmdb`, with `provider` (`tmdb` or `seerr`) in its stats.
 
 ### Inventory (`make inventory`)
 
