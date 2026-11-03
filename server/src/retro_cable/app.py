@@ -6,7 +6,8 @@ import secrets
 import sqlite3
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -176,13 +177,26 @@ def _real_now() -> datetime:
 def create_app(
     settings: Settings | None = None, clock: Callable[[], datetime] = _real_now
 ) -> FastAPI:
+    config = settings or Settings.from_env()
+    schedules = _Schedules(config)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        # Ready before the first request: migrate the database (if there is one) and build
+        # the schedule now. Uvicorn binds the port only after this returns, so `/health`
+        # (the compose healthcheck that `up --wait`, web and media-index wait on) can't pass
+        # while the api is cold, and the first banner request never races media-index's
+        # migration. A bad catalog or database stops the container here, so a deploy fails
+        # and rolls back instead of going live broken.
+        schedules()
+        yield
+
     app = FastAPI(
         title="Retro Cable",
         version=__version__,
         generate_unique_id_function=_operation_id,
+        lifespan=lifespan,
     )
-    config = settings or Settings.from_env()
-    schedules = _Schedules(config)
 
     @app.get(
         "/health",

@@ -51,7 +51,12 @@ def transaction(db: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
 
 
 def migrate(db: sqlite3.Connection, migrations: list[Migration] = MIGRATIONS) -> list[int]:
-    """Apply pending migrations in order, each atomically. Returns the versions applied."""
+    """Apply pending migrations in order, each atomically. Returns the versions applied.
+
+    Safe when several processes migrate the same file at once (the api and media-index
+    right after a deploy): each migration takes the write lock first (BEGIN IMMEDIATE) and
+    claims its version row before running, so a process that lost the race finds the row
+    taken, rolls back and moves on instead of running the SQL a second time."""
     db.execute(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
         " version INTEGER PRIMARY KEY, name TEXT NOT NULL,"
@@ -64,13 +69,20 @@ def migrate(db: sqlite3.Connection, migrations: list[Migration] = MIGRATIONS) ->
             continue
         try:
             db.executescript(
-                f"BEGIN;\n{m.sql}\n;"
+                "BEGIN IMMEDIATE;\n"
                 f"INSERT INTO schema_migrations (version, name) VALUES ({m.version}, '{m.name}');"
-                "\nCOMMIT;"
+                f"\n{m.sql}\n;\nCOMMIT;"
             )
-        except sqlite3.Error:
+        except sqlite3.Error as e:
             if db.in_transaction:
                 db.execute("ROLLBACK")
+            if isinstance(e, sqlite3.IntegrityError) and _applied(db, m.version):
+                continue  # another process applied it while this one waited for the lock
             raise
         applied.append(m.version)
     return applied
+
+
+def _applied(db: sqlite3.Connection, version: int) -> bool:
+    row = db.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (version,)).fetchone()
+    return row is not None

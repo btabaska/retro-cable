@@ -24,7 +24,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 5s
+      # The api migrates the database and builds the schedule before it listens, so this
+      # passes only once the TV endpoints are ready (app.py, lifespan); a big library can
+      # take a while.
+      start_period: 120s
 
   # Static browser app plus a reverse proxy: /api/* -> api, /media/* -> media files once the
   # api has checked the signature (web/Caddyfile).
@@ -54,8 +57,9 @@ services:
   #   docker compose --profile jobs run --rm worker python -m retro_cable.ingest scan --tv /sources/tv
   #   docker compose --profile jobs run --rm worker python -m retro_cable.ingest normalize
   # Sources are read-only; the media root is the only place it writes besides /data.
+  # Its image is the api's plus ffmpeg (server/Dockerfile, target worker).
   worker:
-    image: ghcr.io/btabaska/retro-cable-api:${RC_VERSION:-edge}
+    image: ghcr.io/btabaska/retro-cable-worker:${RC_VERSION:-edge}
     profiles: ["jobs"]
     env_file:
       - path: .env

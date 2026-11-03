@@ -5,6 +5,15 @@ services:
   api:
     build:
       context: ../server
+      target: api
+      args:
+        RC_GIT_SHA: ${RC_GIT_SHA:-dev}
+
+  # In the jobs profile, so deploy.sh builds it with --profile jobs.
+  worker:
+    build:
+      context: ../server
+      target: worker
       args:
         RC_GIT_SHA: ${RC_GIT_SHA:-dev}
 

@@ -10,6 +10,7 @@ services:
   worker:
     build:
       context: ../../server
+      target: worker  # the server image plus ffmpeg
     image: retro-cable-rig-worker:local
     restart: unless-stopped
     # The CIFS mounts belong to uid 1000 (forceuid), and only it may write the media root.

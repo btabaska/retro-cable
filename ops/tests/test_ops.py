@@ -50,12 +50,20 @@ def test_compose_runs_api_and_web_and_a_worker_on_demand() -> None:
     assert set(services) == {"api", "web", "worker", "media-index"}
     assert services["api"]["image"].startswith("ghcr.io/btabaska/retro-cable-api:")
     assert services["web"]["image"].startswith("ghcr.io/btabaska/retro-cable-web:")
-    # The worker shares the api image (it has ffmpeg) and only runs when asked:
+    # The worker has its own image (the api's plus ffmpeg) and only runs when asked:
     #   docker compose --profile jobs run --rm worker python -m retro_cable.ingest normalize
     worker = services["worker"]
-    assert worker["image"] == services["api"]["image"]
+    assert worker["image"] == "ghcr.io/btabaska/retro-cable-worker:${RC_VERSION:-edge}"
     assert worker["profiles"] == ["jobs"]
     assert "ports" not in worker
+
+
+def test_api_healthcheck_allows_for_startup_warm_up() -> None:
+    """The api migrates and builds the schedule before it serves, so /health answers only
+    once it's ready; start_period covers a big library's warm-up."""
+    check = load("compose.yml")["services"]["api"]["healthcheck"]
+    assert "/health" in " ".join(check["test"])
+    assert check["start_period"].endswith("s") and int(check["start_period"][:-1]) >= 60
 
 
 def volumes(service: dict[str, Any]) -> dict[str, str]:
@@ -127,6 +135,11 @@ def test_rig_worker_reads_sources_read_only_and_writes_only_the_media_share() ->
     assert "ports" not in worker
     assert worker["restart"] == "unless-stopped"
     assert worker["user"].startswith("${RC_RIG_UID:-1000}")
+
+
+def test_rig_worker_builds_the_image_with_ffmpeg() -> None:
+    build = load("rig/compose.yml")["services"]["worker"]["build"]
+    assert build == {"context": "../../server", "target": "worker"}
 
 
 def test_rig_worker_is_low_priority_and_can_use_the_gpu() -> None:
@@ -260,10 +273,54 @@ def test_env_example_documents_media_settings() -> None:
         assert key in text
 
 
-def test_server_image_has_ffmpeg_for_the_worker() -> None:
+def dockerfile_stages() -> dict[str, tuple[str, str]]:
+    """server/Dockerfile stages: name -> (the image it starts FROM, its text)."""
     text = (OPS.parent / "server" / "Dockerfile").read_text()
-    final_stage = text.rsplit("FROM ", 1)[1]
-    assert "ffmpeg" in final_stage
+    stages = {}
+    for chunk in re.split(r"^FROM ", text, flags=re.M)[1:]:
+        head = chunk.splitlines()[0].split()
+        stages[head[2] if len(head) > 2 else ""] = (head[0], chunk)
+    return stages
+
+
+def stage_text(name: str) -> str:
+    """A stage's text with every stage it builds on, base first."""
+    stages = dockerfile_stages()
+    parent, text = stages[name]
+    return (stage_text(parent) if parent in stages else "") + text
+
+
+def test_server_image_has_an_api_target_without_ffmpeg_and_a_worker_target_with_it() -> None:
+    stages = dockerfile_stages()
+    last = list(stages)[-1]
+    assert last == "api", "the default build (no --target) must be the slim api"
+    api, worker = stage_text("api"), stage_text("worker")
+    assert "ffmpeg" not in api and "apt-get" not in api
+    assert "apt-get install" in worker and "ffmpeg" in worker
+    assert "rm -rf /var/lib/apt/lists/*" in worker
+    for text in (api, worker):
+        assert "uv" not in re.findall(r"COPY --from=(\S+)", text), "no build tools at runtime"
+        assert "COPY --from=build /app/.venv /app/.venv" in text
+        assert "slim" in text.splitlines()[0]
+
+
+def test_every_image_build_names_its_server_target() -> None:
+    build = load("compose.build.yml")["services"]
+    assert build["api"]["build"]["target"] == "api"
+    assert build["worker"]["build"] == {
+        "context": "../server",
+        "target": "worker",
+        "args": {"RC_GIT_SHA": "${RC_GIT_SHA:-dev}"},
+    }
+    test = load("compose.test.yml")["services"]
+    assert test["api"]["build"]["target"] == "api"
+    assert test["worker"]["build"]["target"] == "worker"
+    assert test["worker"]["image"] == "retro-cable-worker:test"
+    release = (OPS.parent / ".github" / "workflows" / "release.yml").read_text()
+    matrix = yaml.safe_load(release)["jobs"]["images"]["strategy"]["matrix"]["include"]
+    targets = {m["name"]: m.get("target") for m in matrix}
+    assert targets == {"api": "api", "worker": "worker", "web": None}
+    assert "target: ${{ matrix.target }}" in release
 
 
 def test_compose_publishes_only_web_and_only_on_loopback_by_default() -> None:
@@ -289,9 +346,10 @@ def test_test_compose_creates_its_own_edge_network() -> None:
     assert load("compose.test.yml")["networks"]["edge"]["external"] is False
 
 
-def test_build_compose_builds_both_images_from_source() -> None:
+def test_build_compose_builds_every_image_from_source() -> None:
     services = load("compose.build.yml")["services"]
     assert services["api"]["build"]["context"] == "../server"
+    assert services["worker"]["build"]["context"] == "../server"
     assert services["web"]["build"] == {"context": "..", "dockerfile": "web/Dockerfile"}
 
 
@@ -328,8 +386,7 @@ def test_test_compose_api_runs_on_the_demo_catalog() -> None:
 def test_api_image_owns_data_dir_so_named_volumes_are_writable() -> None:
     # A fresh named volume copies the image's /data ownership. Without this the
     # non-root api user cannot create /data/demo.db and the container exits at once.
-    text = (OPS.parent / "server" / "Dockerfile").read_text()
-    final_stage = text.rsplit("FROM ", 1)[1]
+    final_stage = stage_text("api")
     user_at = final_stage.index("USER app")
     chown = [line for line in final_stage.splitlines() if "/data" in line and "chown" in line]
     assert chown, "final stage must create /data owned by the app user"
@@ -434,12 +491,19 @@ def free_port() -> int:
 
 @pytest.fixture
 def stack(tmp_path: Path) -> Iterator[tuple[str, Path]]:
-    """A static stand-in for the running stack: index.html plus /api/health and /api/version."""
+    """A static stand-in for the running stack: index.html, /api/health, /api/version and
+    the info banner's /api/channels and /api/tune/<id> (the query string is ignored)."""
     root = tmp_path / "www"
-    (root / "api").mkdir(parents=True)
+    (root / "api" / "tune").mkdir(parents=True)
     (root / "index.html").write_text('<div id="root"></div>')
     (root / "api" / "health").write_text('{"status":"ok"}')
     (root / "api" / "version").write_text('{"version":"1.2.3","commit":"abc"}')
+    (root / "api" / "channels").write_text(
+        '{"year":1998,"channels":['
+        '{"id":"cartoon-network","name":"Cartoon Network","on_air":false,"library":false},'
+        '{"id":"ktvu","name":"KTVU","on_air":true,"library":false}]}'
+    )
+    (root / "api" / "tune" / "ktvu").write_text('{"current":{"title":"The Simpsons"},"next":[]}')
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(root))
     )
@@ -473,6 +537,35 @@ def test_smoke_fails_when_health_is_down(stack: tuple[str, Path]) -> None:
     url, root = stack
     (root / "api" / "health").unlink()
     assert run("smoke.sh", env={"RC_SMOKE_URL": url}).returncode != 0
+
+
+def test_smoke_tunes_the_first_channel_on_air_like_the_banner(stack: tuple[str, Path]) -> None:
+    url, root = stack
+    (root / "api" / "tune" / "ktvu").unlink()
+    result = run("smoke.sh", env={"RC_SMOKE_URL": url})
+    assert result.returncode != 0
+    assert "/api/tune/ktvu?year=" in result.stderr
+
+
+def test_smoke_fails_when_nothing_is_on_the_dial(stack: tuple[str, Path]) -> None:
+    url, root = stack
+    (root / "api" / "channels").write_text('{"year":1998,"channels":[]}')
+    result = run("smoke.sh", env={"RC_SMOKE_URL": url})
+    assert result.returncode != 0
+    assert "no channel on the air" in result.stderr
+
+
+def test_smoke_does_not_retry_the_banner_once_health_passed(stack: tuple[str, Path]) -> None:
+    # /api/health answering means the api is warm (it warms up before it serves), so a
+    # failed banner request is a real failure, not something to wait out.
+    url, root = stack
+    (root / "api" / "tune" / "ktvu").unlink()
+    env = {"RC_SMOKE_URL": url, "RC_SMOKE_RETRIES": "3", "RC_SMOKE_DELAY": "5"}
+    result = subprocess.run(
+        [str(OPS / "smoke.sh")], env={**os.environ, **env}, capture_output=True, text=True,
+        timeout=4,
+    )  # fmt: skip
+    assert result.returncode != 0
 
 
 @pytest.fixture
@@ -519,6 +612,8 @@ def test_deploy_pulls_starts_and_records_version(
     assert result.returncode == 0, result.stderr
     calls = log.read_text().splitlines()
     assert any(c.startswith("1.2.3 compose") and " pull" in c for c in calls)
+    # The worker image (jobs profile) is pulled too, so `run worker` matches the version.
+    assert any(" --profile jobs " in c and c.endswith(" pull") for c in calls)
     assert any(c.startswith("1.2.3 compose") and " up -d --wait" in c for c in calls)
     assert (tmp_path / "state" / "current").read_text().strip() == "1.2.3"
     assert (tmp_path / "state" / "previous").read_text().strip() == "1.2.2"
@@ -590,7 +685,9 @@ def test_deploy_build_mode_builds_instead_of_pulling(
     assert result.returncode == 0, result.stderr
     calls = log.read_text().splitlines()
     assert not any(" pull" in c for c in calls)
-    assert any("compose.build.yml" in c and c.endswith(" build") for c in calls)
+    assert any(
+        "compose.build.yml" in c and " --profile jobs " in c and c.endswith(" build") for c in calls
+    )
 
 
 def test_deploy_build_mode_refuses_a_checkout_that_does_not_match(

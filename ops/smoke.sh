@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Post-deploy smoke test: web app, /api/health and /api/version.
+# Post-deploy smoke test: web app, /api/health, /api/version and the info banner's
+# lineup and tune requests.
+#   RC_SMOKE_YEAR      simulated year for the banner check (default 1998)
 #   RC_SMOKE_URL       base URL (default http://127.0.0.1:$RC_WEB_PORT, port 8080 if unset)
 #   RC_EXPECT_VERSION  if set, /api/version must report it: x.y.z checks the version,
 #                      sha-<hex> checks the commit
@@ -34,4 +36,21 @@ if [[ -n $expected ]] && ! grep -q "$pattern" <<<"$version_json"; then
   echo "smoke: expected version $RC_EXPECT_VERSION, got $version_json" >&2
   exit 1
 fi
-echo "smoke: ok $version_json"
+
+# The info banner's requests on power-on: the lineup, then tune the first channel on the
+# air. One try each: the api warms up before it serves, so once /api/health has answered
+# a failure here is real, not warm-up (no retry to hide it).
+year=${RC_SMOKE_YEAR:-1998}
+once() {
+  curl -fsS --max-time 10 "$base$1" || { echo "smoke: GET $1 failed" >&2; return 1; }
+}
+lineup=$(once "/api/channels?year=$year") || exit 1
+# ChannelInfo has no nested objects, so each channel is one {...} run.
+channel=$(grep -oE '"id":"[^"]+"[^}]*"on_air":true' <<<"$lineup" | head -n 1 | cut -d'"' -f4 || true)
+if [[ -z $channel ]]; then
+  echo "smoke: no channel on the air in $year" >&2
+  exit 1
+fi
+once "/api/tune/$channel?year=$year" | grep -q '"current":{' \
+  || { echo "smoke: nothing airing on $channel in $year" >&2; exit 1; }
+echo "smoke: ok $version_json, $channel tunes in $year"
