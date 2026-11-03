@@ -5,7 +5,7 @@ import pytest
 
 from retro_cable.admin import store
 from retro_cable.catalog import load_catalog, validate
-from retro_cable.catalog.models import Carriage, Channel, Synthetic
+from retro_cable.catalog.models import Carriage, Channel, Synthetic, Template
 from retro_cable.catalog.overlay import (
     Overlay,
     apply_overlay,
@@ -156,3 +156,58 @@ def test_a_premiere_for_a_show_the_channel_does_not_carry_fails_validation(
     overlay = with_premiere(Overlay(), "x-men", "cartoon-network", date(1995, 1, 1))
     errors = validate(apply_overlay(catalog, overlay))
     assert any("'x-men' is not carried on cartoon-network" in e for e in errors)
+
+
+# --- day-part templates in the overlay (M3, channel builder) ----------------------------
+
+
+def toons_template(show: str = "the-simpsons") -> Template:
+    return Template.model_validate(
+        {
+            "id": "custom-toons-1",
+            "channel": "custom-toons",
+            "from": "1990-01-01",
+            "parts": [
+                {"weekday": "monday", "start": "00:00", "pool": [{"show": show}]},
+                {"weekday": "monday", "start": "20:00", "primetime": True,
+                 "pool": [{"show": show, "weight": 2}]},
+            ],
+        }
+    )  # fmt: skip
+
+
+def test_an_overlay_without_templates_keeps_its_text_and_version(
+    make_catalog: MakeCatalog,
+) -> None:
+    # Overlays saved before templates existed must hash the same, so their schedules stay put.
+    overlay = with_channel(Overlay(), *toons())
+    assert "templates" not in canonical(overlay)
+    catalog = load_catalog(make_catalog())
+    with_t = with_channel(Overlay(), *toons(), templates=[toons_template()])
+    assert '"templates"' in canonical(with_t)
+    assert apply_overlay(catalog, with_t).version != apply_overlay(catalog, overlay).version
+    assert parse(canonical(with_t)) == with_t
+
+
+def test_overlay_templates_merge_and_validate(make_catalog: MakeCatalog) -> None:
+    catalog = load_catalog(make_catalog())
+    merged = apply_overlay(catalog, with_channel(Overlay(), *toons(), templates=[toons_template()]))
+    assert [t.id for t in merged.templates.templates if t.channel == "custom-toons"] == [
+        "custom-toons-1"
+    ]
+    assert validate(merged) == []
+    # A pool naming a show the channel doesn't carry is caught by the same checks as YAML.
+    bad = apply_overlay(
+        catalog, with_channel(Overlay(), *toons(), templates=[toons_template("x-men")])
+    )
+    assert any("pool show 'x-men' is not carried on custom-toons" in e for e in validate(bad))
+
+
+def test_removing_a_channel_drops_its_templates() -> None:
+    overlay = with_channel(Overlay(), *toons(), templates=[toons_template()])
+    assert without_channel(overlay, "custom-toons").empty
+    # with_channel replaces everything of the channel, templates included.
+    assert with_channel(overlay, *toons()).templates == []
+    # Setting a premiere leaves the templates alone.
+    kept = with_premiere(overlay, "the-simpsons", "custom-toons", date(1991, 1, 1))
+    assert kept.templates == [toons_template()]

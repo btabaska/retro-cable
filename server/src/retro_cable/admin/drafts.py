@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from retro_cable.catalog import Catalog, validate
-from retro_cable.catalog.models import Carriage, Channel, Identity, Synthetic
+from retro_cable.catalog.models import Carriage, Channel, Identity, Synthetic, Template
 from retro_cable.catalog.overlay import CUSTOM_PREFIX, Overlay, apply_overlay, with_channel
 from retro_cable.scheduler import Library, Scheduler
 
@@ -327,6 +327,27 @@ def smoke_test(sched: Scheduler, channel: Channel, days: Sequence[date]) -> list
     return problems
 
 
+def keep_templates(
+    templates: Sequence[Template], draft: ChannelDraft
+) -> tuple[list[Template], list[CheckIssue]]:
+    """A custom channel's day-part templates (from the channel builder) after an edit in
+    /admin: kept while every show they name is still on the channel, else dropped, so the
+    channel falls back to the all-day rotation, with a warning saying so."""
+    if not templates:
+        return [], []
+    carried = {s.show for s in draft.shows if s.kind == "show"}
+    named = {e.show for t in templates for p in t.parts for e in p.pool if e.show}
+    if draft.type != "movie" and named <= carried:
+        return list(templates), []
+    return [], [
+        CheckIssue(
+            field="shows",
+            message="Its day-parts named a show that is no longer on the channel, so the"
+            " channel now plays everything it carries all day.",
+        )
+    ]
+
+
 @dataclass(frozen=True)
 class Checked:
     result: CheckResult
@@ -345,14 +366,17 @@ def check_draft(
     library: Library,
     seed: int,
     week_of: date,
+    templates: Sequence[Template] = (),
 ) -> Checked:
+    """`templates` are the channel's day-parts, checked and saved with it (none: the default
+    all-day rotation)."""
     current = apply_overlay(base, head)
     errors, warnings = check_fields(channel_id, draft, current, library_index)
     if errors:
         failed = CheckResult(ok=False, errors=errors, warnings=warnings, catalog_version=None)
         return Checked(failed, None, None, None)
     channel, carriage, premieres = to_models(channel_id, draft, library_index)
-    overlay = with_channel(head, channel, carriage, premieres)
+    overlay = with_channel(head, channel, carriage, premieres, list(templates))
     merged = apply_overlay(base, overlay)
     errors += [CheckIssue(field=None, message=m) for m in validate(merged)]
     sched = None
