@@ -170,6 +170,15 @@ def test_shows_left_out_of_the_plan_join_midnight() -> None:
     assert {e.show for e in t.parts[0].pool} == {"a", "b", "c"}
 
 
+def test_templates_start_when_every_part_can_air() -> None:
+    # Before then no template covers the channel, so it plays everything all day rather than
+    # going Off Air in a part whose shows haven't started yet.
+    ch = channel([DayPartPlan(name="Prime", days="all", start="20:00", shows=["c"])])
+    later = [s.model_copy(update={"from_year": 1999}) if s.show == "c" else s for s in ch.shows]
+    [t] = templates_for(ch.model_copy(update={"shows": later}))
+    assert t.from_ == date(1999, 1, 1)
+
+
 def test_no_templates_without_a_plan_or_on_marathon_channels() -> None:
     assert templates_for(channel([])) == []
     plan = [DayPartPlan(name="All", days="all", start="00:00", shows=["a"])]

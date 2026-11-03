@@ -11,7 +11,7 @@ nothing is applied without the explicit `apply` command, and one undo reverts al
 
 import re
 import sqlite3
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Literal
@@ -215,7 +215,8 @@ def call_sign(suggested: str, name: str, taken: set[str]) -> str:
 
 
 def templates_for(channel: ProposedChannel) -> list[Template]:
-    """A network channel's day-parts as one template from its launch. Every weekday gets a
+    """A network channel's day-parts as one template, from the first year every part has a
+    show that can air (the all-day rotation before that). Every weekday gets a
     00:00 part (all of its shows) unless the plan has one; shows the plan leaves out join the
     00:00 parts, so everything carried can air. Marathon and movie channels get none (the
     default all-day rotation)."""
@@ -251,7 +252,11 @@ def templates_for(channel: ProposedChannel) -> list[Template]:
             parts.items(), key=lambda kv: (order.index(kv[0][0]), kv[0][1])
         )
     ]
-    start = date(channel.launch_year or FIRST_YEAR, 1, 1)
+    # The template starts once every part has a show that can air; before that the channel
+    # plays everything it carries all day (no template covers those years), never Off Air.
+    years = {s.show: s.from_year for s in channel.shows}
+    ready = max((min(years[x] for x in pool) for _, pool in parts.values()), default=FIRST_YEAR)
+    start = date(max(channel.launch_year or FIRST_YEAR, ready), 1, 1)
     return [
         Template.model_validate(
             {"id": f"{channel.id}-week", "channel": channel.id, "from": start, "parts": ordered}
@@ -358,25 +363,6 @@ def _issues(
     return out
 
 
-def _part_warnings(ch: ProposedChannel, templates: Sequence[Template]) -> list[Issue]:
-    """Day-parts with nothing to air in the channel's first years go Off Air until then."""
-    starts = {s.show: s.from_year for s in ch.shows}
-    out = []
-    for plan in ch.dayparts:
-        years = [starts[s] for s in plan.shows if s in starts]
-        launch = ch.launch_year or FIRST_YEAR
-        if templates and years and min(years) > launch:
-            out.append(
-                Issue(
-                    severity="warning",
-                    channel=ch.id,
-                    message=f"{plan.name} ({plan.days} {plan.start}) has nothing to air until"
-                    f" {min(years)}; it shows Off Air before then.",
-                )
-            )
-    return out
-
-
 def _check_new(
     ch: ProposedChannel,
     base: Catalog,
@@ -417,7 +403,6 @@ def _check_new(
     )
     issues += _issues(ch.id, "error", checked.result.errors)
     issues += _issues(ch.id, "warning", checked.result.warnings)
-    issues += _part_warnings(ch, templates)
     return checked.overlay, issues
 
 

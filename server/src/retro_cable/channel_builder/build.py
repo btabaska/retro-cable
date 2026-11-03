@@ -303,8 +303,8 @@ def build_proposal(
                 Unplaced(
                     show=r.id,
                     title=r.title,
-                    reason="holiday specials are placed through the holiday calendar, not the"
-                    " channel builder (yet)",
+                    reason="specials (one-offs, TV movies, miniseries) aren't placed by the"
+                    " channel builder yet",
                 )
             )
             continue
@@ -421,7 +421,7 @@ def _channels(
                     number=ident.number,
                     type=reuse.type,
                     launch_year=launch,
-                    audience=stub.group,
+                    audience="existing",
                     identity="existing channel",
                     shows=shows,
                 )

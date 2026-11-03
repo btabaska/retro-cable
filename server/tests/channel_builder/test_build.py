@@ -68,7 +68,7 @@ def test_every_kept_show_is_placed_carried_or_unplaced_with_a_reason(
     # Already on a channel: left alone, never sent to the model.
     assert carried == {"the-simpsons", "gravity-falls", "halloweentown"}
     assert "barney-and-friends" not in placed | carried | set(unplaced)  # removed in the list
-    assert "holiday calendar" in unplaced["a-charlie-brown-christmas"]
+    assert "specials" in unplaced["a-charlie-brown-christmas"]
     assert placed == {
         "courage-the-cowardly-dog", "johnny-bravo", "psych", "pixel-patrol", "snow-day-rescue"
     }  # fmt: skip
