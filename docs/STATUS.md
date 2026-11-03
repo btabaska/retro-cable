@@ -1,6 +1,15 @@
 # Status
 
-**Current phase:** Milestone M2: real media on the mini. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+**Current phase:** Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+
+## Milestone M3 / Phase 11 (part): AI channel builder (in review, stacked on #18)
+
+- [x] `python -m retro_cable.channel_builder propose --shows CSV --out DIR` drafts channels from Brandon's show list on the rig's local model (LiteLLM, `RC_LLM_URL`/`RC_LLM_KEY`/`RC_LLM_MODEL`). The model names channels and places shows. The code does the dates, pretend premieres for post-2010 shows, launch years, numbers, call signs, ids and the checks. Nothing is saved
+- [x] Every proposal goes through the /admin checks. Failing channels are reported and left out. Every kept show is placed, already carried, or unplaced with a reason
+- [x] Readable output for review: `proposal.md` (channel → shows) and `proposal.csv`, beside `proposal.json`
+- [x] `apply proposal.json` is a separate command: one admin overlay revision, undone in one tap. The overlay now also holds the builder's day-part templates
+- [x] Hypothesis: any proposal that passes the checks keeps the scheduler invariants once applied
+- [ ] Brandon's review of a full-list proposal, then `apply` on the mini (it decides what the rig converts)
 
 ## Milestone M2: real library, debut rule everywhere, LAN deploy (in review, #16)
 

@@ -7,6 +7,7 @@ schedules merge into the catalog and its version. Nothing here writes a schedule
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated, Literal, Protocol
@@ -24,12 +25,14 @@ from retro_cable.admin.drafts import (
     CheckResult,
     LibraryItem,
     check_draft,
+    keep_templates,
     new_channel_id,
     premiere_issues,
     preview_week,
     to_draft,
 )
 from retro_cable.catalog import Catalog, validate
+from retro_cable.catalog.models import Template
 from retro_cable.catalog.overlay import (
     CUSTOM_PREFIX,
     Overlay,
@@ -240,18 +243,34 @@ def router(
     def run_check(db: sqlite3.Connection, req: DraftRequest, channel_id: str) -> Checked:
         sched = schedules()
         head = store.head(db).overlay
+        index = library_index(db, sched)
+        templates: list[Template] = []
+        notes: list[CheckIssue] = []
         if req.channel_id:
+            # Day-parts the channel builder made stay while they still fit the edit.
+            mine = [t for t in head.templates if t.channel == req.channel_id]
+            templates, notes = keep_templates(mine, req.draft)
+            # Shows it put on the channel before they reached the library stay editable;
+            # the checks warn they have no playable files yet.
+            for c in head.carriage:
+                if c.channel == req.channel_id and c.show not in index:
+                    index[c.show] = LibraryItem(c.show, c.title, c.kind, None, None, 0, 0)
             head = without_channel(head, req.channel_id)
-        return check_draft(
+        checked = check_draft(
             schedules.base,
             head,
             channel_id,
             req.draft,
-            library_index(db, sched),
+            index,
             schedules.library,
             seed,
             week_day(sched, req),
+            templates,
         )
+        if not notes:
+            return checked
+        result = checked.result.model_copy(update={"warnings": [*checked.result.warnings, *notes]})
+        return replace(checked, result=result)
 
     def custom_or_404(db: sqlite3.Connection, channel_id: str) -> Overlay:
         overlay = store.head(db).overlay
