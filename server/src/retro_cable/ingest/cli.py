@@ -1,7 +1,7 @@
 """Run an ingest job: `python -m retro_cable.ingest plex|tmdb|scan|normalize [options]`.
 
   plex       import carried shows and movies from Plex (PLEX_URL, PLEX_TOKEN)
-  tmdb       fill air dates and runtimes from TMDB (TMDB_TOKEN)
+  tmdb       fill air dates and runtimes from TMDB (TMDB_TOKEN, or SEERR_URL + SEERR_API_KEY)
   scan       read Plex-named folders off the disk, without Plex (--tv DIR, --movies DIR)
   normalize  encode playable MP4s into the media root (RC_MEDIA_DIR); see ingest/normalize.py
   manifest   write manifest.json at the media root from this database (ingest/manifest.py)
@@ -41,8 +41,7 @@ from retro_cable.ingest.plex import PlexClient, import_plex
 from retro_cable.ingest.plex import http_fetch as plex_http_fetch
 from retro_cable.ingest.progress import PROGRESS, ProgressFile
 from retro_cable.ingest.scan import scan_movies, scan_tv
-from retro_cable.ingest.tmdb import TmdbClient, fill_gaps
-from retro_cable.ingest.tmdb import http_fetch as tmdb_http_fetch
+from retro_cable.ingest.tmdb import MetadataSource, fill_gaps, pick_source
 
 
 def default_db() -> Path:
@@ -131,16 +130,18 @@ def main(argv: list[str]) -> int:
 
     token = ""
     catalog = None
+    metadata: MetadataSource | None = None
     if args.job == "plex":
         url, token = os.environ.get("PLEX_URL", ""), os.environ.get("PLEX_TOKEN", "")
         if not url or not token:
             print("set PLEX_URL and PLEX_TOKEN", file=sys.stderr)
             return 2
     elif args.job == "tmdb":
-        token = os.environ.get("TMDB_TOKEN", "")
-        if not token:
-            print("set TMDB_TOKEN (a TMDB v4 read access token)", file=sys.stderr)
+        choice = pick_source(os.environ)
+        print(choice.message, file=sys.stderr)
+        if choice.source is None:
             return 2
+        metadata = choice.source
     elif args.job == "scan" and not (args.tv or args.movies):
         print("scan needs --tv DIR and/or --movies DIR", file=sys.stderr)
         return 2
@@ -166,7 +167,8 @@ def main(argv: list[str]) -> int:
         fetch = plex_http_fetch(os.environ["PLEX_URL"], token)
         stats = asdict(import_plex(db, PlexClient(fetch), catalog, now))
     elif args.job == "tmdb":
-        stats = asdict(fill_gaps(db, TmdbClient(tmdb_http_fetch(token)), now))
+        assert metadata is not None
+        stats = asdict(fill_gaps(db, metadata, now))
     elif args.job == "scan":
         assert catalog is not None
         out: dict[str, object] = {}

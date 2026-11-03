@@ -272,6 +272,21 @@ Brandon's decision (Nov 2 2026): originals stay where they are; the carried show
 - **LAN access:** `https://tv.home.tabaska.us` through the homelab Caddy (the block in `/opt/stacks/caddy/caddy/Caddyfile`, committed there on Nov 1 2026, matches `ops/caddy/retro-cable.caddy`); the web port stays on `127.0.0.1:8095`. Fallback if the host Caddy can't be used: set `RC_WEB_BIND=192.168.10.2` in `ops/.env` and redeploy, then use `http://mini:8095`. That is safe because the web container's own Caddy (`web/Caddyfile`) now aborts any client outside `private_ranges` before any route (Docker keeps the client address on a published port; the host Caddy, the healthcheck and loopback are private).
 - **`index-media` rules:** rows are matched by show/season/episode, movie id, and bumper channel/path. New rows are inserted; for existing ones, file facts (source path, size, measured length) and the encode are updated, while titles, air dates and runtimes the mini already has (a Plex or TMDB fill) are kept and only filled where empty. A new or changed encode is recorded only if its MP4 is in the media root (one `stat`). `media_path` must be a relative `.mp4` path inside the media root; anything else is rejected. An unchanged manifest writes nothing, so the api's schedule cache (keyed on SQLite's `data_version`) stays warm; a changed one is one transaction plus an `import_runs` row. `--prune` clears encodes the manifest no longer lists (off by default). `--manifest-file` reads another file.
 
+### Air dates through Seerr (mini)
+
+Brandon approved (Nov 2 2026) using his LAN Seerr (seerr v3.2.0, `/opt/stacks/seerr` on the mini) as a TMDB proxy while there is no `TMDB_TOKEN`. The `tmdb` job then fills missing episode air dates (464 episodes on the mini had none) and movie premiere dates; see `docs/specs/catalog.md`, "TMDB gap filling".
+
+- **Reaching Seerr from the worker.** Seerr runs as the `seerr` container on the external `edge` network, publishing 5055 on the host. Inside the worker container, `127.0.0.1` is the worker itself, so the host-side `SEERR_URL=http://127.0.0.1:5055` in the mini's `ops/.env` can't work there. The worker therefore joins `edge` (as well as the stack's default network) and `ops/compose.yml` sets its `SEERR_URL` to `${RC_SEERR_URL:-http://seerr:5055}`, which overrides the `.env` value for the worker only. Container DNS on `edge` needs no host firewall rule or `extra_hosts` entry; the homelab Caddy reaches Seerr the same way (`reverse_proxy seerr:5055`). If Seerr ever leaves `edge`, set `RC_SEERR_URL=http://192.168.10.2:5055` (the mini's LAN IP, where 5055 is published) in `ops/.env`.
+- **Key.** `SEERR_API_KEY` is already in the mini's `ops/.env` (piped from Seerr's `config/settings.json`, never printed). The worker reads it through `env_file`; it is sent only as the `X-Api-Key` header and never appears in output, errors or `import_runs`.
+- **Run it once**, on the mini, after deploying a version that has this job (`ops/deploy.sh`), so the worker uses the deployed image:
+
+  ```sh
+  cd /opt/retro-cable
+  RC_VERSION=$(cat .deploy/current) docker compose -f ops/compose.yml --profile jobs run --rm -T worker python -m retro_cable.ingest tmdb
+  ```
+
+  It prints `using Seerr as a TMDB proxy (SEERR_URL)` on stderr, then the run's stats as JSON (`provider`, `filled_air_dates`, `added_episodes`, `matched_by_search`, `shows_without_tmdb_id`, `failed`, `failed_seasons`, `filled_premieres`). It writes only empty fields and stored TMDB ids, so a re-run is safe and much faster (ids found once are reused). `media-index` keeps running meanwhile; it never overwrites a filled date. The api's schedule cache follows SQLite's `data_version`, so the new dates take effect without a restart.
+
 ### First run (Nov 2 2026)
 
 - Rig scan: 141 shows, 8,414 episodes with files (21 carried shows with 2,980 episodes; 120 uncarried); 7.7 TB of sources; no carried movie matched in the movies share.

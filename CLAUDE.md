@@ -51,7 +51,7 @@ Retro Cable recreates 1990–2010 Bay Area cable TV on a homelab: a browser app 
 
 - No real video, audio or copyrighted media in the repo, CI or test logs. Use `make fixtures`.
 - Never log signed media URLs, device tokens or API keys.
-- The only external call at runtime is TMDB, from the worker, for metadata gaps.
+- The only external metadata source at runtime is TMDB, reached directly or through Brandon's LAN Seerr, from the worker.
 
 ## Security
 

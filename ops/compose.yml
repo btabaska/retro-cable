@@ -53,7 +53,12 @@ services:
   # Ingest jobs, run on demand (not by `up`), e.g.
   #   docker compose --profile jobs run --rm worker python -m retro_cable.ingest scan --tv /sources/tv
   #   docker compose --profile jobs run --rm worker python -m retro_cable.ingest normalize
+  #   docker compose --profile jobs run --rm -T worker python -m retro_cable.ingest tmdb
   # Sources are read-only; the media root is the only place it writes besides /data.
+  # The tmdb job reaches TMDB directly (TMDB_TOKEN) or through the LAN Seerr (SEERR_API_KEY
+  # from .env). Seerr is the `seerr` container on `edge`; a host-side SEERR_URL such as
+  # http://127.0.0.1:5055 would point at the worker itself, so the worker gets its own URL
+  # (RC_SEERR_URL overrides it, e.g. http://192.168.10.2:5055).
   worker:
     image: ghcr.io/btabaska/retro-cable-api:${RC_VERSION:-edge}
     profiles: ["jobs"]
@@ -64,6 +69,10 @@ services:
       RC_DATA_DIR: /data
       RC_CATALOG_DIR: /catalog
       RC_MEDIA_DIR: /media
+      SEERR_URL: ${RC_SEERR_URL:-http://seerr:5055}
+    networks:
+      default:
+      edge:
     volumes:
       - ${RC_DATA_DIR:-./data}:/data
       - ${RC_CATALOG_SRC:-../catalog}:/catalog:ro

@@ -79,7 +79,7 @@ catalog-check: ## Validate catalog/*.yaml (schemas and cross-file checks)
 catalog-schema: ## Regenerate catalog/schema/*.json from the models
 	cd server && uv run python -m retro_cable.catalog.schema ../catalog/schema
 
-ingest: ## Import from Plex, then fill gaps from TMDB (needs PLEX_URL, PLEX_TOKEN, TMDB_TOKEN)
+ingest: ## Import from Plex, then fill gaps from TMDB (needs PLEX_URL, PLEX_TOKEN, and TMDB_TOKEN or SEERR_URL + SEERR_API_KEY)
 	cd server && uv run python -m retro_cable.ingest plex --db $(RC_DB) --catalog ../catalog
 	cd server && uv run python -m retro_cable.ingest tmdb --db $(RC_DB)
 

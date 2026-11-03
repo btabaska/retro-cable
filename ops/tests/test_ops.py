@@ -280,6 +280,26 @@ def test_web_joins_the_edge_network_under_a_stable_name() -> None:
     assert compose["networks"]["edge"] == {"external": True, "name": "${RC_EDGE_NETWORK:-edge}"}
 
 
+def test_worker_reaches_seerr_by_name_on_the_edge_network() -> None:
+    # 127.0.0.1 inside the worker is the worker itself, so ops/.env's host-side
+    # SEERR_URL=http://127.0.0.1:5055 can't work there. Seerr (/opt/stacks/seerr on the mini)
+    # is the `seerr` container on `edge`, so the worker joins `edge` and gets its own URL.
+    worker = load("compose.yml")["services"]["worker"]
+    assert set(worker["networks"]) == {"default", "edge"}
+    assert worker["environment"]["SEERR_URL"] == "${RC_SEERR_URL:-http://seerr:5055}"
+    assert "SEERR_API_KEY" not in worker["environment"], "the key comes only from ops/.env"
+    assert "ports" not in worker
+
+
+def test_env_example_names_the_metadata_settings_without_values() -> None:
+    text = (OPS / ".env.example").read_text()
+    for key in ("TMDB_TOKEN", "SEERR_URL", "SEERR_API_KEY", "RC_SEERR_URL"):
+        assert f"# {key}=" in text
+    for line in text.splitlines():
+        if line.startswith(("TMDB_TOKEN=", "SEERR_API_KEY=")):
+            raise AssertionError(f"a credential is set in .env.example: {line.split('=')[0]}")
+
+
 def test_web_serves_media_read_only() -> None:
     web = load("compose.yml")["services"]["web"]
     assert "${RC_MEDIA_DIR:-./media}:/srv/media:ro" in web["volumes"]
