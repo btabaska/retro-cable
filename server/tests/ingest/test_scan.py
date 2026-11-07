@@ -1,5 +1,6 @@
 """`ingest scan`: read a Plex-named TV tree straight off the disk (no Plex token needed)."""
 
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -348,3 +349,105 @@ def test_scan_movies_records_the_measured_length(
     probe = FakeProbe({"Halloweentown (1998).mkv": 5003.5})
     scan_movies(db, root, load_catalog(make_catalog()), probe=probe)
     assert rows(db, "SELECT id, source_seconds FROM movies") == [("halloweentown", 5003)]
+
+
+# --- more than one root: Plex's trees plus the LiveTV downloads (M4) ---------------------
+
+
+@pytest.fixture
+def livetv(tmp_path: Path) -> Path:
+    """sonarr-livetv's tree: Plex-style names, a show Plex doesn't have and a later season of
+    one it does."""
+    root = tmp_path / "livetv" / "tv"
+    touch(
+        root / "X-Men (1992)" / "Season 01" / "X-Men (1992) - S01E01 - Night of the Sentinels.mkv"
+    )
+    touch(
+        root
+        / "The Simpsons (1989)"
+        / "Season 02"
+        / "The Simpsons (1989) - S02E01 - Bart Gets an F.mkv"
+    )
+    # A copy of an episode Plex already has: Plex's copy wins (it is never deleted).
+    touch(
+        root
+        / "The Simpsons (1989)"
+        / "Season 01"
+        / "The Simpsons (1989) - S01E01 - Simpsons Roasting.mkv",
+        size=500,
+    )
+    return root  # fmt: skip
+
+
+def test_scan_reads_several_roots_as_one_library(
+    db: sqlite3.Connection, tree: Path, livetv: Path, make_catalog: MakeCatalog
+) -> None:
+    catalog = load_catalog(make_catalog())
+    stats = scan_tv(db, [tree, livetv], catalog)
+    assert stats.shows == 3
+    assert rows(
+        db,
+        "SELECT show_id, season, episode, file_path FROM episodes WHERE show_id IN"
+        " ('the-simpsons', 'x-men') ORDER BY show_id, season, episode",
+    ) == [
+        ("the-simpsons", 1, 1,
+         str(tree / "The Simpsons/Season 01/The Simpsons (1989) - S01E01 - Simpsons Roasting [WEBDL].mkv")),
+        ("the-simpsons", 1, 2,
+         str(tree / "The Simpsons/Season 01/The Simpsons (1989) - S01E02 - Bart the Genius [WEBDL].mkv")),
+        ("the-simpsons", 2, 1,
+         str(livetv / "The Simpsons (1989)/Season 02/The Simpsons (1989) - S02E01 - Bart Gets an F.mkv")),
+        ("x-men", 1, 1,
+         str(livetv / "X-Men (1992)/Season 01/X-Men (1992) - S01E01 - Night of the Sentinels.mkv")),
+    ]  # fmt: skip
+    assert stats.duplicates == 2  # the DVDRip copy, and LiveTV's copy of S01E01
+
+    # The same scan again changes nothing: no root's copy flips with the other's.
+    before = rows(db, "SELECT id, file_path FROM episodes ORDER BY id")
+    again = scan_tv(db, [tree, livetv], catalog)
+    assert again.detached == 0
+    assert rows(db, "SELECT id, file_path FROM episodes ORDER BY id") == before
+
+
+@pytest.mark.parametrize("state", ["empty", "missing"])
+def test_an_empty_or_missing_root_detaches_nothing_from_another_root(
+    db: sqlite3.Connection, tree: Path, livetv: Path, make_catalog: MakeCatalog, state: str
+) -> None:
+    catalog = load_catalog(make_catalog())
+    scan_tv(db, [tree, livetv], catalog)
+    plex_files = rows(db, f"SELECT id FROM episodes WHERE file_path LIKE '{tree}/%'")
+    # The LiveTV tree empties (every download converted and deleted) or isn't there.
+    shutil.rmtree(livetv)
+    if state == "empty":
+        livetv.mkdir()
+    stats = scan_tv(db, [tree, livetv], catalog)
+    assert rows(db, f"SELECT id FROM episodes WHERE file_path LIKE '{tree}/%'") == plex_files
+    # An empty root really is empty: its files are detached. A missing one is left alone.
+    gone = rows(db, f"SELECT COUNT(*) FROM episodes WHERE file_path LIKE '{livetv}/%'")[0][0]
+    assert (stats.detached, gone) == ((2, 0) if state == "empty" else (0, 2))
+    assert stats.missing_roots == ([] if state == "empty" else [str(livetv)])
+
+
+def test_scan_with_one_root_still_takes_a_path(
+    db: sqlite3.Connection, tree: Path, make_catalog: MakeCatalog
+) -> None:
+    catalog = load_catalog(make_catalog())
+    assert scan_tv(db, tree, catalog).shows == scan_tv(db, [tree], catalog).shows == 2
+
+
+def test_scan_movies_reads_several_roots_and_prefers_the_first(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    catalog = load_catalog(make_catalog())
+    plex, livetv = tmp_path / "movies", tmp_path / "livetv" / "movies"
+    touch(livetv / "Halloweentown (1998)" / "Halloweentown (1998).mkv", size=90)
+    stats = scan_movies(db, [plex, livetv], catalog)  # Plex's movie tree isn't there
+    assert stats.movies == 1 and stats.missing_roots == [str(plex)]
+    assert rows(db, "SELECT file_path FROM movies") == [
+        (str(livetv / "Halloweentown (1998)" / "Halloweentown (1998).mkv"),)
+    ]
+    touch(plex / "Halloweentown (1998)" / "Halloweentown (1998).mkv", size=20)
+    scan_movies(db, [plex, livetv], catalog)
+    scan_movies(db, [plex, livetv], catalog)
+    assert rows(db, "SELECT file_path FROM movies") == [
+        (str(plex / "Halloweentown (1998)" / "Halloweentown (1998).mkv"),)
+    ]

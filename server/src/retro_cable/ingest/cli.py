@@ -2,8 +2,12 @@
 
   plex       import carried shows and movies from Plex (PLEX_URL, PLEX_TOKEN)
   tmdb       fill air dates and runtimes from TMDB (TMDB_TOKEN)
-  scan       read Plex-named folders off the disk, without Plex (--tv DIR, --movies DIR)
+  scan       read Plex-named folders off the disk, without Plex (--tv DIR, --movies DIR;
+             each may be given more than once: the rig adds the LiveTV downloads)
+  acquire    add carried titles with no files to sonarr-livetv and radarr-livetv
+             (RC_SONARR_LIVETV_URL/_KEY, RC_RADARR_LIVETV_URL/_KEY); see ingest/acquire.py
   normalize  encode playable MP4s into the media root (RC_MEDIA_DIR); see ingest/normalize.py
+             (RC_DELETE_SOURCES_UNDER: delete originals there once their encode is whole)
   manifest   write manifest.json at the media root from this database (ingest/manifest.py)
   index-media  record a manifest's encodes in this database, without probing (the mini)
 
@@ -27,7 +31,9 @@ from retro_cable.catalog import Catalog, CatalogError, load_catalog
 from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.db import connect, migrate
 from retro_cable.ingest import manifest
+from retro_cable.ingest.acquire import acquire
 from retro_cable.ingest.gpu import choose_encoder, comfy_busy
+from retro_cable.ingest.http import Request, json_request
 from retro_cable.ingest.normalize import (
     ENCODERS,
     Item,
@@ -65,15 +71,18 @@ def source_maps(values: list[str]) -> list[tuple[str, str]]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m retro_cable.ingest")
     parser.add_argument(
-        "job", choices=["plex", "tmdb", "scan", "normalize", "manifest", "index-media"]
+        "job",
+        choices=["plex", "tmdb", "scan", "acquire", "normalize", "manifest", "index-media"],
     )
     parser.add_argument("--db", type=Path, default=None)
     parser.add_argument(
         "--catalog", type=Path, default=Path(os.environ.get("RC_CATALOG_DIR", "catalog"))
     )
     scan = parser.add_argument_group("scan")
-    scan.add_argument("--tv", type=Path, help="root of a Plex-named TV tree")
-    scan.add_argument("--movies", type=Path, help="root of a Plex-named movie tree")
+    scan.add_argument("--tv", type=Path, action="append",
+                      help="root of a Plex-named TV tree; repeat: earlier wins")  # fmt: skip
+    scan.add_argument("--movies", type=Path, action="append",
+                      help="root of a Plex-named movie tree; repeat for more")  # fmt: skip
     norm = parser.add_argument_group("normalize")
     norm.add_argument("--media-dir", type=Path, default=None, help="default RC_MEDIA_DIR")
     norm.add_argument("--source-root", type=Path, default=None,
@@ -108,7 +117,13 @@ def _parser() -> argparse.ArgumentParser:
     norm.add_argument("--force", action="store_true", help="re-encode up-to-date items")
     norm.add_argument("--crop", choices=["auto", "off"], default="auto",
                       help="auto: remove black bars baked into the picture (default)")  # fmt: skip
-    norm.add_argument("--dry-run", action="store_true", help="print the ffmpeg commands")
+    norm.add_argument("--dry-run", action="store_true",
+                      help="normalize: print the ffmpeg commands; acquire: add nothing, "
+                           "print what would be added")  # fmt: skip
+    norm.add_argument("--delete-sources-under", type=Path,
+                      default=os.environ.get("RC_DELETE_SOURCES_UNDER") or None,
+                      help="delete originals under this folder once their encode is whole "
+                           "(default RC_DELETE_SOURCES_UNDER; unset: never)")  # fmt: skip
     norm.add_argument("--all", action="store_true",
                       help="also what no channel carries (default: carried only, with "
                            "/admin channels; --priority-url adds the mini's)")  # fmt: skip
@@ -144,7 +159,7 @@ def main(argv: list[str]) -> int:
     elif args.job == "scan" and not (args.tv or args.movies):
         print("scan needs --tv DIR and/or --movies DIR", file=sys.stderr)
         return 2
-    if args.job in ("plex", "scan") or (args.job == "normalize" and not args.all):
+    if args.job in ("plex", "scan", "acquire") or (args.job == "normalize" and not args.all):
         try:
             catalog = load_catalog(args.catalog)
         except CatalogError as err:
@@ -178,6 +193,9 @@ def main(argv: list[str]) -> int:
         if args.movies:
             out["movies"] = asdict(scan_movies(db, args.movies, catalog, now, probe=measure))
         stats = out
+    elif args.job == "acquire":
+        assert catalog is not None
+        return _acquire(db, catalog, args)
     elif args.job == "manifest":
         path = manifest.write_manifest(db, _media_dir(args), now)
         stats = {"manifest": str(path)}
@@ -214,6 +232,29 @@ def _index_media(db: sqlite3.Connection, args: argparse.Namespace) -> int:
     stats = manifest.index_media(db, data, media, datetime.now(UTC), prune=args.prune)
     print(json.dumps(asdict(stats), indent=2))
     return 0
+
+
+def _arr(name: str) -> Request | None:
+    """A client for sonarr-livetv or radarr-livetv from RC_<NAME>_LIVETV_URL and _KEY, or
+    None when either is unset. The key goes only into the request header."""
+    url = os.environ.get(f"RC_{name}_LIVETV_URL", "")
+    key = os.environ.get(f"RC_{name}_LIVETV_KEY", "")
+    return json_request(url, {"X-Api-Key": key}) if url and key else None
+
+
+def _acquire(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace) -> int:
+    items: list[dict[str, object]] = []
+    if args.priority_url:  # the mini's /admin channels count as carried
+        try:
+            data = _get_json(args.priority_url)
+            found = data.get("items", []) if isinstance(data, dict) else []
+            items = [i for i in found if isinstance(i, dict)]
+        except (OSError, ValueError) as err:
+            print(f"warning: can't read {args.priority_url}: {err}", file=sys.stderr)
+    report = acquire(db, catalog, sonarr=_arr("SONARR"), radarr=_arr("RADARR"),
+                     dry_run=args.dry_run, extra=items)  # fmt: skip
+    print(json.dumps(asdict(report), indent=2))
+    return 0 if report.ok else 1
 
 
 def _get_json(url: str) -> object:
@@ -316,6 +357,9 @@ def _normalize(
         order=order,
         on_encoded=hook,
         watch=watch,
+        delete_sources_under=args.delete_sources_under,
+        now=lambda: datetime.now(UTC),
+        log=lambda message: print(message, file=sys.stderr, flush=True),
     )
     if hook is not None:
         manifest.write_manifest(db, media, datetime.now(UTC))
