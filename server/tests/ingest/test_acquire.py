@@ -1,0 +1,453 @@
+"""`ingest acquire`: ask sonarr-livetv and radarr-livetv for carried titles with no files (M4).
+
+Everything here talks to fakes; no test touches the network.
+"""
+
+import json
+import sqlite3
+from collections.abc import Mapping
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from retro_cable.catalog import load_catalog
+from retro_cable.db import connect, migrate
+from retro_cable.ingest import cli
+from retro_cable.ingest.acquire import Wanted, acquire, wanted
+from tests.conftest import MakeCatalog
+
+
+class FakeArr:
+    """A Sonarr or Radarr v3 API: canned GETs, and POSTs recorded (and echoed with an id)."""
+
+    def __init__(
+        self,
+        kind: str,
+        *,
+        roots: list[str] | None = None,
+        profiles: list[dict[str, Any]] | None = None,
+        existing: list[dict[str, Any]] | None = None,
+        lookups: Mapping[str, Any] | None = None,
+        fail_post: bool = False,
+    ) -> None:
+        self.kind = kind
+        self.roots = roots if roots is not None else (["/tv"] if kind == "series" else ["/movies"])
+        self.profiles = profiles if profiles is not None else [
+            {"id": 1, "name": "Any"}, {"id": 9, "name": "LiveTV SD"},
+        ]  # fmt: skip
+        self.existing = existing or []
+        self.lookups = dict(lookups or {})
+        self.fail_post = fail_post
+        self.calls: list[tuple[str, str, dict[str, str]]] = []
+        self.posted: list[dict[str, Any]] = []
+
+    def __call__(
+        self, method: str, path: str, params: Mapping[str, str] | None = None, body: Any = None
+    ) -> Any:
+        q = dict(params or {})
+        self.calls.append((method, path, q))
+        if method == "POST":
+            if self.fail_post:
+                raise OSError("HTTP Error 400: Bad Request")
+            self.posted.append(body)
+            return {**body, "id": 100 + len(self.posted)}
+        if path == "/api/v3/rootfolder":
+            return [{"id": n, "path": p} for n, p in enumerate(self.roots, 1)]
+        if path == "/api/v3/qualityprofile":
+            return self.profiles
+        if path == f"/api/v3/{self.kind}":
+            return self.existing
+        if path == "/api/v3/series/lookup":
+            return self.lookups.get(q["term"], [])
+        if path == "/api/v3/movie/lookup":
+            return self.lookups.get(q["term"], [])
+        if path == "/api/v3/movie/lookup/tmdb":
+            found = self.lookups.get(f"tmdb:{q['tmdbId']}")
+            if found is None:
+                raise OSError("HTTP Error 404: Not Found")
+            return found
+        raise AssertionError(f"unexpected {method} {path}")
+
+    @property
+    def gets(self) -> list[str]:
+        return [path for method, path, _ in self.calls if method == "GET"]
+
+
+def series(title: str, year: int, tvdb: int, tmdb: int = 0) -> dict[str, Any]:
+    return {"title": title, "year": year, "tvdbId": tvdb, "tmdbId": tmdb,
+            "titleSlug": title.lower().replace(" ", "-"), "seasons": [], "images": []}  # fmt: skip
+
+
+def movie(title: str, year: int, tmdb: int) -> dict[str, Any]:
+    return {"title": title, "year": year, "tmdbId": tmdb, "titleSlug": f"{tmdb}", "images": []}
+
+
+@pytest.fixture
+def library(db: sqlite3.Connection, tmp_path: Path) -> sqlite3.Connection:
+    """The carried titles of the test catalog, as the rig's database knows them:
+    - the-simpsons: files on the Plex tree;
+    - dexters-laboratory: no files, but a converted episode whose download was deleted;
+    - x-men: no files, year known (1992); gravity-falls: no files, TMDB id known;
+    - dragon-ball-z: no files, year from overrides.yaml's plex_title `Dragon Ball Z (1989)`;
+    - halloweentown (a movie): no file, year 1998."""
+    db.executemany(
+        "INSERT INTO shows (id, title, year, tmdb_id) VALUES (?, ?, ?, ?)",
+        [("the-simpsons", "The Simpsons", 1989, None),
+         ("dexters-laboratory", "Dexter's Laboratory", 1996, None),
+         ("x-men", "X-Men", 1992, None),
+         ("gravity-falls", "Gravity Falls", None, 40075)],
+    )  # fmt: skip
+    db.execute(
+        "INSERT INTO episodes (show_id, season, episode, file_path)"
+        " VALUES ('the-simpsons', 1, 1, '/sources/tv/The Simpsons/S01E01.mkv')"
+    )
+    db.execute(
+        "INSERT INTO episodes (show_id, season, episode, media_path, media_seconds,"
+        " source_deleted_at) VALUES ('dexters-laboratory', 1, 1, 'tv/d/s01/d-s01e01.mp4', 1300,"
+        " '2026-11-07T00:00:00+00:00')"
+    )
+    db.execute(
+        "INSERT INTO movies (id, title, year) VALUES ('halloweentown', 'Halloweentown', 1998)"
+    )
+    return db
+
+
+def test_wanted_is_what_a_channel_carries_with_no_file_and_no_encode(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    catalog = load_catalog(make_catalog())
+    found, with_files, excluded = wanted(library, catalog)
+    assert found == [
+        Wanted("dragon-ball-z", "Dragon Ball Z", "show", 1989, titles=("Dragon Ball Z (1989)",)),
+        Wanted("gravity-falls", "Gravity Falls", "show", None, tmdb_id=40075),
+        Wanted("halloweentown", "Halloweentown", "movie", 1998),
+        Wanted("x-men", "X-Men", "show", 1992),
+    ]
+    assert with_files == 2  # the-simpsons, and dexters-laboratory's kept encode
+    assert excluded == []
+
+
+def test_wanted_skips_excluded_titles_and_adds_the_minis_admin_channels(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    overrides = "shows:\n  - { show: x-men, exclude: true }\n"
+    catalog = load_catalog(make_catalog(overrides=overrides))
+    mini = [
+        {"id": "johnny-bravo", "title": "Johnny Bravo", "kind": "show", "first_year": 1997,
+         "episodes": 0, "channels": [{"id": "custom-toons"}]},
+        {"id": "on-the-mini", "title": "On the Mini", "kind": "show", "first_year": 1995,
+         "episodes": 12, "channels": [{"id": "custom-toons"}]},  # files the mini knows
+        {"id": "uncarried", "title": "Uncarried", "kind": "show", "episodes": 0, "channels": []},
+    ]  # fmt: skip
+    found, _, excluded = wanted(library, catalog, mini)
+    ids = [w.id for w in found]
+    assert "x-men" not in ids and excluded == ["x-men"]
+    assert Wanted("johnny-bravo", "Johnny Bravo", "show", 1997) in found
+    assert "on-the-mini" not in ids and "uncarried" not in ids
+
+
+def _run(
+    db: sqlite3.Connection,
+    make_catalog: MakeCatalog,
+    sonarr: FakeArr | None,
+    radarr: FakeArr | None,
+    *,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    report = acquire(db, load_catalog(make_catalog()), sonarr=sonarr, radarr=radarr,
+                     dry_run=dry_run)  # fmt: skip
+    out: dict[str, Any] = asdict(report)
+    return out
+
+
+SONARR_LOOKUPS = {
+    "X-Men": [series("X-Men", 1992, 76115), series("X-Men: Evolution", 2000, 70582),
+              series("X-Men", 2011, 248470)],
+    "tmdb:40075": [series("Gravity Falls", 2012, 259972, 40075)],
+    "Dragon Ball Z": [series("Dragon Ball Z", 1989, 81472)],
+}  # fmt: skip
+RADARR_LOOKUPS = {
+    "Halloweentown": [movie("Halloweentown", 1998, 10719), movie("Halloweentown II", 2001, 10720)],
+}
+
+
+def test_adds_series_and_movies_with_the_live_tv_settings(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS)
+    radarr = FakeArr("movie", lookups=RADARR_LOOKUPS)
+    out = _run(library, make_catalog, sonarr, radarr)
+
+    assert [(a["id"], a["tvdb_id"], a["matched_on"]) for a in out["shows"]["added"]] == [
+        ("dragon-ball-z", 81472, "title+year"),
+        ("gravity-falls", 259972, "tmdb"),
+        ("x-men", 76115, "title+year"),
+    ]
+    assert out["shows"]["unresolved"] == []
+    for body in sonarr.posted:
+        assert body["rootFolderPath"] == "/tv"
+        assert body["qualityProfileId"] == 9, "the profile is found by name, not id"
+        assert body["monitored"] is True and body["seasonFolder"] is True
+        assert body["addOptions"] == {"monitor": "all", "searchForMissingEpisodes": True,
+                                      "searchForCutoffUnmetEpisodes": False}  # fmt: skip
+    assert [b["tvdbId"] for b in sonarr.posted] == [81472, 259972, 76115]
+    assert ("POST", "/api/v3/series", {}) in sonarr.calls
+
+    assert [(a["id"], a["tmdb_id"]) for a in out["movies"]["added"]] == [("halloweentown", 10719)]
+    (body,) = radarr.posted
+    assert body["rootFolderPath"] == "/movies" and body["qualityProfileId"] == 9
+    assert body["monitored"] is True
+    assert body["addOptions"] == {"searchForMovie": True, "monitor": "movieOnly"}
+    assert out["with_files"] == 2 and out["dry_run"] is False
+
+
+def test_a_dry_run_posts_nothing(library: sqlite3.Connection, make_catalog: MakeCatalog) -> None:
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS)
+    radarr = FakeArr("movie", lookups=RADARR_LOOKUPS)
+    out = _run(library, make_catalog, sonarr, radarr, dry_run=True)
+    assert all(method == "GET" for method, _, _ in sonarr.calls + radarr.calls)
+    assert [a["title"] for a in out["shows"]["added"]] == [
+        "Dragon Ball Z",
+        "Gravity Falls",
+        "X-Men",
+    ]
+    assert [a["title"] for a in out["movies"]["added"]] == ["Halloweentown"]
+    assert out["dry_run"] is True
+
+
+def test_titles_already_in_the_instance_are_skipped(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS,
+                     existing=[{"id": 4, "title": "X-Men", "tvdbId": 76115, "tmdbId": 0}])  # fmt: skip
+    radarr = FakeArr("movie", lookups=RADARR_LOOKUPS,
+                     existing=[{"id": 2, "title": "Halloweentown", "tmdbId": 10719}])  # fmt: skip
+    out = _run(library, make_catalog, sonarr, radarr)
+    assert out["shows"]["present"] == ["x-men"]
+    assert out["movies"]["present"] == ["halloweentown"] and radarr.posted == []
+    assert [b["tvdbId"] for b in sonarr.posted] == [81472, 259972]
+
+    # And a second run adds nothing: the first one's additions are there now.
+    sonarr.existing += [{**b, "id": 7} for b in sonarr.posted]
+    sonarr.posted.clear()
+    again = _run(library, make_catalog, sonarr, radarr)
+    assert sonarr.posted == [] and again["shows"]["added"] == []
+    assert sorted(again["shows"]["present"]) == ["dragon-ball-z", "gravity-falls", "x-men"]
+
+
+def test_without_a_first_aired_year_a_title_is_never_guessed(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Dragon Ball Z without its plex_title: the lookup has one exact title, but no year to
+    check it against, so it is reported, not added."""
+    catalog = load_catalog(make_catalog(overrides="shows: []\n"))
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS)
+    report = acquire(library, catalog, sonarr=sonarr, radarr=None, dry_run=False)
+    assert [u for u in report.shows.unresolved if u["id"] == "dragon-ball-z"] == [
+        {"id": "dragon-ball-z", "title": "Dragon Ball Z", "reason": "no first-aired year known"}
+    ]
+    assert 81472 not in [b["tvdbId"] for b in sonarr.posted]
+
+
+def test_a_show_that_may_be_on_the_nas_under_another_folder_name_is_not_requested(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """The NAS's `Justice League (Unlimited)` folder matches no carried title, so it is stored
+    as an uncarried show; carried `justice-league` then looks file-less. Downloading it again
+    would duplicate the NAS: it is reported instead, until a plex_title override matches it."""
+    library.execute(
+        "INSERT INTO shows (id, title) VALUES ('x-men-tas', 'X-Men (The Animated Series)')"
+    )
+    library.execute(
+        "INSERT INTO episodes (show_id, season, episode, file_path)"
+        " VALUES ('x-men-tas', 1, 1, '/sources/tv/X-Men (The Animated Series)/S01E01.mkv')"
+    )
+    library.execute("INSERT INTO shows (id, title) VALUES ('x-mental', 'X-Mental')")  # not it
+    library.execute(
+        "INSERT INTO episodes (show_id, season, episode, file_path)"
+        " VALUES ('x-mental', 1, 1, '/sources/tv/X-Mental/S01E01.mkv')"
+    )
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS)
+    out = _run(library, make_catalog, sonarr, None)
+    assert {
+        "id": "x-men",
+        "title": "X-Men",
+        "reason": "may be on the NAS already as 'X-Men (The Animated Series)': give it a"
+        " plex_title in overrides.yaml, or add it to sonarr-livetv by hand",
+    } in out["shows"]["unresolved"]
+    assert 76115 not in [b["tvdbId"] for b in sonarr.posted]
+    assert ("X-Men", 1992) not in [(c[2].get("term"), 1992) for c in sonarr.calls]
+
+
+@pytest.mark.parametrize(
+    ("lookup", "reason"),
+    [
+        ([], "no exact match for X-Men (1992)"),
+        ([series("X-Men: The Animated Series", 1992, 1)], "no exact match for X-Men (1992)"),
+        ([series("X-Men", 1992, 1), series("X Men", 1992, 2)], "2 exact matches for X-Men (1992)"),
+        ([series("X-Men", 2011, 248470)], "no exact match for X-Men (1992)"),
+    ],
+)
+def test_a_title_lookup_must_be_exact_and_unambiguous(
+    library: sqlite3.Connection, make_catalog: MakeCatalog, lookup: list[Any], reason: str
+) -> None:
+    sonarr = FakeArr("series", lookups={**SONARR_LOOKUPS, "X-Men": lookup})
+    out = _run(library, make_catalog, sonarr, None)
+    assert {"id": "x-men", "title": "X-Men", "reason": reason} in out["shows"]["unresolved"]
+    assert 76115 not in [b["tvdbId"] for b in sonarr.posted]
+
+
+def test_a_year_in_the_instances_title_still_matches(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """TheTVDB names remakes `X-Men (1992)`; that is still an exact title."""
+    sonarr = FakeArr("series", lookups={**SONARR_LOOKUPS, "X-Men": [
+        series("X-Men (1992)", 1992, 76115), series("X-Men (2011)", 2011, 248470)]})  # fmt: skip
+    out = _run(library, make_catalog, sonarr, None)
+    assert ("x-men", 76115) in [(a["id"], a["tvdb_id"]) for a in out["shows"]["added"]]
+
+
+@pytest.mark.parametrize(
+    "roots",
+    [["/data/tv"], ["/tv", "/data/tv"], [], ["/movies"]],
+)
+def test_refuses_an_instance_whose_root_folders_are_not_exactly_live_tvs(
+    library: sqlite3.Connection, make_catalog: MakeCatalog, roots: list[str]
+) -> None:
+    """The Plex instances have other roots: pointing acquire at one adds nothing."""
+    sonarr = FakeArr("series", roots=roots, lookups=SONARR_LOOKUPS)
+    radarr = FakeArr("movie", roots=["/tv"], lookups=RADARR_LOOKUPS)
+    out = _run(library, make_catalog, sonarr, radarr)
+    assert sonarr.posted == [] and radarr.posted == []
+    assert "root folders" in out["shows"]["error"] and "/tv" in out["shows"]["error"]
+    assert "root folders" in out["movies"]["error"]
+    assert sonarr.gets == ["/api/v3/rootfolder"], "nothing else is asked of it"
+
+
+def test_a_trailing_slash_on_the_root_folder_is_fine(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    sonarr = FakeArr("series", roots=["/tv/"], lookups=SONARR_LOOKUPS)
+    out = _run(library, make_catalog, sonarr, None)
+    assert out["shows"]["error"] is None and len(sonarr.posted) == 3
+
+
+def test_refuses_without_the_live_tv_profile(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    sonarr = FakeArr("series", profiles=[{"id": 7, "name": "HD-1080p"}], lookups=SONARR_LOOKUPS)
+    out = _run(library, make_catalog, sonarr, None)
+    assert sonarr.posted == []
+    assert out["shows"]["error"] == "sonarr-livetv has no quality profile named 'LiveTV SD'"
+
+
+def test_unconfigured_or_failing_instances_are_reported(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    out = _run(library, make_catalog, None, FakeArr("movie", lookups=RADARR_LOOKUPS,
+                                                    fail_post=True))  # fmt: skip
+    assert out["shows"]["error"] == "set RC_SONARR_LIVETV_URL and RC_SONARR_LIVETV_KEY"
+    assert out["movies"]["failed"] == [
+        {"id": "halloweentown", "title": "Halloweentown", "reason": "HTTP Error 400: Bad Request"}
+    ]
+
+
+def test_nothing_wanted_means_no_calls(db: sqlite3.Connection, make_catalog: MakeCatalog) -> None:
+    carriage = "carriage:\n  - { show: the-simpsons, title: The Simpsons, channel: ktvu, from: 1990-01-01 }\n"
+    catalog = load_catalog(make_catalog(carriage=carriage, templates="templates: []\n",
+                                        synthetic="synthetic: []\n", overrides="shows: []\n"))  # fmt: skip
+    db.execute("INSERT INTO shows (id, title) VALUES ('the-simpsons', 'The Simpsons')")
+    db.execute("INSERT INTO episodes (show_id, season, episode, file_path)"
+               " VALUES ('the-simpsons', 1, 1, '/x.mkv')")  # fmt: skip
+    sonarr, radarr = FakeArr("series"), FakeArr("movie")
+    report = acquire(db, catalog, sonarr=sonarr, radarr=radarr, dry_run=False)
+    assert sonarr.calls == radarr.calls == []
+    report = acquire(db, catalog, sonarr=None, radarr=None, dry_run=False)
+    assert report.shows.error is None and report.movies.error is None, "nothing to ask for"
+
+
+# --- the CLI and the HTTP helper ---------------------------------------------------------
+
+
+def test_acquire_cli_prints_a_json_summary_and_never_the_keys(
+    tmp_path: Path,
+    make_catalog: MakeCatalog,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fakes = {"http://sonarr:8990": FakeArr("series", lookups=SONARR_LOOKUPS),
+             "http://radarr:7879": FakeArr("movie", lookups=RADARR_LOOKUPS)}  # fmt: skip
+    seen_keys: list[str] = []
+
+    def make(base_url: str, headers: Mapping[str, str], timeout: float = 30) -> FakeArr:
+        seen_keys.append(headers["X-Api-Key"])
+        return fakes[base_url]
+
+    monkeypatch.setattr(cli, "json_request", make)
+    monkeypatch.delenv("RC_PRIORITY_URL", raising=False)
+    monkeypatch.setenv("RC_SONARR_LIVETV_URL", "http://sonarr:8990")
+    monkeypatch.setenv("RC_SONARR_LIVETV_KEY", "sonarr-secret-key")
+    monkeypatch.setenv("RC_RADARR_LIVETV_URL", "http://radarr:7879")
+    monkeypatch.setenv("RC_RADARR_LIVETV_KEY", "radarr-secret-key")
+    db = tmp_path / "rig.db"
+    conn = connect(db)
+    migrate(conn)
+    conn.execute("INSERT INTO shows (id, title, year) VALUES ('x-men', 'X-Men', 1992)")
+    conn.execute("INSERT INTO movies (id, title, year) VALUES ('halloweentown', 'H', 1998)")
+    conn.close()
+
+    args = ["acquire", "--db", str(db), "--catalog", str(make_catalog()), "--dry-run"]
+    assert cli.main(args) == 0
+    captured = capsys.readouterr()
+    out = json.loads(captured.out)
+    assert out["dry_run"] is True
+    assert "X-Men" in [a["title"] for a in out["shows"]["added"]]
+    assert all(m == "GET" for f in fakes.values() for m, _, _ in f.calls)
+    assert sorted(seen_keys) == ["radarr-secret-key", "sonarr-secret-key"]
+    assert "secret" not in captured.out + captured.err
+
+
+def test_acquire_cli_fails_when_an_instance_refuses(
+    tmp_path: Path,
+    make_catalog: MakeCatalog,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    for name in ("SONARR", "RADARR"):
+        monkeypatch.delenv(f"RC_{name}_LIVETV_URL", raising=False)
+        monkeypatch.delenv(f"RC_{name}_LIVETV_KEY", raising=False)
+    monkeypatch.delenv("RC_PRIORITY_URL", raising=False)
+    args = ["acquire", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog())]
+    assert cli.main(args) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["shows"]["error"].startswith("set RC_SONARR_LIVETV_URL")
+
+
+def test_json_request_sends_the_key_in_a_header_and_json_bodies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import io
+    import urllib.request
+
+    from retro_cable.ingest.http import json_request
+
+    sent: list[urllib.request.Request] = []
+
+    def urlopen(request: urllib.request.Request, timeout: float) -> io.BytesIO:
+        sent.append(request)
+        return io.BytesIO(b'{"ok": true}')
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    request = json_request("http://sonarr:8990/", {"X-Api-Key": "k3y"})
+    assert request("GET", "/api/v3/series/lookup", {"term": "tmdb:1396"}, None) == {"ok": True}
+    assert request("POST", "/api/v3/series", None, {"title": "X"}) == {"ok": True}
+    get, post = sent
+    assert get.full_url == "http://sonarr:8990/api/v3/series/lookup?term=tmdb%3A1396"
+    assert get.get_method() == "GET" and get.data is None
+    assert post.get_method() == "POST" and isinstance(post.data, bytes)
+    assert json.loads(post.data) == {"title": "X"}
+    assert post.get_header("Content-type") == "application/json"
+    assert all(r.get_header("X-api-key") == "k3y" for r in sent)
+    assert "k3y" not in repr(request) and all("k3y" not in r.full_url for r in sent)

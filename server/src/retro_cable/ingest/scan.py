@@ -8,6 +8,11 @@ is read (catalog.air_dates.synthesize_undated). A later Plex import or TMDB fill
 TV layout: `<root>/<Show (Year)>/Season NN/<Show (Year)> - SxxEyy - Title.ext`, plus the
 variants found on the NAS: `Show.S01E02.Title`, `1x02`, `102 - Title` and `02. Title` inside a
 `Season N` folder. Movies: `<root>/<Title (Year)>/<Title (Year)>.ext`.
+
+Several roots read as one library (the rig: Plex's trees, then the LiveTV downloads from
+sonarr-livetv and radarr-livetv). A show's folders in every root merge; when two roots have
+the same episode, the earlier root's copy wins, so a rescan never flips between them. A root
+that isn't there is skipped and detaches nothing; an empty one really is empty.
 """
 
 import json
@@ -17,7 +22,7 @@ import re
 import sqlite3
 import unicodedata
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -47,6 +52,19 @@ _YEAR = re.compile(r"\((19\d{2}|20\d{2})\)")
 # Measures a source file: its length in seconds from ffprobe, or None when it can't be read.
 # The CLI passes normalize.source_seconds; tests pass a fake, or nothing to skip measuring.
 SourceProbe = Callable[[Path], float | None]
+# One root, or several in order of preference.
+Roots = Path | Sequence[Path]
+
+
+def _present(roots: Roots, missing: list[str]) -> list[Path]:
+    """The roots that are directories, in order; the others are noted in `missing`."""
+    found = []
+    for root in [roots] if isinstance(roots, Path) else roots:
+        if root.is_dir():
+            found.append(root)
+        else:
+            missing.append(str(root))
+    return found
 
 
 def _measure(
@@ -169,6 +187,7 @@ class ScanStats:
     uncarried_episodes: int = 0
     unmatched_folders: list[str] = field(default_factory=list)  # stored nowhere
     unparsed: list[str] = field(default_factory=list)
+    missing_roots: list[str] = field(default_factory=list)  # skipped: nothing detached
 
 
 @dataclass(frozen=True)
@@ -179,12 +198,14 @@ class _Found:
     path: Path
     size: int
     canonical: bool  # in a `Season NN` / `Specials` folder
+    rank: int = 0  # the root's place in the scan's list: earlier roots win
 
 
 def _pick(found: list[_Found]) -> dict[tuple[int, int], _Found]:
-    """One file per episode: a `Season NN` copy first, then the bigger file, then by path."""
+    """One file per episode: an earlier root's copy first, then a `Season NN` copy, then the
+    bigger file, then by path."""
     best: dict[tuple[int, int], _Found] = {}
-    for f in sorted(found, key=lambda f: (not f.canonical, -f.size, str(f.path))):
+    for f in sorted(found, key=lambda f: (f.rank, not f.canonical, -f.size, str(f.path))):
         best.setdefault((f.season, f.episode), f)
     return best
 
@@ -225,7 +246,9 @@ def _excluded(catalog: Catalog) -> set[str]:
     return keys | {k.replace(" ", "") for k in keys}
 
 
-def _collect(folder: Path, root: Path, stats: ScanStats) -> tuple[list[Path], list[_Found]]:
+def _collect(
+    folder: Path, root: Path, stats: ScanStats, rank: int = 0
+) -> tuple[list[Path], list[_Found]]:
     files = _video_files(folder)
     found = []
     for f in files:
@@ -235,7 +258,7 @@ def _collect(folder: Path, root: Path, stats: ScanStats) -> tuple[list[Path], li
             continue
         season, episode, title = parsed
         canonical = _season_of(f.parent.name) is not None
-        found.append(_Found(season, episode, title, f, f.stat().st_size, canonical))
+        found.append(_Found(season, episode, title, f, f.stat().st_size, canonical, rank))
     return files, found
 
 
@@ -254,6 +277,22 @@ class _Uncarried:
     folders: list[Path] = field(default_factory=list)
     files: list[Path] = field(default_factory=list)
     found: list[_Found] = field(default_factory=list)
+
+
+@dataclass
+class _Carried:
+    """A carried show's folders, in every root."""
+
+    folders: list[Path] = field(default_factory=list)
+    files: list[Path] = field(default_factory=list)
+    found: list[_Found] = field(default_factory=list)
+
+    def year(self) -> int | None:
+        for folder in self.folders:
+            year = show_year(folder.name, [])
+            if year is not None:
+                return year
+        return show_year("", [f.name for f in self.files])
 
 
 def _store(
@@ -291,7 +330,7 @@ def _store(
                      title = CASE WHEN episodes.title = '' THEN excluded.title
                              ELSE episodes.title END,
                      file_path = excluded.file_path, file_size = excluded.file_size,
-                     source_seconds = excluded.source_seconds""",
+                     source_seconds = excluded.source_seconds, source_deleted_at = NULL""",
                 (show, season, episode, pick.title, str(pick.path), pick.size,
                  measured[(season, episode)]),
             )  # fmt: skip
@@ -327,14 +366,15 @@ def _new_id(title: str, year: int | None, taken: set[str]) -> tuple[str, str]:
 
 def scan_tv(
     db: sqlite3.Connection,
-    root: Path,
+    root: Roots,
     catalog: Catalog,
     now: datetime | None = None,
     *,
     carried_only: bool = False,
     probe: SourceProbe | None = None,
 ) -> ScanStats:
-    """Attach every show's episode files under `root`. Air dates are left alone.
+    """Attach every show's episode files under `root` (one root, or several read as one
+    library: see the module docstring). Air dates are left alone.
 
     Folders that match a carried show attach to its catalog id. The rest are stored as
     uncarried shows (in the library, on no channel) so the admin can build channels from them,
@@ -350,30 +390,39 @@ def scan_tv(
     carried = {c.show for c in catalog.carriage.carriage}
     seen: set[tuple[str, str]] = set()
     groups: dict[tuple[str, int | None], _Uncarried] = {}
-    for folder in _folders(root):
-        slug = index.match(folder.name)
-        if slug is None and (
-            carried_only
-            or any(k in excluded or k.replace(" ", "") in excluded for k in _keys(folder.name))
-        ):
-            stats.unmatched_folders.append(folder.name)
-            continue
-        files, found = _collect(folder, root, stats)
-        if slug is None:
-            if not found:
+    shows: dict[str, _Carried] = {}
+    roots = _present(root, stats.missing_roots)
+    for rank, top in enumerate(roots):
+        for folder in _folders(top):
+            slug = index.match(folder.name)
+            if slug is None and (
+                carried_only
+                or any(k in excluded or k.replace(" ", "") in excluded for k in _keys(folder.name))
+            ):
                 stats.unmatched_folders.append(folder.name)
                 continue
-            # Release folders of one show (`Russian Doll`, `Russian.Doll.S01E01.720p...`) merge;
-            # a `(year)` in the name keeps remakes apart (`Doctor Who (1963)`, `(2005)`).
-            title, folder_year = show_title(folder.name), show_year(folder.name, [])
-            group = groups.setdefault((_slug(title), folder_year), _Uncarried(title, folder_year))
-            group.folders.append(folder)
-            group.files += files
-            group.found += found
-            continue
-        best = _best(found, stats)
-        year = show_year(folder.name, [f.name for f in files])
-        _store(db, slug, titles.get(slug, folder.name), year, best, now, probe)
+            files, found = _collect(folder, top, stats, rank)
+            if slug is None:
+                if not found:
+                    stats.unmatched_folders.append(folder.name)
+                    continue
+                # Release folders of one show (`Russian Doll`, `Russian.Doll.S01E01.720p...`)
+                # merge; a `(year)` in the name keeps remakes apart (`Doctor Who (1963)`).
+                title, folder_year = show_title(folder.name), show_year(folder.name, [])
+                key = (_slug(title), folder_year)
+                group = groups.setdefault(key, _Uncarried(title, folder_year))
+                group.folders.append(folder)
+                group.files += files
+                group.found += found
+                continue
+            show = shows.setdefault(slug, _Carried())
+            show.folders.append(folder)
+            show.files += files
+            show.found += found
+
+    for slug, show in shows.items():
+        best = _best(show.found, stats)
+        _store(db, slug, titles.get(slug, show.folders[0].name), show.year(), best, now, probe)
         seen |= {(slug, str(f.path)) for f in best.values()}
         stats.shows += 1
         stats.episodes += len(best)
@@ -400,14 +449,15 @@ def scan_tv(
         stats.uncarried += [f.name for f in group.folders]
         stats.uncarried_episodes += len(best)
 
-    # Files under this root that weren't found again for the same show are detached (a file
-    # that moved to a carried show leaves its old uncarried row); the rows themselves stay.
-    prefix = str(root).rstrip("/") + "/"
+    # Files under a scanned root that weren't found again for the same show are detached (a
+    # file that moved to a carried show leaves its old uncarried row); the rows themselves
+    # stay. Only roots that are there: a missing one says nothing about its files.
+    prefixes = tuple(str(top).rstrip("/") + "/" for top in roots)
     with transaction(db):
         for r in db.execute(
             "SELECT id, show_id, file_path FROM episodes WHERE file_path IS NOT NULL"
         ).fetchall():
-            if r["file_path"].startswith(prefix) and (r["show_id"], r["file_path"]) not in seen:
+            if r["file_path"].startswith(prefixes) and (r["show_id"], r["file_path"]) not in seen:
                 db.execute(
                     "UPDATE episodes SET file_path = NULL, file_size = NULL WHERE id = ?",
                     (r["id"],),
@@ -421,29 +471,35 @@ def scan_tv(
 class MovieScanStats:
     movies: int = 0
     unmatched_folders: list[str] = field(default_factory=list)
+    missing_roots: list[str] = field(default_factory=list)
 
 
 def scan_movies(
     db: sqlite3.Connection,
-    root: Path,
+    root: Roots,
     catalog: Catalog,
     now: datetime | None = None,
     *,
     probe: SourceProbe | None = None,
 ) -> MovieScanStats:
     """Attach carried movies from `<root>/<Title (Year)>/`: the biggest video file that isn't
-    a trailer or extra. The premiere date is left alone (the year bounds it, see load_library)."""
+    a trailer or extra, from the earliest root that has one. The premiere date is left alone
+    (the year bounds it, see load_library)."""
     stats = MovieScanStats()
     index, titles = _Index(catalog, "movie"), _titles(catalog)
-    for folder in _folders(root):
-        slug = index.match(folder.name)
-        if slug is None:
-            stats.unmatched_folders.append(folder.name)
-            continue
-        files = [f for f in _video_files(folder) if not EXTRA.search(f.stem)]
-        if not files:
-            continue
-        best = max(files, key=lambda f: (f.stat().st_size, str(f)))
+    picks: dict[str, tuple[tuple[int, int, str], Path, Path]] = {}
+    for rank, top in enumerate(_present(root, stats.missing_roots)):
+        for folder in _folders(top):
+            slug = index.match(folder.name)
+            if slug is None:
+                stats.unmatched_folders.append(folder.name)
+                continue
+            for f in _video_files(folder):
+                if not EXTRA.search(f.stem):
+                    key = (rank, -f.stat().st_size, str(f))
+                    if slug not in picks or key < picks[slug][0]:
+                        picks[slug] = (key, f, folder)
+    for slug, (_, best, folder) in picks.items():
         year = show_year(folder.name, [])
         size = best.stat().st_size
         row = db.execute(
@@ -456,7 +512,7 @@ def scan_movies(
                VALUES (?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT (id) DO UPDATE SET year = COALESCE(movies.year, excluded.year),
                  file_path = excluded.file_path, file_size = excluded.file_size,
-                 source_seconds = excluded.source_seconds""",
+                 source_seconds = excluded.source_seconds, source_deleted_at = NULL""",
             (slug, titles.get(slug, folder.name), year, str(best), size,
              _measure(probe, best, size, known), now.isoformat() if now else None),
         )  # fmt: skip

@@ -25,6 +25,7 @@ import sqlite3
 import subprocess
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -288,6 +289,9 @@ class Item:
     key: str = ""  # the show, movie or channel id
     media_seconds: int | None = None  # the recorded encode's length
     source_seconds: int | None = None  # the source's length when it was encoded
+    # The source was deleted after a whole, checked encode (`delete_sources_under`): the
+    # encode is all there is, so the item counts as done and is never encoded again.
+    source_deleted: bool = False
 
     def up_to_date_in_db(self, max_seconds: float | None = None) -> bool:
         """The database says this item's encode is in place and whole (no file checks)."""
@@ -314,31 +318,37 @@ def recorded_whole(
     return abs(media_seconds - expected) <= max(expected * LENGTH_TOLERANCE, LENGTH_SLACK) + 1
 
 
+HAS_SOURCE = "(file_path IS NOT NULL OR (source_deleted_at IS NOT NULL AND media_path IS NOT NULL))"
+
+
 def plan(db: sqlite3.Connection, shows: Collection[str] | None = None) -> list[Item]:
-    """Every episode, movie and bumper with a source file, in a stable order. With `shows`,
-    only those shows' episodes and those movies (the CLI passes what some channel carries)."""
+    """Every episode, movie and bumper with a source file (or whose source was deleted after
+    its encode), in a stable order. With `shows`, only those shows' episodes and those movies
+    (the CLI passes what some channel carries)."""
     items = [
         Item("episodes", r["id"], f"{r['show_id']} S{r['season']:02d}E{r['episode']:02d}",
-             r["file_path"],
-             target_path("episodes", r["show_id"], r["season"], r["episode"], r["file_path"]),
+             r["file_path"] or "",
+             target_path("episodes", r["show_id"], r["season"], r["episode"], ""),
              r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
-             r["runtime_seconds"], r["show_id"], r["media_seconds"], r["source_seconds"])
+             r["runtime_seconds"], r["show_id"], r["media_seconds"], r["source_seconds"],
+             r["file_path"] is None)
         for r in db.execute(
             "SELECT id, show_id, season, episode, file_path, media_path, media_source_size,"
             " media_source_mtime_ns, runtime_seconds, media_seconds, source_seconds"
-            " FROM episodes WHERE file_path IS NOT NULL ORDER BY show_id, season, episode"
+            f" FROM episodes WHERE {HAS_SOURCE} ORDER BY show_id, season, episode"
         )
         if shows is None or r["show_id"] in shows
     ]  # fmt: skip
     items += [
-        Item("movies", r["id"], r["id"], r["file_path"],
-             target_path("movies", r["id"], None, None, r["file_path"]),
+        Item("movies", r["id"], r["id"], r["file_path"] or "",
+             target_path("movies", r["id"], None, None, ""),
              r["media_path"], r["media_source_size"], r["media_source_mtime_ns"],
-             r["runtime_seconds"], r["id"], r["media_seconds"], r["source_seconds"])
+             r["runtime_seconds"], r["id"], r["media_seconds"], r["source_seconds"],
+             r["file_path"] is None)
         for r in db.execute(
             "SELECT id, file_path, media_path, media_source_size, media_source_mtime_ns,"
-            " runtime_seconds, media_seconds, source_seconds FROM movies"
-            " WHERE file_path IS NOT NULL ORDER BY id"
+            f" runtime_seconds, media_seconds, source_seconds FROM movies WHERE {HAS_SOURCE}"
+            " ORDER BY id"
         )
         if shows is None or r["id"] in shows
     ]  # fmt: skip
@@ -431,6 +441,9 @@ class NormalizeStats:
     # leaves them off the air unless RC_ALLOW_SHORT_MEDIA is set.
     short: list[str] = field(default_factory=list)
     encoders: dict[str, int] = field(default_factory=dict)  # encodes per encoder
+    # Originals deleted after a whole, checked encode (`delete_sources_under`), relative to
+    # that root, so the stats and the log name no host or share.
+    deleted: list[str] = field(default_factory=list)
     commands: list[list[str]] = field(default_factory=list)  # dry run only
 
 
@@ -472,6 +485,83 @@ def expected_seconds(item: Item, source: int | None) -> int:
     return max(item.runtime_seconds or 0, source or 0)
 
 
+# --- deleting originals (the LiveTV downloads) -------------------------------------------
+
+
+def deletable(path: Path, root: Path) -> Path | None:
+    """The file to delete for source `path`, or None unless it may go: `path` is not itself a
+    symlink, and its real path is a regular file strictly inside the real path of `root`
+    (so neither `..` nor a symlinked folder can reach outside it)."""
+    try:
+        if path.is_symlink():
+            return None
+        real = Path(os.path.realpath(path))
+        base = Path(os.path.realpath(root))
+        if real == base or not real.is_relative_to(base) or not real.is_file():
+            return None
+    except (OSError, ValueError):
+        return None
+    return real
+
+
+def _delete_source(
+    db: sqlite3.Connection,
+    media_dir: Path,
+    item: Item,
+    src: Path,
+    st: os.stat_result,
+    root: Path,
+    stats: NormalizeStats,
+    now: Callable[[], datetime],
+    log: Callable[[str], None] | None,
+) -> None:
+    """Delete `item`'s source if its recorded encode is whole and checked (both lengths
+    known and within 2%, not short, its MP4 in place), the source is unchanged since it was
+    encoded, and it lies under `root`. Then the row keeps its encode and loses its file_path."""
+    if item.table == "bumpers":
+        return
+    row = db.execute(
+        f"SELECT media_path, media_seconds, source_seconds, runtime_seconds, media_source_size,"
+        f" media_source_mtime_ns FROM {item.table} WHERE id = ?",
+        (item.rowid,),
+    ).fetchone()
+    media, source = row["media_seconds"], row["source_seconds"]
+    if (
+        row["media_path"] != item.target
+        or media is None
+        or source is None
+        or not recorded_whole(media, source)
+        or is_short(media, max(row["runtime_seconds"] or 0, source))
+        or not (media_dir / item.target).is_file()
+    ):
+        return
+    real = deletable(src, root)
+    if real is None:
+        return
+    try:
+        now_st = real.stat()
+        if (now_st.st_size, now_st.st_mtime_ns) != (st.st_size, st.st_mtime_ns) or (
+            row["media_source_size"],
+            row["media_source_mtime_ns"],
+        ) != (st.st_size, st.st_mtime_ns):
+            return  # replaced since it was encoded (an upgrade): the next pass encodes it
+        real.unlink()
+    except OSError as err:
+        if log is not None:
+            log(f"{item.label}: could not delete its original: {err.strerror or err}")
+        return
+    with transaction(db):
+        db.execute(
+            f"UPDATE {item.table} SET file_path = NULL, file_size = NULL, source_deleted_at = ?"
+            " WHERE id = ?",
+            (now().isoformat(), item.rowid),
+        )
+    relative = real.relative_to(Path(os.path.realpath(root))).as_posix()
+    stats.deleted.append(relative)
+    if log is not None:
+        log(f"deleted original {relative}")
+
+
 def normalize(
     db: sqlite3.Connection,
     media_dir: Path,
@@ -492,13 +582,22 @@ def normalize(
     order: Callable[[list[Item]], list[Item]] | None = None,
     on_encoded: Callable[[Item], None] | None = None,
     watch: Watcher | None = None,
+    delete_sources_under: Path | None = None,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    log: Callable[[str], None] | None = None,
 ) -> NormalizeStats:
     """Encode every item that has no up-to-date output. `limit` caps the encodes in this run.
 
     `encoder` is fixed, or asked once per item (the rig's GPU check, see ingest/gpu.py).
     `order` reorders the plan (see `prioritize`); `on_encoded` runs after each item is
     recorded (the rig writes its manifest sidecar there); `watch` hears about every item
-    (the rig's progress file, ingest/progress.py)."""
+    (the rig's progress file, ingest/progress.py).
+
+    With `delete_sources_under` (the rig: the LiveTV downloads), an episode's or movie's
+    source under that folder is deleted once its encode is recorded whole and checked, also
+    for an item encoded on an earlier pass; never in a dry run or a `max_seconds` trial (see
+    `_delete_source`). `now` stamps `source_deleted_at`; `log` hears what was deleted (by
+    relative path) or couldn't be. Such an item then counts as done."""
     stats = NormalizeStats()
     items = plan(db, shows)
     if order is not None:
@@ -512,10 +611,25 @@ def normalize(
         if watch is not None:
             watch.finished(item, outcome)
 
+    may_delete = delete_sources_under is not None and not dry_run and max_seconds is None
+
+    def delete(item: Item, src: Path, st: os.stat_result) -> None:
+        if may_delete and delete_sources_under is not None:
+            _delete_source(db, media_dir, item, src, st, delete_sources_under, stats, now,
+                           log)  # fmt: skip
+
     try:
         for item in items:
             if limit is not None and stats.encoded >= limit:
                 break
+            if item.source_deleted:  # the encode is all there is: never encoded again
+                if item.up_to_date_in_db() and (media_dir / item.target).is_file():
+                    stats.skipped += 1
+                    done(item, "skipped")
+                else:  # its encode is gone too: nothing to convert from
+                    stats.missing.append(item.label)
+                    done(item, "missing")
+                continue
             src = resolve_source(item.file_path, source_root, source_map)
             if src is None or not src.is_file():
                 stats.missing.append(item.label)
@@ -530,6 +644,7 @@ def normalize(
                 and (media_dir / item.target).is_file()
             ):
                 stats.skipped += 1
+                delete(item, src, st)
                 done(item, "skipped")
                 continue
             outcome = _encode(
@@ -537,6 +652,8 @@ def normalize(
                 max_seconds=max_seconds, dry_run=dry_run, run=run, probe=probe, crop=crop,
                 progress=progress, watch=watch,
             )  # fmt: skip
+            if outcome == "encoded":
+                delete(item, src, st)
             if outcome == "encoded" and on_encoded is not None:
                 on_encoded(item)
             if outcome is not None:

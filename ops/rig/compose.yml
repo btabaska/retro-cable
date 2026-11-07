@@ -3,7 +3,8 @@
 # ops/rig/up.sh (it checks the mounts first). See docs/specs/ops.md, "Media worker (rig)".
 #
 # Writes go to two places only: the media root (/mnt/nas-livetv, the NAS LiveTV share) and the worker's own database (ops/rig/data on the rig's local disk). The TV and
-# movie shares are mounted read-only on the host and again read-only here.
+# movie shares are mounted read-only on the host and again read-only here. The only files it
+# deletes are Live TV downloads under /media/sources, after their encode is whole.
 name: retro-cable-rig
 
 services:
@@ -32,6 +33,16 @@ services:
       # The mini's /api/admin/library, so shows on /admin channels go first (optional).
       RC_PRIORITY_URL: ${RC_PRIORITY_URL:-}
       RC_WORKER_INTERVAL: ${RC_WORKER_INTERVAL:-21600}
+      # Live TV downloads (M4): sonarr-livetv and radarr-livetv save into the LiveTV share's
+      # sources/tv and sources/movies (/media/sources here), which the worker scans too. Their
+      # originals are deleted once the encode is whole; Plex's trees are read-only and outside
+      # this folder. Set it empty in .env to keep every original.
+      RC_DELETE_SOURCES_UNDER: ${RC_DELETE_SOURCES_UNDER-/media/sources}
+      # 1: ask the two instances for carried titles with no files (ingest acquire). Off until
+      # the show lineup is final. Their API keys come only from .env.
+      RC_ACQUIRE: ${RC_ACQUIRE:-0}
+      RC_SONARR_LIVETV_URL: ${RC_SONARR_LIVETV_URL:-http://192.168.10.4:8990}
+      RC_RADARR_LIVETV_URL: ${RC_RADARR_LIVETV_URL:-http://192.168.10.4:7879}
       NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
     # NVENC and nvidia-smi through the NVIDIA container toolkit's CDI spec.
     devices:

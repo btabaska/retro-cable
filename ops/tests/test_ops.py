@@ -153,14 +153,15 @@ def _fake_bin(tmp_path: Path) -> tuple[Path, Path]:
     return bin_dir, calls
 
 
-def _run_worker(tmp_path: Path, media: Path, tv: Path) -> tuple[int, str, str]:
+def _run_worker(tmp_path: Path, media: Path, tv: Path, **extra: str) -> tuple[int, str, str]:
     bin_dir, calls = _fake_bin(tmp_path)
     data = tmp_path / "data"
     data.mkdir(exist_ok=True)
     env = {
-        **os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CALLS": str(calls),
+        **{k: v for k, v in os.environ.items() if k != "RC_ACQUIRE"},
+        "PATH": f"{bin_dir}:{os.environ['PATH']}", "CALLS": str(calls),
         "RC_WORKER_ONCE": "1", "RC_TV_ROOT": str(tv), "RC_MOVIES_ROOT": str(tmp_path / "none"),
-        "RC_MEDIA_DIR": str(media), "RC_DATA_DIR": str(data),
+        "RC_MEDIA_DIR": str(media), "RC_DATA_DIR": str(data), **extra,
     }  # fmt: skip
     result = subprocess.run(
         ["bash", str(OPS / "rig/worker.sh")], env=env, capture_output=True, text=True
@@ -205,6 +206,70 @@ def test_rig_worker_skips_an_unmounted_source_tree(tmp_path: Path) -> None:
     assert code != 0
     assert "python" not in log, "an empty tree would detach every file"
     assert "not mounted" in err
+
+
+def _pythons(log: str) -> list[str]:
+    return [line for line in log.splitlines() if line.startswith("python")]
+
+
+def test_rig_worker_also_scans_the_live_tv_downloads(tmp_path: Path) -> None:
+    """sonarr-livetv and radarr-livetv download into the LiveTV share's sources/ folders; an
+    empty one is normal (everything converted and its originals deleted)."""
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    (media / "sources/tv").mkdir(parents=True)  # empty: still scanned
+    (media / "sources/movies/Movie (1998)").mkdir(parents=True)
+    (tv / "Show (1990)").mkdir(parents=True)
+    code, log, _ = _run_worker(tmp_path, media, tv)
+    assert code == 0
+    assert _pythons(log)[0] == (
+        f"python -m retro_cable.ingest scan --tv {tv} --no-probe --tv {media}/sources/tv"
+        f" --movies {media}/sources/movies"
+    )
+
+
+def test_rig_worker_still_skips_when_only_the_plex_tree_is_empty(tmp_path: Path) -> None:
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    (media / "sources/tv/X-Men (1992)").mkdir(parents=True)
+    tv.mkdir()
+    code, log, err = _run_worker(tmp_path, media, tv)
+    assert code != 0
+    assert "python" not in log and "not mounted" in err
+
+
+def test_rig_worker_acquires_only_when_asked(tmp_path: Path) -> None:
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    (tv / "Show (1990)").mkdir(parents=True)
+    _, log, _ = _run_worker(tmp_path, media, tv)
+    assert not any(" acquire" in p for p in _pythons(log)), "off unless RC_ACQUIRE=1"
+
+    (tmp_path / "calls.log").unlink()
+    shutil.rmtree(tmp_path / "bin")
+    code, log, _ = _run_worker(tmp_path, media, tv, RC_ACQUIRE="1")
+    assert code == 0
+    jobs = [p.split()[3] for p in _pythons(log)]
+    assert jobs == ["scan", "acquire", "normalize"], "after the scan, before normalize"
+    assert (tmp_path / "data/last-acquire.json").is_file()
+
+
+def test_rig_worker_deletes_only_live_tv_originals_and_never_acquires_by_default() -> None:
+    env = load("rig/compose.yml")["services"]["worker"]["environment"]
+    # Unset in .env: /media/sources (the downloads). Set to empty in .env: off.
+    assert env["RC_DELETE_SOURCES_UNDER"] == "${RC_DELETE_SOURCES_UNDER-/media/sources}"
+    assert env["RC_ACQUIRE"] == "${RC_ACQUIRE:-0}"
+    assert env["RC_SONARR_LIVETV_URL"] == "${RC_SONARR_LIVETV_URL:-http://192.168.10.4:8990}"
+    assert env["RC_RADARR_LIVETV_URL"] == "${RC_RADARR_LIVETV_URL:-http://192.168.10.4:7879}"
+    # The keys come only from ops/rig/.env (env_file), never from the compose file.
+    assert not any("KEY" in k for k in env)
+    example = (OPS / "rig/.env.example").read_text()
+    for name in ("RC_SONARR_LIVETV_KEY", "RC_RADARR_LIVETV_KEY", "RC_ACQUIRE",
+                 "RC_DELETE_SOURCES_UNDER"):  # fmt: skip
+        assert f"# {name}=" in example
 
 
 def test_rig_up_refuses_mounts_that_are_not_what_it_expects(tmp_path: Path) -> None:

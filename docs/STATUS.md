@@ -1,6 +1,15 @@
 # Status
 
-**Current phase:** Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+**Current phase:** Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it, and M4 (Live TV downloads) on top of M3. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+
+## Milestone M4: Live TV downloads (in review, stacked on #21)
+
+Shows Retro Cable needs that aren't on the NAS are downloaded, never into Plex (Brandon, Nov 7 2026). The homelab side is live (Home task `retro-cable-02`): `sonarr-livetv` (:8990) and `radarr-livetv` (:7879) on the NAS save into the LiveTV share's `sources/tv` and `sources/movies`, profile `LiveTV SD`, unmonitoring deleted files. See `docs/specs/ops.md`, "Live TV downloads (M4)".
+
+- [x] `ingest scan` reads several roots as one library (`--tv`/`--movies` repeat); the rig worker adds `/media/sources/tv` and `/media/sources/movies`. Plex's copy wins; a missing root detaches nothing; the empty-Plex-tree guard stays for Plex's tree only
+- [x] Originals under `RC_DELETE_SOURCES_UNDER` (`/media/sources` on the rig; unset: never) are deleted once their encode is whole and checked; realpath check, no symlinks, never Plex's trees. The episode keeps its encode and manifest entry (`source_deleted_at`) and is not converted again
+- [x] `ingest acquire [--dry-run]`: carried titles with no files anywhere go to sonarr-livetv / radarr-livetv (by library id, else exact title + first-aired year; unresolved otherwise). Refuses an instance whose root folders aren't exactly `/tv` / `/movies`; idempotent. Runs in the worker only with `RC_ACQUIRE=1` (off)
+- [ ] Brandon finalizes the show lineup, reviews an `acquire --dry-run`, then sets `RC_ACQUIRE=1` and the two API keys in the rig's `ops/rig/.env` and redeploys the rig worker
 
 ## Milestone M3 / Phase 11 (part): AI channel builder (in review, stacked on #18)
 
