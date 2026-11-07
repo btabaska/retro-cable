@@ -888,6 +888,30 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "tmdb_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "TMDB id from the lineup (tv:N or movie:N), for ingest acquire",
+            "title": "Tmdb Id"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First-aired year from the lineup",
+            "title": "Year"
           }
         },
         "required": [

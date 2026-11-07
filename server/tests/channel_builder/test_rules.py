@@ -75,6 +75,22 @@ def test_first_aired_formats(text: str, expected: date | None) -> None:
     assert parse_first_aired(text) == expected
 
 
+def test_a_carried_shows_tmdb_id_wins_over_its_title(tmp_path: Path) -> None:
+    """The list says `The Adventures of Jimmy Neutron, Boy Genius`; the catalog carries `The
+    Adventures of Jimmy Neutron` with the same TMDB id (overrides.yaml): one show, one id."""
+    path = tmp_path / "s.csv"
+    path.write_text(
+        "action,category,title,kind,first_aired,tmdb_id\n"
+        'keep,kids,"The Adventures of Jimmy Neutron, Boy Genius",show,2002-07-20,tv:2129\n'
+        "keep,kids,Recess,show,1997,tv:1\n"
+    )
+    rows = read_shows(path, known_ids({}, {}), {"tv:2129": "the-adventures-of-jimmy-neutron"})
+    assert [(r.id, r.tmdb_id, r.debut_year) for r in rows] == [
+        ("the-adventures-of-jimmy-neutron", "tv:2129", 2002),
+        ("recess", "tv:1", 1997),
+    ]
+
+
 # --- dates ---------------------------------------------------------------------------------
 
 

@@ -3,7 +3,8 @@
   propose  draft channels for a show list CSV with the local model; writes proposal.json,
            proposal.md and proposal.csv into --out. Saves nothing.
   check    run the /admin checks on a proposal against the current database; saves nothing.
-  apply    check a proposal and save it as one /admin overlay revision (undoable).
+  apply    check a proposal and save it as one /admin overlay revision (undoable). With
+           --shows, TMDB ids and years missing from an older proposal come from the list.
 
 The model is reached through RC_LLM_URL, RC_LLM_KEY and RC_LLM_MODEL (channel_builder/llm.py).
 """
@@ -30,6 +31,7 @@ from retro_cable.channel_builder.proposal import (
     Proposal,
     apply_proposal,
     check_proposal,
+    fill_from_list,
 )
 from retro_cable.channel_builder.report import to_csv, to_markdown
 from retro_cable.channel_builder.shows import ShowRow, known_ids, read_shows
@@ -102,7 +104,9 @@ def _parser() -> argparse.ArgumentParser:
         "--catalog", type=Path, default=Path(os.environ.get("RC_CATALOG_DIR", "catalog"))
     )
     p.add_argument("--seed", type=int, default=int(os.environ.get("RC_SEED", "0")))
-    p.add_argument("--shows", type=Path, help="the show list CSV (propose)")
+    p.add_argument(
+        "--shows", type=Path, help="the show list CSV (propose; apply: fill missing TMDB ids)"
+    )
     p.add_argument("--out", type=Path, help="folder for proposal.json/.md/.csv (propose)")
     p.add_argument("--sample", type=int, default=0, help="only N shows, spread over the list")
     p.add_argument("--on-nas-only", action="store_true", help="only shows marked on_nas")
@@ -134,6 +138,8 @@ def main(
             print("give the proposal.json to check or apply", file=sys.stderr)
             return 2
         proposal = Proposal.model_validate_json(args.proposal.read_text())
+        if args.shows is not None:
+            proposal = fill_from_list(proposal, _rows(args.shows, ctx))
         if proposal.base_version != ctx.effective.version:
             print(
                 f"note: drafted against catalog {proposal.base_version}, now"
@@ -169,6 +175,15 @@ def _print_issues(checked: Checked) -> None:
             print(f"error: {i.channel or ''}: {i.message}", file=sys.stderr)
 
 
+def _rows(path: Path, ctx: Context) -> list[ShowRow]:
+    """The list's kept rows, with ids resolved against the effective catalog and library."""
+    catalog = ctx.effective
+    titles = {c.show: c.title for c in catalog.carriage.carriage}
+    by_tmdb = {o.tmdb_id: o.show for o in catalog.overrides.shows if o.tmdb_id and o.show in titles}
+    known = known_ids(titles, {i.id: i.title for i in ctx.index.values()})
+    return read_shows(path, known, by_tmdb)
+
+
 def _propose(
     args: argparse.Namespace, ctx: Context, llm: LLM, clock: Callable[[], datetime]
 ) -> int:
@@ -176,8 +191,7 @@ def _propose(
         print("propose needs --shows CSV and --out DIR", file=sys.stderr)
         return 2
     catalog = ctx.effective
-    titles = {c.show: c.title for c in catalog.carriage.carriage}
-    rows = read_shows(args.shows, known_ids(titles, {i.id: i.title for i in ctx.index.values()}))
+    rows = _rows(args.shows, ctx)
     if args.on_nas_only:
         rows = [r for r in rows if r.on_nas or (r.id in ctx.index and ctx.index[r.id].episodes)]
     rows = spread(rows, args.sample)

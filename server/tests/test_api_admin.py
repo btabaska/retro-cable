@@ -85,6 +85,36 @@ def test_library_lists_uncarried_shows_first(client: TestClient) -> None:
     ] == ["johnny-bravo"]
 
 
+def test_library_lists_carried_titles_with_nothing_on_disk_and_their_lineup_ids(
+    make_catalog: MakeCatalog, tmp_path: Path
+) -> None:
+    """A title a channel carries is in the library even with no files anywhere (the rig's
+    `ingest acquire` reads this list for the shows the channel builder placed), with the
+    lineup's TMDB id and first-aired year from the effective overrides."""
+    overrides = 'shows:\n  - { show: x-men, tmdb_id: "tv:4500", year: 1992 }\n'
+    media = tmp_path / "media"
+    media.mkdir()
+    db = tmp_path / "rc.db"
+    seed_db(db, media)
+    settings = Settings(
+        catalog_dir=make_catalog(overrides=overrides), db_path=db, media_dir=media,
+        media_secret="s", seed=7,
+    )  # fmt: skip
+    client = TestClient(create_app(settings, clock=lambda: REAL_NOW))
+    items = {i["id"]: i for i in client.get("/admin/library").json()["items"]}
+    xmen = items["x-men"]
+    assert (xmen["title"], xmen["kind"], xmen["episodes"]) == ("X-Men", "show", 0)
+    assert (xmen["tmdb_id"], xmen["year"], xmen["first_year"]) == ("tv:4500", 1992, None)
+    assert xmen["channels"] == [{"id": "ktvu", "name": "KTVU (Fox)", "number": 2}]
+    assert items["halloweentown"]["kind"] == "movie"
+    assert items["the-simpsons"]["tmdb_id"] is None and items["the-simpsons"]["episodes"] > 0
+    # Carried, so a custom channel may carry it too; the check warns it has nothing to play.
+    draft = toons(shows=[{"show": "x-men"}])
+    check = client.post("/admin/check", json={"draft": draft}).json()
+    assert check["errors"] == []
+    assert any("X-Men" in w["message"] for w in check["warnings"])
+
+
 def test_list_channels_marks_yaml_channels_read_only(client: TestClient) -> None:
     body = client.get("/admin/channels").json()
     assert body["state"] == {

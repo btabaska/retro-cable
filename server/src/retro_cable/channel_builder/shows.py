@@ -3,8 +3,9 @@
 Columns: action, review, category, title, kind, first_aired, after_2010, original_network,
 on_nas, already_carried, tmdb_id, aka, notes (and anything else, ignored). Only rows whose
 action is `keep` or `add` are kept. Ids are resolved against what already exists, so a show
-keeps one id everywhere: a carried catalog title first, then a library (database) title, then
-the slug `ingest scan` would give the folder.
+keeps one id everywhere: a carried show with the row's TMDB id (overrides.yaml) first, then a
+carried catalog title, then a library (database) title, then the slug `ingest scan` would
+give the folder.
 """
 
 import csv
@@ -15,6 +16,7 @@ from datetime import date
 from pathlib import Path
 from typing import Literal
 
+from retro_cable.catalog.models import TMDB_REF
 from retro_cable.ingest.plex import normalize_title
 
 KEEP = frozenset({"keep", "add"})
@@ -68,14 +70,21 @@ def _kind(text: str) -> Kind:
     return "movie" if k == "movie" else "special" if k == "special" else "show"
 
 
-def read_shows(path: Path, known: Mapping[str, str] | None = None) -> list[ShowRow]:
+def read_shows(
+    path: Path, known: Mapping[str, str] | None = None, by_tmdb: Mapping[str, str] | None = None
+) -> list[ShowRow]:
     """The kept rows of a lineup CSV. `known` maps normalized titles to existing ids (see
-    known_ids); a title seen twice keeps its first row."""
+    known_ids), `by_tmdb` TMDB ids (`tv:N`) to carried ids; a title seen twice keeps its
+    first row."""
     with path.open(encoding="utf-8-sig", newline="") as f:
-        return rows_from(csv.DictReader(f), known or {})
+        return rows_from(csv.DictReader(f), known or {}, by_tmdb or {})
 
 
-def rows_from(records: Iterable[Mapping[str, str]], known: Mapping[str, str]) -> list[ShowRow]:
+def rows_from(
+    records: Iterable[Mapping[str, str]],
+    known: Mapping[str, str],
+    by_tmdb: Mapping[str, str] | None = None,
+) -> list[ShowRow]:
     rows: list[ShowRow] = []
     ids: set[str] = set()
     for r in records:
@@ -85,7 +94,9 @@ def rows_from(records: Iterable[Mapping[str, str]], known: Mapping[str, str]) ->
         if not title:
             continue
         aka = tuple(a.strip() for a in (r.get("aka") or "").split(";") if a.strip())
-        found = next(
+        tmdb = (r.get("tmdb_id") or "").strip()
+        found = (by_tmdb or {}).get(tmdb) if tmdb else None
+        found = found or next(
             (known[k] for k in (normalize_title(t) for t in (title, *aka)) if k in known), None
         )
         show_id = found or slug(title)
@@ -105,11 +116,21 @@ def rows_from(records: Iterable[Mapping[str, str]], known: Mapping[str, str]) ->
                 or (first is not None and first.year > 2010),
                 network=(r.get("original_network") or "").strip(),
                 on_nas=_flag(r.get("on_nas") or ""),
-                tmdb_id=(r.get("tmdb_id") or "").strip(),
+                tmdb_id=tmdb,
                 aka=aka,
             )
         )
     return rows
+
+
+def lineup_ref(text: str) -> str | None:
+    """The row's TMDB id when it is well formed (`tv:N` / `movie:N`), else None."""
+    return text if re.fullmatch(TMDB_REF, text) else None
+
+
+def lineup_year(row: ShowRow) -> int | None:
+    year = row.debut_year
+    return year if year is not None and 1900 <= year <= 2100 else None
 
 
 def known_ids(

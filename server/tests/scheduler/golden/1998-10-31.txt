@@ -1,200 +1,104 @@
 # 1998-10-31 (Saturday)
 
 ## ktvu
-05:00:00  1320s [episode halloween] Cops S6E8 Episode 118: Halloween
+05:00:00  1320s [episode halloween] The Simpsons S6E8 Episode 118: Halloween
 05:22:00    10s [bumper] KTVU (Fox)
-05:22:10  2640s [episode halloween] America's Most Wanted S10E9 Episode 207: Halloween
-06:06:10    10s [bumper] KTVU (Fox)
-06:06:20  1320s [episode halloween] Cops S10E9 Episode 207: Halloween
-06:28:20    10s [bumper] KTVU (Fox)
-06:28:30  1320s [episode halloween] Cops S9E9 Episode 185: Halloween
-06:50:30    10s [bumper] KTVU (Fox)
-06:50:40  1320s [episode halloween] Cops S12E9 Episode 251: Halloween
-07:12:40    10s [bumper] KTVU (Fox)
-07:12:50  1320s [episode halloween] Cops S7E8 Episode 140: Halloween
-07:34:50    10s [bumper] KTVU (Fox)
-07:35:00  1320s [episode halloween] Cops S4E8 Episode 74: Halloween
-07:57:00    10s [bumper] KTVU (Fox)
-07:57:10  2640s [episode halloween] America's Most Wanted S8E9 Episode 163: Halloween
-08:41:10    10s [bumper] KTVU (Fox)
-08:41:20  1320s [episode] Big Bad Beetleborgs S1E12 Episode 12
-09:03:20    10s [bumper] KTVU (Fox)
-09:03:30  1320s [episode] Goosebumps S4E11 Episode 77
-09:25:30    10s [bumper] KTVU (Fox)
-09:25:40  1320s [episode halloween] Bobby's World S4E9 Episode 75: Halloween
-09:47:40    10s [bumper] KTVU (Fox)
-09:47:50  1320s [episode] Goosebumps S4E12 Episode 78: St. Patrick's Day
-10:09:50    10s [bumper] KTVU (Fox)
-10:10:00  1320s [episode] Life with Louie S2E16 Episode 38
-10:32:00    10s [bumper] KTVU (Fox)
-10:32:10  1320s [episode halloween] Bobby's World S7E9 Episode 141: Halloween
-10:54:10    10s [bumper] KTVU (Fox)
-10:54:20  1320s [episode] Goosebumps S4E13 Episode 79
-11:16:20    10s [bumper] KTVU (Fox)
-11:16:30  1320s [episode] Life with Louie S2E17 Episode 39
-11:38:30    10s [bumper] KTVU (Fox)
-11:38:40  1320s [episode] Mighty Morphin Power Rangers S4E5 Episode 71
-12:00:40    10s [bumper] KTVU (Fox)
-12:00:50  1320s [episode] Goosebumps S4E14 Episode 80
-12:22:50    10s [bumper] KTVU (Fox)
-12:23:00  1320s [episode] Spider-Man S3E19 Episode 63
-12:45:00    10s [bumper] KTVU (Fox)
-12:45:10  1320s [episode halloween] Bobby's World S8E9 Episode 163: Halloween
-13:07:10    10s [bumper] KTVU (Fox)
-13:07:20  1320s [episode] Mighty Morphin Power Rangers S4E6 Episode 72
-13:29:20    10s [bumper] KTVU (Fox)
-13:29:30  1320s [episode] Big Bad Beetleborgs S1E13 Episode 13
-13:51:30    10s [bumper] KTVU (Fox)
-13:51:40  1320s [episode] Goosebumps S4E15 Episode 81
-14:13:40    10s [bumper] KTVU (Fox)
-14:13:50  1320s [episode] Big Bad Beetleborgs S1E14 Episode 14
-14:35:50    10s [bumper] KTVU (Fox)
-14:36:00  1320s [episode] Goosebumps S4E16 Episode 82
-14:58:00    10s [bumper] KTVU (Fox)
-14:58:10  1320s [episode] Spider-Man S3E20 Episode 64
-15:20:10    10s [bumper] KTVU (Fox)
-15:20:20  1320s [episode halloween] Bobby's World S5E9 Episode 97: Halloween
-15:42:20    10s [bumper] KTVU (Fox)
-15:42:30  1320s [episode] Spider-Man S3E21 Episode 65
-16:04:30    10s [bumper] KTVU (Fox)
-16:04:40  1320s [episode halloween] Bobby's World S1E8 Episode 8: Halloween
-16:26:40    10s [bumper] KTVU (Fox)
-16:26:50  1320s [episode] Goosebumps S4E17 Episode 83
-16:48:50    10s [bumper] KTVU (Fox)
-16:49:00  1320s [episode] Mighty Morphin Power Rangers S4E7 Episode 73: Valentine's Day
-17:11:00    10s [bumper] KTVU (Fox)
-17:11:10  1320s [episode] Life with Louie S2E18 Episode 40
-17:33:10    10s [bumper] KTVU (Fox)
-17:33:20  1320s [episode] Goosebumps S4E18 Episode 84
-17:55:20    10s [bumper] KTVU (Fox)
-17:55:30  1320s [episode] Spider-Man S3E22 Episode 66
-18:17:30    10s [bumper] KTVU (Fox)
-18:17:40  1320s [episode] Life with Louie S2E19 Episode 41
-18:39:40    10s [bumper] KTVU (Fox)
-18:39:50  1320s [episode] Mighty Morphin Power Rangers S4E8 Episode 74
-19:01:50    10s [bumper] KTVU (Fox)
-19:02:00  1320s [episode halloween] Bobby's World S3E9 Episode 53: Halloween
-19:24:00    10s [bumper] KTVU (Fox)
-19:24:10  1320s [episode] Mighty Morphin Power Rangers S4E9 Episode 75
-19:46:10    10s [bumper] KTVU (Fox)
-19:46:20  1320s [episode] Goosebumps S4E19 Episode 85
-20:08:20    10s [bumper] KTVU (Fox)
-20:08:30  1320s [episode halloween] The Simpsons S6E8 Episode 118: Halloween
-20:30:30    10s [bumper] KTVU (Fox)
-20:30:40  1320s [episode halloween] The Simpsons S11E9 Episode 229: Halloween
-20:52:40    10s [bumper] KTVU (Fox)
-20:52:50  1320s [episode halloween] The Simpsons S9E9 Episode 185: Halloween
-21:14:50    10s [bumper] KTVU (Fox)
-21:15:00  1320s [episode halloween] The Simpsons S3E8 Episode 52: Halloween
-21:37:00    10s [bumper] KTVU (Fox)
-21:37:10  1320s [episode] That '70s Show S1E4 Episode 4
-21:59:10    10s [bumper] KTVU (Fox)
-21:59:20  1320s [episode halloween] The Simpsons S2E7 Episode 29: Halloween
-22:21:20    10s [bumper] KTVU (Fox)
-22:21:30  1320s [episode] That '70s Show S1E5 Episode 5
-22:43:30    10s [bumper] KTVU (Fox)
-22:43:40  1320s [episode halloween] The Simpsons S8E9 Episode 163: Halloween
-23:05:40    10s [bumper] KTVU (Fox)
-23:05:50  1320s [episode halloween] The Simpsons S12E9 Episode 251: Halloween
-23:27:50    10s [bumper] KTVU (Fox)
-23:28:00  1320s [episode] That '70s Show S1E6 Episode 6
-23:50:00    10s [bumper] KTVU (Fox)
-23:50:10  1320s [episode halloween] The Simpsons S5E8 Episode 96: Halloween
-00:12:10    10s [bumper] KTVU (Fox)
-00:12:20  1320s [episode] Cops S8E14 Episode 168
-00:34:20    10s [bumper] KTVU (Fox)
-00:34:30  2640s [episode] America's Most Wanted S11E20 Episode 240
-01:18:30    10s [bumper] KTVU (Fox)
-01:18:40  2640s [episode] America's Most Wanted S11E21 Episode 241
-02:02:40    10s [bumper] KTVU (Fox)
-02:02:50  1320s [episode] Cops S8E15 Episode 169
-02:24:50    10s [bumper] KTVU (Fox)
-02:25:00  1320s [episode] Cops S8E16 Episode 170: Christmas
-02:47:00    10s [bumper] KTVU (Fox)
-02:47:10  1320s [episode] Cops S8E17 Episode 171: New Year's Eve
-03:09:10    10s [bumper] KTVU (Fox)
-03:09:20  2640s [episode] America's Most Wanted S11E22 Episode 242
-03:53:20    10s [bumper] KTVU (Fox)
-03:53:30  2640s [episode] America's Most Wanted S12E1 Episode 243
-04:37:30    10s [bumper] KTVU (Fox)
-04:37:40  1320s [episode] Cops S8E18 Episode 172
-04:59:40    20s [filler] Paid Programming
+05:22:10  1320s [episode] That '70s Show S1E4 Episode 4
+05:44:10    10s [bumper] KTVU (Fox)
+05:44:20  1320s [episode halloween] The Simpsons S11E9 Episode 229: Halloween
+06:06:20    10s [bumper] KTVU (Fox)
+06:06:30  1320s [episode] That '70s Show S1E5 Episode 5
+06:28:30    10s [bumper] KTVU (Fox)
+06:28:40  1320s [episode halloween] The Simpsons S9E9 Episode 185: Halloween
+06:50:40    10s [bumper] KTVU (Fox)
+06:50:50  1320s [episode] That '70s Show S1E6 Episode 6
+07:12:50    10s [bumper] KTVU (Fox)
+07:13:00  1320s [episode halloween] The Simpsons S3E8 Episode 52: Halloween
+07:35:00    10s [bumper] KTVU (Fox)
+07:35:10  1320s [episode] That '70s Show S1E7 Episode 7: Valentine's Day
+07:57:10    10s [bumper] KTVU (Fox)
+07:57:20  1320s [episode halloween] The Simpsons S2E7 Episode 29: Halloween
+08:19:20 42040s [filler] Off Air
+20:00:00  1320s [episode halloween] The Simpsons S11E9 Episode 229: Halloween
+20:22:00    10s [bumper] KTVU (Fox)
+20:22:10  1320s [episode halloween] The Simpsons S4E8 Episode 74: Halloween
+20:44:10    10s [bumper] KTVU (Fox)
+20:44:20  1320s [episode halloween] The Simpsons S3E8 Episode 52: Halloween
+21:06:20    10s [bumper] KTVU (Fox)
+21:06:30  1320s [episode] That '70s Show S1E8 Episode 8
+21:28:30    10s [bumper] KTVU (Fox)
+21:28:40  1320s [episode halloween] The Simpsons S10E9 Episode 207: Halloween
+21:50:40    10s [bumper] KTVU (Fox)
+21:50:50  1320s [episode halloween] The Simpsons S9E9 Episode 185: Halloween
+22:12:50    10s [bumper] KTVU (Fox)
+22:13:00  1320s [episode halloween] The Simpsons S5E8 Episode 96: Halloween
+22:35:00    10s [bumper] KTVU (Fox)
+22:35:10  1320s [episode] That '70s Show S1E9 Episode 9
+22:57:10    10s [bumper] KTVU (Fox)
+22:57:20  1320s [episode halloween] The Simpsons S8E9 Episode 163: Halloween
+23:19:20    10s [bumper] KTVU (Fox)
+23:19:30  1320s [episode] That '70s Show S1E10 Episode 10
+23:41:30    10s [bumper] KTVU (Fox)
+23:41:40  1320s [episode halloween] The Simpsons S6E8 Episode 118: Halloween
+00:03:40    10s [bumper] KTVU (Fox)
+00:03:50  1320s [episode] That '70s Show S1E11 Episode 11: St. Patrick's Day
+00:25:50    10s [bumper] KTVU (Fox)
+00:26:00  1320s [episode] That '70s Show S1E12 Episode 12
+00:48:00    10s [bumper] KTVU (Fox)
+00:48:10  1320s [episode] That '70s Show S1E13 Episode 13
+01:10:10    10s [bumper] KTVU (Fox)
+01:10:20  1320s [episode] The Simpsons S9E11 Episode 187
+01:32:20    10s [bumper] KTVU (Fox)
+01:32:30  1320s [episode] That '70s Show S1E14 Episode 14
+01:54:30    10s [bumper] KTVU (Fox)
+01:54:40  1320s [episode] The Simpsons S9E12 Episode 188: Thanksgiving
+02:16:40    10s [bumper] KTVU (Fox)
+02:16:50  1320s [episode] That '70s Show S1E15 Episode 15
+02:38:50    10s [bumper] KTVU (Fox)
+02:39:00  1320s [episode] That '70s Show S1E16 Episode 16
+03:01:00    10s [bumper] KTVU (Fox)
+03:01:10  1320s [episode] The Simpsons S9E13 Episode 189
+03:23:10    10s [bumper] KTVU (Fox)
+03:23:20  1320s [episode] That '70s Show S1E17 Episode 17
+03:45:20    10s [bumper] KTVU (Fox)
+03:45:30  1320s [episode] The Simpsons S9E14 Episode 190
+04:07:30    10s [bumper] KTVU (Fox)
+04:07:40  1320s [episode] That '70s Show S1E18 Episode 18
+04:29:40    10s [bumper] KTVU (Fox)
+04:29:50  1320s [episode] The Simpsons S9E15 Episode 191
+04:51:50   490s [filler] Paid Programming
 
 ## disney
-05:00:00  1320s [episode] Bug Juice S1E20 Episode 20
-05:22:00    10s [bumper] Disney Channel
-05:22:10  1320s [episode] Bear in the Big Blue House S2E2 Episode 24
-05:44:10    10s [bumper] Disney Channel
-05:44:20  5400s [movie] Brink!
-07:14:20    10s [bumper] Disney Channel
-07:14:30  1320s [episode] Bear in the Big Blue House S2E3 Episode 25
-07:36:30    10s [bumper] Disney Channel
-07:36:40  1320s [episode] Bug Juice S1E21 Episode 21
-07:58:40    10s [bumper] Disney Channel
-07:58:50  1320s [episode] Bear in the Big Blue House S2E4 Episode 26
-08:20:50    10s [bumper] Disney Channel
-08:21:00  1320s [episode] Bug Juice S1E22 Episode 22
-08:43:00    10s [bumper] Disney Channel
-08:43:10  1320s [episode] Bug Juice S1E1 Episode 1
-09:05:10    10s [bumper] Disney Channel
-09:05:20  1320s [episode] Bug Juice S1E2 Episode 2
-09:27:20    10s [bumper] Disney Channel
-09:27:30  1320s [episode] Bear in the Big Blue House S2E5 Episode 27
-09:49:30    10s [bumper] Disney Channel
-09:49:40  1320s [episode] Bear in the Big Blue House S2E6 Episode 28
-10:11:40    10s [bumper] Disney Channel
-10:11:50  1320s [episode] Bug Juice S1E3 Episode 3
-10:33:50    10s [bumper] Disney Channel
-10:34:00  5400s [movie] Brink!
-12:04:00    10s [bumper] Disney Channel
-12:04:10  1320s [episode] Bear in the Big Blue House S2E7 Episode 29: Valentine's Day
-12:26:10    10s [bumper] Disney Channel
-12:26:20  5400s [movie] Brink!
-13:56:20    10s [bumper] Disney Channel
-13:56:30  1320s [episode] Bug Juice S1E4 Episode 4
-14:18:30    10s [bumper] Disney Channel
-14:18:40  1320s [episode] Bear in the Big Blue House S2E8 Episode 30
-14:40:40    10s [bumper] Disney Channel
-14:40:50  1320s [episode] Bear in the Big Blue House S2E9 Episode 31
-15:02:50    10s [bumper] Disney Channel
-15:03:00  5400s [movie] Brink!
-16:33:00    10s [bumper] Disney Channel
-16:33:10  1320s [episode] Bear in the Big Blue House S2E10 Episode 32
-16:55:10    10s [bumper] Disney Channel
-16:55:20  5400s [movie] Brink!
-18:25:20    10s [bumper] Disney Channel
-18:25:30  1320s [episode] Bear in the Big Blue House S2E11 Episode 33: St. Patrick's Day
-18:47:30    10s [bumper] Disney Channel
-18:47:40  5400s [movie] Brink!
-20:17:40    10s [bumper] Disney Channel
-20:17:50  5400s [movie halloween] Under Wraps
-21:47:50    10s [bumper] Disney Channel
-21:48:00  5400s [movie halloween] Halloweentown
-23:18:00    10s [bumper] Disney Channel
-23:18:10  1320s [episode] Bear in the Big Blue House S2E12 Episode 34
-23:40:10    10s [bumper] Disney Channel
-23:40:20  1320s [episode] Bear in the Big Blue House S2E13 Episode 35
-00:02:20    10s [bumper] Disney Channel
-00:02:30  1320s [episode] Bug Juice S1E5 Episode 5
-00:24:30    10s [bumper] Disney Channel
-00:24:40  1320s [episode] Bug Juice S1E6 Episode 6
-00:46:40    10s [bumper] Disney Channel
-00:46:50  1320s [episode] Bear in the Big Blue House S2E14 Episode 36
-01:08:50    10s [bumper] Disney Channel
-01:09:00  1320s [episode] Bug Juice S1E7 Episode 7: Valentine's Day
-01:31:00    10s [bumper] Disney Channel
-01:31:10  5400s [movie] Brink!
-03:01:10    10s [bumper] Disney Channel
-03:01:20  1320s [episode] Bug Juice S1E8 Episode 8
-03:23:20    10s [bumper] Disney Channel
-03:23:30  1320s [episode] Bear in the Big Blue House S2E15 Episode 37
-03:45:30    10s [bumper] Disney Channel
-03:45:40  1320s [episode] Bug Juice S1E9 Episode 9
-04:07:40    10s [bumper] Disney Channel
-04:07:50  1320s [episode] Bear in the Big Blue House S2E16 Episode 38
-04:29:50    10s [bumper] Disney Channel
-04:30:00  1320s [episode] Bug Juice S1E10 Episode 10
-04:52:00   480s [filler] Paid Programming
+05:00:00  5400s [movie] Brink!
+06:30:00    10s [bumper] Disney Channel
+06:30:10  5400s [movie] Brink!
+08:00:10    10s [bumper] Disney Channel
+08:00:20  5400s [movie] Brink!
+09:30:20    10s [bumper] Disney Channel
+09:30:30  5400s [movie] Brink!
+11:00:30    10s [bumper] Disney Channel
+11:00:40  5400s [movie] Brink!
+12:30:40    10s [bumper] Disney Channel
+12:30:50  5400s [movie] Brink!
+14:00:50    10s [bumper] Disney Channel
+14:01:00  5400s [movie] Brink!
+15:31:00    10s [bumper] Disney Channel
+15:31:10  5400s [movie] Brink!
+17:01:10    10s [bumper] Disney Channel
+17:01:20  5400s [movie] Brink!
+18:31:20    10s [bumper] Disney Channel
+18:31:30  5400s [movie] Brink!
+20:01:30    10s [bumper] Disney Channel
+20:01:40  5400s [movie halloween] Under Wraps
+21:31:40    10s [bumper] Disney Channel
+21:31:50  5400s [movie halloween] Halloweentown
+23:01:50    10s [bumper] Disney Channel
+23:02:00  5400s [movie] Brink!
+00:32:00    10s [bumper] Disney Channel
+00:32:10  5400s [movie] Brink!
+02:02:10    10s [bumper] Disney Channel
+02:02:20  5400s [movie] Brink!
+03:32:20  5260s [filler] Paid Programming
 
 ## disney-movies
 05:00:00  5400s [movie halloween] Under Wraps
@@ -389,93 +293,131 @@
 04:52:00   480s [filler] Paid Programming
 
 ## kpix
-05:00:00  1320s [episode halloween] Murphy Brown S7E8 Episode 140: Halloween
+05:00:00  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
 05:22:00    10s [bumper] KPIX (CBS)
-05:22:10  2640s [episode] Walker, Texas Ranger S3E13 Episode 57
-06:06:10    10s [bumper] KPIX (CBS)
-06:06:20  2640s [episode] Late Show with David Letterman S1E4 Episode 4
-06:50:20    10s [bumper] KPIX (CBS)
-06:50:30  1320s [episode] The King of Queens S1E9 Episode 9
-07:12:30    10s [bumper] KPIX (CBS)
-07:12:40  2640s [episode] Late Show with David Letterman S1E5 Episode 5
-07:56:40    10s [bumper] KPIX (CBS)
-07:56:50  1320s [episode] Everybody Loves Raymond S3E22 Episode 66
-08:18:50    10s [bumper] KPIX (CBS)
-08:19:00  1320s [episode halloween] Murphy Brown S2E7 Episode 29: Halloween
-08:41:00    10s [bumper] KPIX (CBS)
-08:41:10  2640s [episode] Diagnosis: Murder S5E20 Episode 108
-09:25:10    10s [bumper] KPIX (CBS)
-09:25:20  1320s [episode halloween] Murphy Brown S6E8 Episode 118: Halloween
-09:47:20    10s [bumper] KPIX (CBS)
-09:47:30  1320s [episode] The King of Queens S1E10 Episode 10
-10:09:30    10s [bumper] KPIX (CBS)
-10:09:40  2640s [episode] Walker, Texas Ranger S3E14 Episode 58
-10:53:40    10s [bumper] KPIX (CBS)
-10:53:50  1320s [episode] Everybody Loves Raymond S1E1 Episode 1
-11:15:50    10s [bumper] KPIX (CBS)
-11:16:00  2640s [episode] Diagnosis: Murder S5E21 Episode 109
-12:00:00    10s [bumper] KPIX (CBS)
-12:00:10  2640s [episode] Dr. Quinn, Medicine Woman S3E20 Episode 64
-12:44:10    10s [bumper] KPIX (CBS)
-12:44:20  1320s [episode] The King of Queens S1E11 Episode 11: St. Patrick's Day
-13:06:20    10s [bumper] KPIX (CBS)
-13:06:30  1320s [episode] Everybody Loves Raymond S1E2 Episode 2
-13:28:30    10s [bumper] KPIX (CBS)
-13:28:40  2640s [episode] Diagnosis: Murder S5E22 Episode 110
-14:12:40    10s [bumper] KPIX (CBS)
-14:12:50  1320s [episode] The Nanny S1E20 Episode 20
-14:34:50    10s [bumper] KPIX (CBS)
-14:35:00  2640s [episode] Diagnosis: Murder S6E1 Episode 111: New Year's Eve
-15:19:00    10s [bumper] KPIX (CBS)
-15:19:10  1320s [episode] The King of Queens S1E12 Episode 12
-15:41:10    10s [bumper] KPIX (CBS)
-15:41:20  2640s [episode] Touched by an Angel S4E22 Episode 88
-16:25:20    10s [bumper] KPIX (CBS)
-16:25:30  2640s [episode] Walker, Texas Ranger S3E15 Episode 59
-17:09:30    10s [bumper] KPIX (CBS)
-17:09:40  1320s [episode halloween] Murphy Brown S1E7 Episode 7: Halloween
-17:31:40    10s [bumper] KPIX (CBS)
-17:31:50  1320s [episode] The King of Queens S1E13 Episode 13
-17:53:50    10s [bumper] KPIX (CBS)
-17:54:00  1320s [episode halloween] Murphy Brown S5E8 Episode 96: Halloween
-18:16:00    10s [bumper] KPIX (CBS)
-18:16:10  1320s [episode] The King of Queens S1E14 Episode 14
-18:38:10    10s [bumper] KPIX (CBS)
-18:38:20  1320s [episode halloween] Murphy Brown S9E9 Episode 185: Halloween
-19:00:20    10s [bumper] KPIX (CBS)
-19:00:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
-19:22:30    10s [bumper] KPIX (CBS)
-19:22:40  2640s [episode] Dr. Quinn, Medicine Woman S3E21 Episode 65
-20:06:40    10s [bumper] KPIX (CBS)
-20:06:50  2640s [episode] Walker, Texas Ranger S3E16 Episode 60
-20:50:50    10s [bumper] KPIX (CBS)
-20:51:00  2640s [episode] Late Show with David Letterman S1E6 Episode 6
-21:35:00    10s [bumper] KPIX (CBS)
-21:35:10  1320s [episode] The Nanny S1E21 Episode 21
-21:57:10    10s [bumper] KPIX (CBS)
-21:57:20  1320s [episode] The King of Queens S1E15 Episode 15
-22:19:20    10s [bumper] KPIX (CBS)
-22:19:30  2640s [episode] Diagnosis: Murder S6E2 Episode 112
-23:03:30    10s [bumper] KPIX (CBS)
-23:03:40  2640s [episode] Touched by an Angel S5E1 Episode 89: New Year's Eve
-23:47:40    10s [bumper] KPIX (CBS)
-23:47:50  1320s [episode halloween] Murphy Brown S3E8 Episode 52: Halloween
-00:09:50    10s [bumper] KPIX (CBS)
-00:10:00  2640s [episode] Diagnosis: Murder S6E3 Episode 113
-00:54:00    10s [bumper] KPIX (CBS)
-00:54:10  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
-01:16:10    10s [bumper] KPIX (CBS)
-01:16:20  2640s [episode] Touched by an Angel S5E2 Episode 90
-02:00:20    10s [bumper] KPIX (CBS)
-02:00:30  2640s [episode] Late Show with David Letterman S1E7 Episode 7: Valentine's Day
-02:44:30    10s [bumper] KPIX (CBS)
-02:44:40  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
-03:06:40    10s [bumper] KPIX (CBS)
-03:06:50  1320s [episode] Murphy Brown S10E8 Episode 206
-03:28:50    10s [bumper] KPIX (CBS)
-03:29:00  1320s [episode] The Nanny S1E22 Episode 22
-03:51:00    10s [bumper] KPIX (CBS)
-03:51:10  2640s [episode] Touched by an Angel S5E3 Episode 91
-04:35:10    10s [bumper] KPIX (CBS)
-04:35:20  1320s [episode] The King of Queens S1E16 Episode 16
-04:57:20   160s [filler] Paid Programming
+05:22:10  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+05:44:10    10s [bumper] KPIX (CBS)
+05:44:20  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+06:06:20    10s [bumper] KPIX (CBS)
+06:06:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+06:28:30    10s [bumper] KPIX (CBS)
+06:28:40  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+06:50:40    10s [bumper] KPIX (CBS)
+06:50:50  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+07:12:50    10s [bumper] KPIX (CBS)
+07:13:00  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+07:35:00    10s [bumper] KPIX (CBS)
+07:35:10  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+07:57:10    10s [bumper] KPIX (CBS)
+07:57:20  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+08:19:20    10s [bumper] KPIX (CBS)
+08:19:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+08:41:30    10s [bumper] KPIX (CBS)
+08:41:40  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+09:03:40    10s [bumper] KPIX (CBS)
+09:03:50  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+09:25:50    10s [bumper] KPIX (CBS)
+09:26:00  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+09:48:00    10s [bumper] KPIX (CBS)
+09:48:10  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+10:10:10    10s [bumper] KPIX (CBS)
+10:10:20  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+10:32:20    10s [bumper] KPIX (CBS)
+10:32:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+10:54:30    10s [bumper] KPIX (CBS)
+10:54:40  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+11:16:40    10s [bumper] KPIX (CBS)
+11:16:50  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+11:38:50    10s [bumper] KPIX (CBS)
+11:39:00  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+12:01:00    10s [bumper] KPIX (CBS)
+12:01:10  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+12:23:10    10s [bumper] KPIX (CBS)
+12:23:20  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+12:45:20    10s [bumper] KPIX (CBS)
+12:45:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+13:07:30    10s [bumper] KPIX (CBS)
+13:07:40  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+13:29:40    10s [bumper] KPIX (CBS)
+13:29:50  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+13:51:50    10s [bumper] KPIX (CBS)
+13:52:00  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+14:14:00    10s [bumper] KPIX (CBS)
+14:14:10  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+14:36:10    10s [bumper] KPIX (CBS)
+14:36:20  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+14:58:20    10s [bumper] KPIX (CBS)
+14:58:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+15:20:30    10s [bumper] KPIX (CBS)
+15:20:40  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+15:42:40    10s [bumper] KPIX (CBS)
+15:42:50  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+16:04:50    10s [bumper] KPIX (CBS)
+16:05:00  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+16:27:00    10s [bumper] KPIX (CBS)
+16:27:10  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+16:49:10    10s [bumper] KPIX (CBS)
+16:49:20  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+17:11:20    10s [bumper] KPIX (CBS)
+17:11:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+17:33:30    10s [bumper] KPIX (CBS)
+17:33:40  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+17:55:40    10s [bumper] KPIX (CBS)
+17:55:50  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+18:17:50    10s [bumper] KPIX (CBS)
+18:18:00  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+18:40:00    10s [bumper] KPIX (CBS)
+18:40:10  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+19:02:10    10s [bumper] KPIX (CBS)
+19:02:20  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+19:24:20    10s [bumper] KPIX (CBS)
+19:24:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+19:46:30    10s [bumper] KPIX (CBS)
+19:46:40  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+20:08:40    10s [bumper] KPIX (CBS)
+20:08:50  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+20:30:50    10s [bumper] KPIX (CBS)
+20:31:00  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+20:53:00    10s [bumper] KPIX (CBS)
+20:53:10  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+21:15:10    10s [bumper] KPIX (CBS)
+21:15:20  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+21:37:20    10s [bumper] KPIX (CBS)
+21:37:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+21:59:30    10s [bumper] KPIX (CBS)
+21:59:40  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+22:21:40    10s [bumper] KPIX (CBS)
+22:21:50  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+22:43:50    10s [bumper] KPIX (CBS)
+22:44:00  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+23:06:00    10s [bumper] KPIX (CBS)
+23:06:10  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+23:28:10    10s [bumper] KPIX (CBS)
+23:28:20  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+23:50:20    10s [bumper] KPIX (CBS)
+23:50:30  1320s [episode halloween] Peanuts holiday specials S1E2 It's the Great Pumpkin, Charlie Brown
+00:12:30    10s [bumper] KPIX (CBS)
+00:12:40  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+00:34:40    10s [bumper] KPIX (CBS)
+00:34:50  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+00:56:50    10s [bumper] KPIX (CBS)
+00:57:00  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+01:19:00    10s [bumper] KPIX (CBS)
+01:19:10  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+01:41:10    10s [bumper] KPIX (CBS)
+01:41:20  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+02:03:20    10s [bumper] KPIX (CBS)
+02:03:30  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+02:25:30    10s [bumper] KPIX (CBS)
+02:25:40  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+02:47:40    10s [bumper] KPIX (CBS)
+02:47:50  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+03:09:50    10s [bumper] KPIX (CBS)
+03:10:00  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+03:32:00    10s [bumper] KPIX (CBS)
+03:32:10  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+03:54:10    10s [bumper] KPIX (CBS)
+03:54:20  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+04:16:20    10s [bumper] KPIX (CBS)
+04:16:30  1320s [episode thanksgiving] Peanuts holiday specials S1E3 A Charlie Brown Thanksgiving
+04:38:30  1290s [filler] Paid Programming

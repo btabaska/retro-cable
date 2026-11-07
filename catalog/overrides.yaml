@@ -9,19 +9,105 @@
 # US debut dates are best-effort from memory: verify before relying on them.
 
 shows:
-  - { show: "sailor-moon", us_debut: 1995-09-11 }
-  - { show: "dragon-ball", us_debut: 1995-09-09 }
-  - { show: "dragon-ball-z", us_debut: 1996-09-13 }
-  - { show: "mobile-suit-gundam-wing", us_debut: 2000-03-06 }
-  - { show: "outlaw-star", us_debut: 2001-01-15 }
-  - { show: "cowboy-bebop", us_debut: 2001-09-02 }
-  - { show: "yu-yu-hakusho", us_debut: 2002-02-23 }
-  - { show: "inuyasha", us_debut: 2002-08-31 }
-  - { show: "rurouni-kenshin", us_debut: 2003-03-17 }
-  - { show: "fullmetal-alchemist", us_debut: 2004-11-06 }
-  - { show: "naruto", us_debut: 2005-09-10 }
-  - { show: "bleach", us_debut: 2006-09-09 }
-  - { show: "death-note", us_debut: 2007-10-20 }
+  - { show: "sailor-moon", us_debut: 1995-09-11, tmdb_id: "tv:3570", year: 1995 }
+  - { show: "cowboy-bebop", us_debut: 2001-09-02, tmdb_id: "tv:30991", year: 2001 }
+  - { show: "fullmetal-alchemist", us_debut: 2004-11-06, tmdb_id: "tv:37863", year: 2004 }
 
   # Peanuts holiday specials only air around their holiday (no Great Pumpkin in July).
   - { show: "peanuts-holiday-specials", seasonal: true }
+
+  # TMDB ids and first-aired years from Brandon's lineup (channel_builder.lineup prune)
+  - { show: "30-rock", tmdb_id: "tv:4608", year: 2006 }
+  - { show: adventure-time, tmdb_id: "tv:15260", year: 2010 }
+  - { show: animaniacs, tmdb_id: "tv:82", year: 1993 }
+  - { show: arrested-development, tmdb_id: "tv:4589", year: 2003 }
+  - { show: arthur, tmdb_id: "tv:2153", year: 1996 }
+  - { show: as-told-by-ginger, tmdb_id: "tv:1760", year: 2000 }
+  - { show: avatar-the-last-airbender, tmdb_id: "tv:246", year: 2005 }
+  - { show: batman-beyond, tmdb_id: "tv:513", year: 1999 }
+  - { show: batman-the-animated-series, tmdb_id: "tv:2098", year: 1992 }
+  - { show: bill-nye-the-science-guy, tmdb_id: "tv:3483", year: 1993 }
+  - { show: brink, tmdb_id: "movie:15043", year: 1998 }
+  - { show: camp-rock, tmdb_id: "movie:13655", year: 2008 }
+  - { show: cardcaptors, tmdb_id: "tv:35790", year: 2000 }
+  - { show: clifford-the-big-red-dog, tmdb_id: "tv:8379", year: 2000 }
+  - { show: codename-kids-next-door, tmdb_id: "tv:2660", year: 2002 }
+  - { show: courage-the-cowardly-dog, tmdb_id: "tv:2085", year: 1999 }
+  - { show: danny-phantom, tmdb_id: "tv:2309", year: 2004 }
+  - { show: dexters-laboratory, tmdb_id: "tv:4229", year: 1996 }
+  - { show: digimon, tmdb_id: "tv:31654", year: 1999 }
+  - { show: doug, tmdb_id: "tv:384", year: 1991 }
+  - { show: dragon-tales, tmdb_id: "tv:1585", year: 1999 }
+  - { show: drake-and-josh, tmdb_id: "tv:2038", year: 2004 }
+  - { show: ed-edd-n-eddy, year: 1999 }
+  - { show: even-stevens, tmdb_id: "tv:3200", year: 2000 }
+  - { show: fosters-home-for-imaginary-friends, tmdb_id: "tv:1720", year: 2004 }
+  - { show: freaks-and-geeks, tmdb_id: "tv:2382", year: 1999 }
+  - { show: frosty-the-snowman, tmdb_id: "movie:13675", year: 1969 }
+  - { show: futurama, tmdb_id: "tv:615", year: 1999 }
+  - { show: halloweentown, year: 1998 }
+  - { show: halloweentown-ii-kalabars-revenge, tmdb_id: "movie:34205", year: 2001 }
+  - { show: hannah-montana, tmdb_id: "tv:4610", year: 2006 }
+  - { show: heroes, tmdb_id: "tv:1639", year: 2006 }
+  - { show: hey-arnold, tmdb_id: "tv:537", year: 1996 }
+  - { show: high-school-musical, tmdb_id: "movie:10947", year: 2006 }
+  - { show: house, tmdb_id: "tv:1408", year: 2004 }
+  - { show: how-i-met-your-mother, tmdb_id: "tv:1100", year: 2005 }
+  - { show: icarly, tmdb_id: "tv:5371", year: 2007 }
+  - { show: invader-zim, tmdb_id: "tv:3793", year: 2001 }
+  - { show: johnny-bravo, tmdb_id: "tv:2405", year: 1997 }
+  - { show: johnny-tsunami, tmdb_id: "movie:24020", year: 1999 }
+  - { show: just-shoot-me, tmdb_id: "tv:4576", year: 1997 }
+  - { show: justice-league, year: 2001 }
+  - { show: kim-possible, tmdb_id: "tv:2345", year: 2002 }
+  - { show: kratts-creatures, tmdb_id: "tv:933", year: 1996 }
+  - { show: lilo-and-stitch-the-series, tmdb_id: "tv:2355", year: 2003 }
+  - { show: lizzie-mcguire, tmdb_id: "tv:4575", year: 2001 }
+  - { show: looney-tunes, year: 1930 }
+  - { show: lupin-the-3rd, year: 2003 }
+  - { show: malcolm-in-the-middle, tmdb_id: "tv:2004", year: 2000 }
+  - { show: motocrossed, tmdb_id: "movie:71885", year: 2001 }
+  - { show: nova, tmdb_id: "tv:3562", year: 1974 }
+  - { show: one-piece, tmdb_id: "tv:37854", year: 2004 }
+  - { show: phantom-of-the-megaplex, tmdb_id: "movie:26450", year: 2000 }
+  - { show: phil-of-the-future, tmdb_id: "tv:1528", year: 2004 }
+  - { show: phineas-and-ferb, tmdb_id: "tv:1877", year: 2007 }
+  - { show: reading-rainbow, tmdb_id: "tv:10048", year: 1983 }
+  - { show: rocket-power, tmdb_id: "tv:2009", year: 1999 }
+  - { show: rudolph-the-red-nosed-reindeer, tmdb_id: "movie:13382", year: 1964 }
+  - { show: rugrats, tmdb_id: "tv:3022", year: 1991 }
+  - { show: samurai-jack, tmdb_id: "tv:2723", year: 2001 }
+  - { show: scooby-doo-where-are-you, tmdb_id: "tv:926", year: 1969 }
+  - { show: seinfeld, tmdb_id: "tv:1400", year: 1989 }
+  - { show: sesame-street, tmdb_id: "tv:502", year: 1969 }
+  - { show: smart-house, tmdb_id: "movie:35215", year: 1999 }
+  - { show: spongebob-squarepants, tmdb_id: "tv:387", year: 1999 }
+  - { show: star-wars-clone-wars, year: 2003 }
+  - { show: teen-titans, tmdb_id: "tv:604", year: 2003 }
+  - { show: that-70s-show, tmdb_id: "tv:52", year: 1998 }
+  - { show: thats-so-raven, tmdb_id: "tv:4602", year: 2003 }
+  - { show: the-adventures-of-jimmy-neutron, tmdb_id: "tv:2129", year: 2002 }
+  - { show: the-cheetah-girls, tmdb_id: "movie:32293", year: 2003 }
+  - { show: the-fairly-oddparents, tmdb_id: "tv:4630", year: 2001 }
+  - { show: the-flintstones, tmdb_id: "tv:1996", year: 1960 }
+  - { show: the-fresh-prince-of-bel-air, tmdb_id: "tv:1892", year: 1990 }
+  - { show: the-grim-adventures-of-billy-and-mandy, year: 2003 }
+  - { show: the-joy-of-painting, tmdb_id: "tv:10382", year: 1983 }
+  - { show: the-luck-of-the-irish, tmdb_id: "movie:46004", year: 2001 }
+  - { show: the-magic-school-bus, tmdb_id: "tv:7248", year: 1994 }
+  - { show: the-office, tmdb_id: "tv:2316", year: 2005 }
+  - { show: the-powerpuff-girls, tmdb_id: "tv:607", year: 1998 }
+  - { show: the-proud-family, tmdb_id: "tv:543", year: 2001 }
+  - { show: the-simpsons, tmdb_id: "tv:456", year: 1989 }
+  - { show: the-suite-life-of-zack-and-cody, tmdb_id: "tv:4605", year: 2005 }
+  - { show: the-wild-thornberrys, tmdb_id: "tv:2408", year: 1998 }
+  - { show: tom-and-jerry, year: 1940 }
+  - { show: twitches, year: 2005 }
+  - { show: two-and-a-half-men, tmdb_id: "tv:2691", year: 2003 }
+  - { show: under-wraps, tmdb_id: "movie:76212", year: 1997 }
+  - { show: wishbone, tmdb_id: "tv:2152", year: 1995 }
+  - { show: wizards-of-waverly-place, tmdb_id: "tv:3498", year: 2007 }
+  - { show: zenon-girl-of-the-21st-century, year: 1999 }
+  - { show: zoboomafoo, tmdb_id: "tv:4217", year: 1999 }
+  - { show: zoey-101, tmdb_id: "tv:1778", year: 2005 }
+  - { show: zoids-new-century-zero, tmdb_id: "tv:29540", year: 2001 }

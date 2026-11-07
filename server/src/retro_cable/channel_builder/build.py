@@ -42,7 +42,7 @@ from retro_cable.channel_builder.proposal import (
     taken_call_signs,
     taken_numbers,
 )
-from retro_cable.channel_builder.shows import CATEGORIES, ShowRow
+from retro_cable.channel_builder.shows import CATEGORIES, ShowRow, lineup_ref, lineup_year
 
 GROUP_ORDER = (*CATEGORIES, "movies")
 SHOWS_PER_CHANNEL = 30  # target size when asking for concepts
@@ -289,7 +289,13 @@ def build_proposal(
         if c.channel not in carried[c.show]:
             carried[c.show].append(c.channel)
     already = [
-        AlreadyCarried(show=r.id, title=r.title, channels=carried[r.id])
+        AlreadyCarried(
+            show=r.id,
+            title=r.title,
+            channels=carried[r.id],
+            tmdb_id=lineup_ref(r.tmdb_id),
+            year=lineup_year(r),
+        )
         for r in rows
         if r.id in carried
     ]
@@ -408,6 +414,8 @@ def _channels(
                     premiere=premiere,
                     on_nas=r.on_nas or bool(item and item.episodes),
                     in_library=item is not None,
+                    tmdb_id=lineup_ref(r.tmdb_id),
+                    year=lineup_year(r),
                 )
             )
         if reuse is not None:

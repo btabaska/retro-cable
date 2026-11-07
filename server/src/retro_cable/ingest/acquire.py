@@ -10,9 +10,13 @@ deletes the download (see normalize.delete_sources_under), and "unmonitor delete
 keeps them from fetching it again.
 
 Rules:
-- A title is identified by an id the library has (TheTVDB or TMDB, from a Plex import), else
-  by a lookup on its title and first-aired year that has exactly one exact match. Without a
-  year, or with none or several matches, it is reported as unresolved: never a guess.
+- A title is identified by an id: the TMDB id the catalog has from Brandon's lineup
+  (overrides.yaml `tmdb_id`, the admin overlay's ids, or the mini's library item; `tv:N` for
+  a show, `movie:N` for a movie, the other kind is ignored), else one the library has
+  (TheTVDB or TMDB, from a Plex import). Failing that, by a lookup on its title and
+  first-aired year (the lineup's `year` first, then the library's) that has exactly one
+  exact match. Without a year, or with none or several matches, it is reported as
+  unresolved: never a guess.
 - A show whose title an uncarried show with files has, or starts (`Justice League
   (Unlimited)` for `Justice League`), is probably on the NAS in a folder the scan couldn't
   match: it is reported, not requested.
@@ -33,6 +37,7 @@ from typing import Any, Literal
 
 from retro_cable.admin import store
 from retro_cable.catalog import Catalog
+from retro_cable.catalog.models import TMDB_REF
 from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.ingest.http import Request
 from retro_cable.ingest.plex import normalize_title
@@ -41,6 +46,7 @@ SONARR, RADARR = "sonarr-livetv", "radarr-livetv"
 PROFILE = "LiveTV SD"
 SONARR_ROOT, RADARR_ROOT = "/tv", "/movies"
 _YEAR = re.compile(r"\(((?:19|20)\d{2})\)\s*$")
+_TMDB = re.compile(TMDB_REF)
 _ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError)
 
 
@@ -51,6 +57,14 @@ def _key(title: str) -> str:
 def _year_in(title: str | None) -> int | None:
     m = _YEAR.search(title or "")
     return int(m[1]) if m else None
+
+
+def tmdb_number(ref: object, kind: str) -> int | None:
+    """The number of a lineup TMDB id (`tv:N` / `movie:N`) of this kind, else None."""
+    if not isinstance(ref, str) or not _TMDB.match(ref):
+        return None
+    prefix, number = ref.split(":")
+    return int(number) if prefix == ("tv" if kind == "show" else "movie") else None
 
 
 @dataclass(frozen=True)
@@ -87,6 +101,7 @@ def wanted(
     effective = apply_overlay(catalog, store.head(db).overlay)
     excluded_ids = {o.show for o in effective.overrides.shows if o.exclude}
     plex_titles = {o.show: o.plex_title for o in effective.overrides.shows if o.plex_title}
+    lineup = {o.show: (o.tmdb_id, o.year) for o in effective.overrides.shows}
     carried: dict[str, tuple[str, Literal["show", "movie"]]] = {}
     for c in effective.carriage.carriage:
         carried.setdefault(c.show, (c.title, c.kind))
@@ -100,6 +115,9 @@ def wanted(
         carried.setdefault(ident, (str(item.get("title") or ident), kind))
         if isinstance(item.get("first_year"), int):
             mini_years[ident] = item["first_year"]
+        if ident not in lineup:  # the mini's effective overrides: the builder's ids too
+            year = item.get("year")
+            lineup[ident] = (item.get("tmdb_id"), year if isinstance(year, int) else None)
         if isinstance(item.get("episodes"), int) and item["episodes"] > 0:
             mini_files.add(ident)
 
@@ -127,8 +145,10 @@ def wanted(
             continue
         row = (shows if kind == "show" else movies).get(ident)
         plex_title = plex_titles.get(ident)
+        ref, lineup_year = lineup.get(ident, (None, None))
         year = (
-            (row["year"] if row is not None else None)
+            lineup_year
+            or (row["year"] if row is not None else None)
             or _year_in(plex_title)
             or _year_in(title)
             or mini_years.get(ident)
@@ -138,7 +158,7 @@ def wanted(
             title,
             kind,
             year,
-            tmdb_id=row["tmdb_id"] if row is not None else None,
+            tmdb_id=tmdb_number(ref, kind) or (row["tmdb_id"] if row is not None else None),
             tvdb_id=row["tvdb_id"] if row is not None and kind == "show" else None,
             titles=(plex_title,) if plex_title else (),
         )

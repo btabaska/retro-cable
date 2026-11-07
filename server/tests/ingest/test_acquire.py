@@ -368,6 +368,96 @@ def test_nothing_wanted_means_no_calls(db: sqlite3.Connection, make_catalog: Mak
     assert report.shows.error is None and report.movies.error is None, "nothing to ask for"
 
 
+# --- the lineup's TMDB ids and years (overrides.yaml, the admin overlay, the mini) --------
+
+LINEUP_OVERRIDES = """
+shows:
+  - { show: x-men, tmdb_id: "tv:4500", year: 1992 }
+  - { show: dragon-ball-z, plex_title: "Dragon Ball Z (1989)", year: 1989 }
+  - { show: halloweentown, tmdb_id: "movie:10719" }
+  - { show: gravity-falls, tmdb_id: "movie:5" }
+"""
+
+
+def test_wanted_takes_the_lineups_tmdb_id_and_year_from_overrides(
+    db: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Nothing in the database: the catalog's ids and years are all acquire has. A TMDB id of
+    the other kind (a show with a movie id) is not used."""
+    catalog = load_catalog(make_catalog(overrides=LINEUP_OVERRIDES))
+    found, _, _ = wanted(db, catalog)
+    by_id = {w.id: w for w in found}
+    assert (by_id["x-men"].tmdb_id, by_id["x-men"].year) == (4500, 1992)
+    assert by_id["halloweentown"].tmdb_id == 10719
+    assert by_id["gravity-falls"].tmdb_id is None
+    assert by_id["dragon-ball-z"].year == 1989
+
+
+def test_the_catalogs_tmdb_id_wins_over_the_databases(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    overrides = 'shows:\n  - { show: gravity-falls, tmdb_id: "tv:999", year: 2012 }\n'
+    found, _, _ = wanted(library, load_catalog(make_catalog(overrides=overrides)))
+    gravity = next(w for w in found if w.id == "gravity-falls")
+    assert (gravity.tmdb_id, gravity.year) == (999, 2012)
+
+
+def test_lineup_ids_resolve_by_tmdb_then_fall_back_to_title_and_year(
+    db: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    catalog = load_catalog(make_catalog(overrides=LINEUP_OVERRIDES))
+    sonarr = FakeArr("series", lookups={
+        "tmdb:4500": [series("X-Men", 1992, 76115, 4500)],
+        # gravity-falls has no usable id and no year: unresolved, never guessed
+        "Dragon Ball Z": [series("Dragon Ball Z", 1989, 81472)],
+    })  # fmt: skip
+    radarr = FakeArr("movie", lookups={"tmdb:10719": movie("Halloweentown", 1998, 10719)})
+    report = acquire(db, catalog, sonarr=sonarr, radarr=radarr, dry_run=True)
+    assert [(a["id"], a["matched_on"]) for a in report.shows.added] == [
+        ("dragon-ball-z", "title+year"),
+        ("x-men", "tmdb"),
+    ]
+    assert {
+        "id": "gravity-falls",
+        "title": "Gravity Falls",
+        "reason": "no first-aired year known",
+    } in report.shows.unresolved
+    assert [(a["id"], a["matched_on"]) for a in report.movies.added] == [("halloweentown", "tmdb")]
+    assert ("GET", "/api/v3/series/lookup", {"term": "tmdb:4500"}) in sonarr.calls
+    assert ("GET", "/api/v3/movie/lookup/tmdb", {"tmdbId": "10719"}) in radarr.calls
+
+
+def test_an_unknown_tmdb_id_falls_back_to_the_lineups_year(
+    db: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    catalog = load_catalog(make_catalog(overrides=LINEUP_OVERRIDES))
+    sonarr = FakeArr("series", lookups={"X-Men": [series("X-Men", 1992, 76115)]})
+    report = acquire(db, catalog, sonarr=sonarr, radarr=None, dry_run=True)
+    assert ("x-men", "title+year") in [(a["id"], a["matched_on"]) for a in report.shows.added]
+
+
+def test_the_minis_library_items_bring_their_lineup_ids(
+    db: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Shows the channel builder placed on the mini, with nothing on disk anywhere: the
+    mini's /api/admin/library lists them with the lineup's TMDB id and year."""
+    catalog = load_catalog(make_catalog(overrides="shows: []\n"))
+    mini: list[dict[str, Any]] = [
+        {"id": "psych", "title": "Psych", "kind": "show", "first_year": None, "year": 2006,
+         "tmdb_id": "tv:1447", "episodes": 0, "channels": [{"id": "custom-tv"}]},
+        {"id": "snow-day", "title": "Snow Day", "kind": "movie", "first_year": None,
+         "year": 2000, "tmdb_id": "movie:10561", "episodes": 0,
+         "channels": [{"id": "custom-movies"}]},
+        {"id": "odd", "title": "Odd", "kind": "show", "tmdb_id": "tv:x", "year": "1999",
+         "episodes": 0, "channels": [{"id": "custom-tv"}]},
+    ]  # fmt: skip
+    found, _, _ = wanted(db, catalog, mini)
+    by_id = {w.id: w for w in found}
+    assert (by_id["psych"].tmdb_id, by_id["psych"].year) == (1447, 2006)
+    assert (by_id["snow-day"].tmdb_id, by_id["snow-day"].year) == (10561, 2000)
+    assert (by_id["odd"].tmdb_id, by_id["odd"].year) == (None, None)
+
+
 # --- the CLI and the HTTP helper ---------------------------------------------------------
 
 
