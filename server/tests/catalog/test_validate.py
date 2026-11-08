@@ -153,6 +153,21 @@ def test_overrides_and_synthetic_must_name_carried_shows(make_catalog: MakeCatal
     assert any("synthetic: 'gravity-fallz' is not carried on cartoon-network" in e for e in errs)
 
 
+def test_a_lookup_only_override_may_name_a_show_admin_channels_carry(
+    make_catalog: MakeCatalog,
+) -> None:
+    """The channel builder's shows are carried in /admin, not the YAML. An override that only
+    helps find one (tmdb_id, year, plex_title) is allowed; one that changes airing is not."""
+    lookup = (
+        OVERRIDES
+        + '  - { show: bluey, tmdb_id: "tv:82728", year: 2019, plex_title: "Bluey 2018" }\n'
+    )
+    assert errors(make_catalog, overrides=lookup) == []
+    airing = OVERRIDES + "  - { show: bluey, year: 2019, seasonal: true }\n"
+    assert any("overrides: 'bluey' has no carriage" in e
+               for e in errors(make_catalog, overrides=airing))  # fmt: skip
+
+
 def test_a_synthetic_premiere_names_a_channel_that_carries_the_show(
     make_catalog: MakeCatalog,
 ) -> None:

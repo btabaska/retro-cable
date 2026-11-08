@@ -282,6 +282,32 @@ def test_a_show_that_may_be_on_the_nas_under_another_folder_name_is_not_requeste
 
 
 @pytest.mark.parametrize(
+    ("folder", "held"),
+    [
+        ("X-Men (The Animated Series)", True),
+        ("X-Men 1992", True),  # `Bluey 2018`
+        ("X-Men [DVD]", True),
+        ("X-Men Evolution", False),  # `House Of The Dragon` is not House
+        ("X-Men Evolution (2000)", False),  # `Digimon Beatbreak (2025)` is not Digimon
+    ],
+)
+def test_only_a_qualified_folder_name_holds_a_show_back(
+    library: sqlite3.Connection, make_catalog: MakeCatalog, folder: str, held: bool
+) -> None:
+    """A longer title is another show (House Of The Dragon, Malcolm in the Middle Life's Still
+    Unfair); only the same title plus a qualifier in brackets or a year is held back."""
+    library.execute("INSERT INTO shows (id, title) VALUES ('nas', ?)", (folder,))
+    library.execute(
+        "INSERT INTO episodes (show_id, season, episode, file_path)"
+        " VALUES ('nas', 1, 1, '/sources/tv/nas/S01E01.mkv')"
+    )
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS)
+    out = _run(library, make_catalog, sonarr, None)
+    assert (76115 in [b["tvdbId"] for b in sonarr.posted]) is not held
+    assert ("x-men" in [u["id"] for u in out["shows"]["unresolved"]]) is held
+
+
+@pytest.mark.parametrize(
     ("lookup", "reason"),
     [
         ([], "no exact match for X-Men (1992)"),

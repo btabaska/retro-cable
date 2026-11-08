@@ -17,9 +17,10 @@ Rules:
   first-aired year (the lineup's `year` first, then the library's) that has exactly one
   exact match. Without a year, or with none or several matches, it is reported as
   unresolved: never a guess.
-- A show whose title an uncarried show with files has, or starts (`Justice League
-  (Unlimited)` for `Justice League`), is probably on the NAS in a folder the scan couldn't
-  match: it is reported, not requested.
+- A show whose title an uncarried show with files has, or has plus a qualifier (`Justice
+  League (Unlimited)` or `Justice League 2001` for `Justice League`), is probably on the NAS
+  in a folder the scan couldn't match: it is reported, not requested. More words make another
+  show (`House Of The Dragon` is not `House`).
 - Titles already in the instance (by tvdbId or tmdbId) are skipped, so a rerun adds nothing.
 - An instance whose root folders are not exactly `/tv` (Sonarr) or `/movies` (Radarr) is
   refused before anything is looked up: that is how a Plex instance would look.
@@ -47,6 +48,8 @@ PROFILE = "LiveTV SD"
 SONARR_ROOT, RADARR_ROOT = "/tv", "/movies"
 _YEAR = re.compile(r"\(((?:19|20)\d{2})\)\s*$")
 _TMDB = re.compile(TMDB_REF)
+# A folder's trailing qualifier: `(Unlimited)`, `[DVD]`, `2018`. More words are another show.
+_QUALIFIER = re.compile(r"\s*(\([^()]*\)|\[[^\[\]]*\]|\b(?:19|20)\d{2})\s*$")
 _ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError)
 
 
@@ -86,8 +89,8 @@ class Wanted:
 
 
 def _on_nas_as(keys: set[str], others: Mapping[str, str]) -> str | None:
-    for key, title in sorted(others.items()):
-        if any(key == k or key.startswith(k + " ") for k in keys):
+    for _, title in sorted(others.items()):
+        if _key(_QUALIFIER.sub("", title)) in keys:
             return title
     return None
 

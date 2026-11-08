@@ -107,7 +107,9 @@ def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
         if o.show in seen:
             errors.append(f"overrides: '{o.show}' is listed twice")
         seen.add(o.show)
-        if o.show not in carried:
+        # Only finding a title (tmdb_id, year, plex_title) may name a show the YAML doesn't
+        # carry: the channel builder's shows are carried by /admin channels.
+        if o.show not in carried and o.model_fields_set - {"show", "tmdb_id", "year", "plex_title"}:
             errors.append(f"overrides: '{o.show}' has no carriage on any channel")
         for ep, tags in o.holiday_tags.items():
             errors.extend(
