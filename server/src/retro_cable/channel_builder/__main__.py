@@ -24,7 +24,7 @@ from retro_cable.admin.router import library_index
 from retro_cable.catalog import Catalog, CatalogError, load_catalog
 from retro_cable.catalog.overlay import Overlay, apply_overlay
 from retro_cable.channel_builder.build import build_proposal
-from retro_cable.channel_builder.llm import LLM, LLMError, OpenAIChat
+from retro_cable.channel_builder.llm import LLM, LLMError, OpenAIChat, ReplyLog
 from retro_cable.channel_builder.proposal import (
     Checked,
     NotApplied,
@@ -111,6 +111,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--sample", type=int, default=0, help="only N shows, spread over the list")
     p.add_argument("--on-nas-only", action="store_true", help="only shows marked on_nas")
     p.add_argument("--batch", type=int, default=40, help="shows per placement prompt")
+    p.add_argument(
+        "--resume", action="store_true", help="propose: reuse the replies a cut-short run saved"
+    )
     p.add_argument("--skip-invalid", action="store_true", help="apply: leave out failing channels")
     return p
 
@@ -195,13 +198,18 @@ def _propose(
     if args.on_nas_only:
         rows = [r for r in rows if r.on_nas or (r.id in ctx.index and ctx.index[r.id].episodes)]
     rows = spread(rows, args.sample)
+    log = ReplyLog(llm, args.out / "replies.jsonl", replay=args.resume)
     try:
         proposal = build_proposal(
-            rows, catalog, ctx.index, llm, clock(), args.shows.name, batch_size=args.batch
+            rows, catalog, ctx.index, log, clock(), args.shows.name, batch_size=args.batch
         )
     except LLMError as e:
         print(f"model: {e}", file=sys.stderr)
+        print("the replies so far are saved; run again with --resume to pick up from here",
+              file=sys.stderr)  # fmt: skip
         return 1
+    if log.replayed:
+        print(f"resumed: {log.replayed} replies from the last run")
     checked = check_proposal(proposal, ctx.base, ctx.head, ctx.index, ctx.library, ctx.seed)
     proposal = attach(proposal, checked)
     write(proposal, args.out)

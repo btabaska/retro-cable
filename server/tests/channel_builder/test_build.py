@@ -14,6 +14,7 @@ from retro_cable.catalog import load_catalog, validate
 from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.channel_builder.__main__ import load_context, main
 from retro_cable.channel_builder.build import build_proposal
+from retro_cable.channel_builder.llm import LLMError
 from retro_cable.channel_builder.proposal import (
     NotApplied,
     Proposal,
@@ -234,6 +235,33 @@ def test_cli_proposes_checks_and_applies(
     db = connect(db_path)
     assert store.head(db).note.startswith("channel builder:")
     db.close()
+
+
+def test_cli_resumes_a_proposal_after_the_model_drops_out(
+    catalog_dir: Path,
+    db_path: Path,
+    shows_csv: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    out = tmp_path / "out"
+    args = ["propose", "--shows", str(shows_csv), "--out", str(out),
+            "--db", str(db_path), "--catalog", str(catalog_dir), "--seed", "7"]  # fmt: skip
+
+    def drop(user: str, n: int) -> str:
+        raise LLMError("model endpoint unreachable at http://rig:4000: timed out", transient=True)
+
+    first = FakeLLM(hooks={"dayparts": drop})
+    assert main(args, llm=first, clock=lambda: NOW) == 1
+    assert "--resume" in capsys.readouterr().err
+    assert not (out / "proposal.json").exists()
+
+    second = FakeLLM()
+    assert main([*args, "--resume"], llm=second, clock=lambda: NOW) == 0
+    # Concepts and placements come back from the log; only the day parts are asked again.
+    assert second.calls and set(second.calls) == {"dayparts"}
+    assert "resumed" in capsys.readouterr().out
+    assert "Pixel Patrol" in (out / "proposal.md").read_text()
 
 
 def test_editing_a_built_channel_in_admin_keeps_its_day_parts_while_they_fit(

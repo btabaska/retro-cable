@@ -7,15 +7,21 @@ the rig). Nothing here calls a cloud model; the URL, key and model come from the
 
 Replies must be JSON. `ask_json` parses and validates a reply and, when it is invalid, sends
 the problems back to the model and asks again, a bounded number of times.
+
+The rig is shared with other jobs, so a busy endpoint (a timeout, 429 or 5xx) is asked again
+after a pause, and `ReplyLog` keeps every reply on disk so a run cut short can resume.
 """
 
+import hashlib
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel, ValidationError
@@ -35,7 +41,12 @@ class LLM(Protocol):
 
 
 class LLMError(Exception):
-    pass
+    def __init__(self, message: str, transient: bool = False) -> None:
+        super().__init__(message)
+        self.transient = transient  # the endpoint was busy or down; asking again may work
+
+
+BUSY = {408, 429, 500, 502, 503, 504}
 
 
 class InvalidReply(ValueError):
@@ -51,6 +62,8 @@ class OpenAIChat:
     model: str = DEFAULT_MODEL
     timeout: float = 900.0  # a cold model load on the rig takes a few minutes
     temperature: float = 0.3
+    attempts: int = 4
+    backoff: float = 60.0  # seconds, times the attempt number
 
     @staticmethod
     def from_env() -> "OpenAIChat":
@@ -61,6 +74,16 @@ class OpenAIChat:
         )
 
     def complete(self, messages: list[Message]) -> str:
+        for attempt in range(1, self.attempts + 1):
+            try:
+                return self._post(messages)
+            except LLMError as e:
+                if not e.transient or attempt == self.attempts:
+                    raise
+                time.sleep(self.backoff * attempt)
+        raise AssertionError("unreachable")
+
+    def _post(self, messages: list[Message]) -> str:
         body = {
             "model": self.model,
             "messages": messages,
@@ -81,14 +104,49 @@ class OpenAIChat:
                 data = json.load(resp)
         except urllib.error.HTTPError as e:
             # The body can echo the request, never the key; keep it short anyway.
-            raise LLMError(f"model endpoint answered HTTP {e.code}") from e
+            raise LLMError(f"model endpoint answered HTTP {e.code}", e.code in BUSY) from e
         except (urllib.error.URLError, TimeoutError) as e:
-            raise LLMError(f"model endpoint unreachable at {self.url}: {e}") from e
+            raise LLMError(f"model endpoint unreachable at {self.url}: {e}", True) from e
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as e:
             raise LLMError("model endpoint gave no message") from e
         return str(content or "")
+
+
+class ReplyLog:
+    """A model whose replies are appended to a JSON-lines file, keyed by a hash of the chat.
+
+    With `replay`, chats already in the file are answered from it, so a proposal cut short by
+    the endpoint resumes where it stopped: the prompts are deterministic up to that point, and
+    the first new chat goes to the model. Without it the file starts empty. Only the model's
+    replies are stored, never the key."""
+
+    def __init__(self, inner: LLM, path: Path, replay: bool = False) -> None:
+        self.inner, self.path, self.model = inner, path, inner.model
+        self.replayed = 0
+        self._known: dict[str, str] = {}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if replay and path.exists():
+            for line in path.read_text().splitlines():
+                try:
+                    entry = json.loads(line)
+                    self._known[entry["key"]] = entry["reply"]
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    continue  # a line cut off when the last run died
+        else:
+            path.write_text("")
+
+    def complete(self, messages: list[Message]) -> str:
+        key = hashlib.sha256(json.dumps([self.model, messages]).encode()).hexdigest()
+        if key in self._known:
+            self.replayed += 1
+            return self._known[key]
+        reply = self.inner.complete(messages)
+        with self.path.open("a") as f:
+            f.write(json.dumps({"key": key, "reply": reply}) + "\n")
+        self._known[key] = reply
+        return reply
 
 
 def extract_json(text: str) -> object:
