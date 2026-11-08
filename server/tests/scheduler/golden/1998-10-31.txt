@@ -18,55 +18,117 @@
 07:35:10  1320s [episode] That '70s Show S1E7 Episode 7: Valentine's Day
 07:57:10    10s [bumper] KTVU (Fox)
 07:57:20  1320s [episode halloween] The Simpsons S2E7 Episode 29: Halloween
-08:19:20 42040s [filler] Off Air
-20:00:00  1320s [episode halloween] The Simpsons S11E9 Episode 229: Halloween
-20:22:00    10s [bumper] KTVU (Fox)
-20:22:10  1320s [episode halloween] The Simpsons S4E8 Episode 74: Halloween
-20:44:10    10s [bumper] KTVU (Fox)
-20:44:20  1320s [episode halloween] The Simpsons S3E8 Episode 52: Halloween
-21:06:20    10s [bumper] KTVU (Fox)
-21:06:30  1320s [episode] That '70s Show S1E8 Episode 8
-21:28:30    10s [bumper] KTVU (Fox)
-21:28:40  1320s [episode halloween] The Simpsons S10E9 Episode 207: Halloween
-21:50:40    10s [bumper] KTVU (Fox)
-21:50:50  1320s [episode halloween] The Simpsons S9E9 Episode 185: Halloween
-22:12:50    10s [bumper] KTVU (Fox)
-22:13:00  1320s [episode halloween] The Simpsons S5E8 Episode 96: Halloween
-22:35:00    10s [bumper] KTVU (Fox)
-22:35:10  1320s [episode] That '70s Show S1E9 Episode 9
-22:57:10    10s [bumper] KTVU (Fox)
-22:57:20  1320s [episode halloween] The Simpsons S8E9 Episode 163: Halloween
-23:19:20    10s [bumper] KTVU (Fox)
-23:19:30  1320s [episode] That '70s Show S1E10 Episode 10
-23:41:30    10s [bumper] KTVU (Fox)
-23:41:40  1320s [episode halloween] The Simpsons S6E8 Episode 118: Halloween
-00:03:40    10s [bumper] KTVU (Fox)
-00:03:50  1320s [episode] That '70s Show S1E11 Episode 11: St. Patrick's Day
-00:25:50    10s [bumper] KTVU (Fox)
-00:26:00  1320s [episode] That '70s Show S1E12 Episode 12
-00:48:00    10s [bumper] KTVU (Fox)
-00:48:10  1320s [episode] That '70s Show S1E13 Episode 13
-01:10:10    10s [bumper] KTVU (Fox)
-01:10:20  1320s [episode] The Simpsons S9E11 Episode 187
-01:32:20    10s [bumper] KTVU (Fox)
-01:32:30  1320s [episode] That '70s Show S1E14 Episode 14
-01:54:30    10s [bumper] KTVU (Fox)
-01:54:40  1320s [episode] The Simpsons S9E12 Episode 188: Thanksgiving
-02:16:40    10s [bumper] KTVU (Fox)
-02:16:50  1320s [episode] That '70s Show S1E15 Episode 15
-02:38:50    10s [bumper] KTVU (Fox)
-02:39:00  1320s [episode] That '70s Show S1E16 Episode 16
-03:01:00    10s [bumper] KTVU (Fox)
-03:01:10  1320s [episode] The Simpsons S9E13 Episode 189
-03:23:10    10s [bumper] KTVU (Fox)
-03:23:20  1320s [episode] That '70s Show S1E17 Episode 17
-03:45:20    10s [bumper] KTVU (Fox)
-03:45:30  1320s [episode] The Simpsons S9E14 Episode 190
-04:07:30    10s [bumper] KTVU (Fox)
-04:07:40  1320s [episode] That '70s Show S1E18 Episode 18
-04:29:40    10s [bumper] KTVU (Fox)
-04:29:50  1320s [episode] The Simpsons S9E15 Episode 191
-04:51:50   490s [filler] Paid Programming
+08:19:20    10s [bumper] KTVU (Fox)
+08:19:30  1320s [episode] That '70s Show S1E8 Episode 8
+08:41:30    10s [bumper] KTVU (Fox)
+08:41:40  1320s [episode halloween] The Simpsons S8E9 Episode 163: Halloween
+09:03:40    10s [bumper] KTVU (Fox)
+09:03:50  1320s [episode] That '70s Show S1E9 Episode 9
+09:25:50    10s [bumper] KTVU (Fox)
+09:26:00  1320s [episode halloween] The Simpsons S12E9 Episode 251: Halloween
+09:48:00    10s [bumper] KTVU (Fox)
+09:48:10  1320s [episode] That '70s Show S1E10 Episode 10
+10:10:10    10s [bumper] KTVU (Fox)
+10:10:20  1320s [episode] That '70s Show S1E11 Episode 11: St. Patrick's Day
+10:32:20    10s [bumper] KTVU (Fox)
+10:32:30  1320s [episode halloween] The Simpsons S5E8 Episode 96: Halloween
+10:54:30    10s [bumper] KTVU (Fox)
+10:54:40  1320s [episode] That '70s Show S1E12 Episode 12
+11:16:40    10s [bumper] KTVU (Fox)
+11:16:50  1320s [episode halloween] The Simpsons S4E8 Episode 74: Halloween
+11:38:50    10s [bumper] KTVU (Fox)
+11:39:00  1320s [episode] That '70s Show S1E13 Episode 13
+12:01:00    10s [bumper] KTVU (Fox)
+12:01:10  1320s [episode halloween] The Simpsons S10E9 Episode 207: Halloween
+12:23:10    10s [bumper] KTVU (Fox)
+12:23:20  1320s [episode] That '70s Show S1E14 Episode 14
+12:45:20    10s [bumper] KTVU (Fox)
+12:45:30  1320s [episode halloween] The Simpsons S7E8 Episode 140: Halloween
+13:07:30    10s [bumper] KTVU (Fox)
+13:07:40  1320s [episode halloween] The Simpsons S1E7 Episode 7: Halloween
+13:29:40    10s [bumper] KTVU (Fox)
+13:29:50  1320s [episode] That '70s Show S1E15 Episode 15
+13:51:50    10s [bumper] KTVU (Fox)
+13:52:00  1320s [episode] That '70s Show S1E16 Episode 16
+14:14:00    10s [bumper] KTVU (Fox)
+14:14:10  1320s [episode] The Simpsons S9E10 Episode 186
+14:36:10    10s [bumper] KTVU (Fox)
+14:36:20  1320s [episode] That '70s Show S1E17 Episode 17
+14:58:20    10s [bumper] KTVU (Fox)
+14:58:30  1320s [episode] The Simpsons S9E11 Episode 187
+15:20:30    10s [bumper] KTVU (Fox)
+15:20:40  1320s [episode] That '70s Show S1E18 Episode 18
+15:42:40    10s [bumper] KTVU (Fox)
+15:42:50  1320s [episode] The Simpsons S9E12 Episode 188: Thanksgiving
+16:04:50    10s [bumper] KTVU (Fox)
+16:05:00  1320s [episode] That '70s Show S1E19 Episode 19
+16:27:00    10s [bumper] KTVU (Fox)
+16:27:10  1320s [episode] The Simpsons S9E13 Episode 189
+16:49:10    10s [bumper] KTVU (Fox)
+16:49:20  1320s [episode] That '70s Show S1E20 Episode 20
+17:11:20    10s [bumper] KTVU (Fox)
+17:11:30  1320s [episode] The Simpsons S9E14 Episode 190
+17:33:30    10s [bumper] KTVU (Fox)
+17:33:40  1320s [episode] That '70s Show S1E21 Episode 21
+17:55:40    10s [bumper] KTVU (Fox)
+17:55:50  1320s [episode] The Simpsons S9E15 Episode 191
+18:17:50    10s [bumper] KTVU (Fox)
+18:18:00  1320s [episode] The Simpsons S9E16 Episode 192
+18:40:00    10s [bumper] KTVU (Fox)
+18:40:10  1320s [episode] That '70s Show S1E22 Episode 22
+19:02:10    10s [bumper] KTVU (Fox)
+19:02:20  1320s [episode] The Simpsons S9E17 Episode 193: Christmas
+19:24:20    10s [bumper] KTVU (Fox)
+19:24:30  1320s [episode] That '70s Show S1E1 Episode 1
+19:46:30    10s [bumper] KTVU (Fox)
+19:46:40  1320s [episode] That '70s Show S1E2 Episode 2
+20:08:40    10s [bumper] KTVU (Fox)
+20:08:50  1320s [episode halloween] The Simpsons S2E7 Episode 29: Halloween
+20:30:50    10s [bumper] KTVU (Fox)
+20:31:00  1320s [episode halloween] The Simpsons S9E9 Episode 185: Halloween
+20:53:00    10s [bumper] KTVU (Fox)
+20:53:10  1320s [episode] That '70s Show S1E3 Episode 3
+21:15:10    10s [bumper] KTVU (Fox)
+21:15:20  1320s [episode halloween] The Simpsons S10E9 Episode 207: Halloween
+21:37:20    10s [bumper] KTVU (Fox)
+21:37:30  1320s [episode] That '70s Show S1E4 Episode 4
+21:59:30    10s [bumper] KTVU (Fox)
+21:59:40  1320s [episode halloween] The Simpsons S6E8 Episode 118: Halloween
+22:21:40    10s [bumper] KTVU (Fox)
+22:21:50  1320s [episode] That '70s Show S1E5 Episode 5
+22:43:50    10s [bumper] KTVU (Fox)
+22:44:00  1320s [episode halloween] The Simpsons S8E9 Episode 163: Halloween
+23:06:00    10s [bumper] KTVU (Fox)
+23:06:10  1320s [episode halloween] The Simpsons S5E8 Episode 96: Halloween
+23:28:10    10s [bumper] KTVU (Fox)
+23:28:20  1320s [episode] That '70s Show S1E6 Episode 6
+23:50:20    10s [bumper] KTVU (Fox)
+23:50:30  1320s [episode halloween] The Simpsons S3E8 Episode 52: Halloween
+00:12:30    10s [bumper] KTVU (Fox)
+00:12:40  1320s [episode] That '70s Show S1E7 Episode 7: Valentine's Day
+00:34:40    10s [bumper] KTVU (Fox)
+00:34:50  1320s [episode] The Simpsons S10E3 Episode 201
+00:56:50    10s [bumper] KTVU (Fox)
+00:57:00  1320s [episode] That '70s Show S1E8 Episode 8
+01:19:00    10s [bumper] KTVU (Fox)
+01:19:10  1320s [episode] The Simpsons S10E4 Episode 202
+01:41:10    10s [bumper] KTVU (Fox)
+01:41:20  1320s [episode] That '70s Show S1E9 Episode 9
+02:03:20    10s [bumper] KTVU (Fox)
+02:03:30  1320s [episode] The Simpsons S10E5 Episode 203
+02:25:30    10s [bumper] KTVU (Fox)
+02:25:40  1320s [episode] That '70s Show S1E10 Episode 10
+02:47:40    10s [bumper] KTVU (Fox)
+02:47:50  1320s [episode] The Simpsons S10E6 Episode 204
+03:09:50    10s [bumper] KTVU (Fox)
+03:10:00  1320s [episode] The Simpsons S10E7 Episode 205
+03:32:00    10s [bumper] KTVU (Fox)
+03:32:10  1320s [episode] That '70s Show S1E11 Episode 11: St. Patrick's Day
+03:54:10    10s [bumper] KTVU (Fox)
+03:54:20  1320s [episode] That '70s Show S1E12 Episode 12
+04:16:20    10s [bumper] KTVU (Fox)
+04:16:30  1320s [episode] That '70s Show S1E13 Episode 13
+04:38:30  1290s [filler] Paid Programming
 
 ## disney
 05:00:00  5400s [movie] Brink!

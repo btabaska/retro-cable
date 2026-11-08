@@ -405,6 +405,10 @@ class Scheduler:
                 t = self._marathon_step(channel, day, marathon, slots, t, end, rng)
                 continue
             candidates = self._candidates(channel, part, sim_date)
+            if not candidates and part is not None and part.block:
+                # A block with nothing to air that day (before its first show, after its
+                # last) gives way to the channel's regular shows instead of going Off Air.
+                candidates = self._candidates(channel, None, sim_date)
             power, power_edge = self._power_hour(channel.id, local, part)
             if power is not None and power_edge is not None:
                 # The power hour plays when one of its shows can air; else the usual part.
