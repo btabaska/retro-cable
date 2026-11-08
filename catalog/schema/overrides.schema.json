@@ -59,6 +59,21 @@
           "title": "Show",
           "type": "string"
         },
+        "tmdb_id": {
+          "anyOf": [
+            {
+              "description": "A TMDB id: tv:N or movie:N",
+              "pattern": "^(tv|movie):[1-9][0-9]{0,9}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "TMDB id from the lineup; ingest acquire looks titles up by it",
+          "title": "Tmdb Id"
+        },
         "us_debut": {
           "anyOf": [
             {
@@ -72,6 +87,21 @@
           "default": null,
           "description": "Imports: first US air date",
           "title": "Us Debut"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "maximum": 2100,
+              "minimum": 1900,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Year it first aired (a movie: released), for acquire's title+year lookup",
+          "title": "Year"
         }
       },
       "required": [

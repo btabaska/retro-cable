@@ -361,6 +361,14 @@ class Scheduler:
                 for s in self._pool(channel.id, part, sim_date)
                 if (progs := self._eligible(channel, s, sim_date))
             ]
+            if not candidates and part is not None and part.block:
+                # A block with nothing to air that day (before its first show, after its
+                # last) gives way to the channel's regular shows instead of going Off Air.
+                candidates = [
+                    (s, progs)
+                    for s in self._pool(channel.id, None, sim_date)
+                    if (progs := self._eligible(channel, s, sim_date))
+                ]
             holidays = self._holidays(channel, part, local)
             room = end - t
             special = None

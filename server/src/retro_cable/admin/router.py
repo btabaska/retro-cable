@@ -154,6 +154,10 @@ class LibraryEntry(BaseModel):
     debut: date | None = Field(default=None, description="Real (or US debut) first air date")
     episodes: int = Field(description="Episodes (or the movie) on disk")
     channels: list[LibraryChannel] = Field(description="Channels that carry it, in any year")
+    tmdb_id: str | None = Field(
+        default=None, description="TMDB id from the lineup (tv:N or movie:N), for ingest acquire"
+    )
+    year: int | None = Field(default=None, description="First-aired year from the lineup")
 
 
 class LibraryList(BaseModel):
@@ -206,6 +210,11 @@ def library_index(db: sqlite3.Connection, sched: Scheduler) -> dict[str, Library
             r["id"],
             LibraryItem(r["id"], r["title"], "movie", premiere, premiere, on_disk, 1),
         )
+    # Carried titles the database doesn't know yet (nothing on disk anywhere, such as shows
+    # the channel builder placed): listed with nothing to play, so the rig's `ingest acquire`
+    # sees them and /admin can carry them too.
+    for c in sched.catalog.carriage.carriage:
+        items.setdefault(c.show, LibraryItem(c.show, c.title, c.kind, None, None, 0, 0))
     return items
 
 
@@ -442,6 +451,7 @@ def router(
                 id=ch.id, name=ch.name, number=ident.number
             )
         needle = q.strip().lower()
+        lineup = {o.show: o for o in sched.catalog.overrides.shows}
         items = [
             LibraryEntry(
                 id=item.id,
@@ -452,6 +462,8 @@ def router(
                 debut=item.first_air,
                 episodes=item.episodes,
                 channels=sorted(carriers.get(item.id, {}).values(), key=lambda c: c.number),
+                tmdb_id=lineup[item.id].tmdb_id if item.id in lineup else None,
+                year=lineup[item.id].year if item.id in lineup else None,
             )
             for item in index.values()
             if needle in item.title.lower()

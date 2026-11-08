@@ -3,7 +3,9 @@
 The admin never writes schedules or the YAML files. It writes an Overlay, which holds channels,
 carriage, synthetic ("pretend") premieres and, for channels the channel builder made, day-part
 templates, in the same models as the YAML, and the effective catalog is the YAML catalog with
-the overlay merged in. A premiere may name any channel, YAML or
+the overlay merged in. It also keeps what the lineup says about the shows the builder placed
+(TMDB id, first-aired year), merged into the effective overrides so `ingest acquire` can look
+them up. A premiere may name any channel, YAML or
 custom, and replaces a synthetic.yaml entry for the same (show, channel). The catalog version
 covers both, so a schedule stays a pure function of (channel, date, catalog version, seed).
 Overlay channel ids start with `custom-`, so they can never collide with YAML ids.
@@ -24,6 +26,9 @@ from retro_cable.catalog.models import (
     Channel,
     ChannelsFile,
     Model,
+    OverridesFile,
+    ShowIds,
+    ShowOverride,
     Synthetic,
     SyntheticFile,
     Template,
@@ -38,6 +43,7 @@ __all__ = [
     "overlay_version",
     "parse",
     "with_channel",
+    "with_ids",
     "with_premiere",
     "without_channel",
 ]
@@ -54,16 +60,21 @@ class Overlay(Model):
     templates: list[Template] = Field(
         default_factory=list, description="Day-part templates of custom channels (M3)"
     )
+    ids: list[ShowIds] = Field(
+        default_factory=list,
+        description="Lineup TMDB ids and years of shows the channel builder placed (M4)",
+    )
 
     @property
     def empty(self) -> bool:
-        return not (self.channels or self.carriage or self.premieres or self.templates)
+        return not (self.channels or self.carriage or self.premieres or self.templates or self.ids)
 
 
 def canonical(overlay: Overlay) -> str:
     """The overlay as canonical JSON: stable key order, no whitespace, dates as ISO text.
     Premieres are sorted, and left out when there are none, so overlays saved before they
-    existed keep their text and their catalog version. Templates are left out the same way."""
+    existed keep their text and their catalog version. Templates and ids are left out the
+    same way; ids are sorted by show and drop their empty fields."""
     data = overlay.model_dump(mode="json", by_alias=True)
     if overlay.premieres:
         data["premieres"] = sorted(data["premieres"], key=lambda p: (p["channel"], p["show"]))
@@ -71,6 +82,13 @@ def canonical(overlay: Overlay) -> str:
         del data["premieres"]
     if not overlay.templates:
         del data["templates"]  # likewise for overlays saved before templates (M3)
+    if overlay.ids:
+        data["ids"] = sorted(
+            ({k: v for k, v in i.items() if v is not None} for i in data["ids"]),
+            key=lambda i: i["show"],
+        )
+    else:
+        del data["ids"]  # and before lineup ids (M4)
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
@@ -116,8 +134,25 @@ def apply_overlay(catalog: Catalog, overlay: Overlay) -> Catalog:
         carriage=carriage,
         synthetic=synthetic,
         templates=templates,
+        overrides=_with_ids(catalog.overrides, overlay.ids, {c.show for c in carriage.carriage}),
         version=overlay_version(catalog.version, overlay),
     )
+
+
+def _with_ids(overrides: OverridesFile, ids: list[ShowIds], carried: set[str]) -> OverridesFile:
+    """The overrides with the overlay's ids filled in: a YAML value wins, and ids of shows
+    nothing carries any more are ignored (overrides must name a carried show)."""
+    if not ids:
+        return overrides
+    wanted = {i.show: i for i in ids if i.show in carried}
+    shows: list[ShowOverride] = []
+    for o in overrides.shows:
+        i = wanted.pop(o.show, None)
+        if i is not None:
+            o = o.model_copy(update={"tmdb_id": o.tmdb_id or i.tmdb_id, "year": o.year or i.year})
+        shows.append(o)
+    shows += [ShowOverride(show=i.show, tmdb_id=i.tmdb_id, year=i.year) for i in wanted.values()]
+    return OverridesFile(shows=shows)
 
 
 def without_channel(overlay: Overlay, channel_id: str) -> Overlay:
@@ -128,6 +163,7 @@ def without_channel(overlay: Overlay, channel_id: str) -> Overlay:
         carriage=[c for c in overlay.carriage if c.channel != channel_id],
         premieres=[p for p in overlay.premieres if p.channel != channel_id],
         templates=[t for t in overlay.templates if t.channel != channel_id],
+        ids=overlay.ids,  # per show, not per channel; unused ones are ignored when applied
     )
 
 
@@ -146,7 +182,17 @@ def with_channel(
         carriage=[*rest.carriage, *carriage],
         premieres=[*rest.premieres, *(premieres or [])],
         templates=[*rest.templates, *(templates or [])],
+        ids=rest.ids,
     )
+
+
+def with_ids(overlay: Overlay, ids: list[ShowIds]) -> Overlay:
+    """Set the lineup ids of some shows, replacing what the overlay had for them."""
+    if not ids:
+        return overlay
+    new = {i.show: i for i in ids}
+    rest = [i for i in overlay.ids if i.show not in new]
+    return overlay.model_copy(update={"ids": [*rest, *new.values()]})
 
 
 def with_premiere(overlay: Overlay, show: str, channel_id: str, premiere: date | None) -> Overlay:

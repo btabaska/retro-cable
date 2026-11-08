@@ -9,7 +9,9 @@ Shows Retro Cable needs that aren't on the NAS are downloaded, never into Plex (
 - [x] `ingest scan` reads several roots as one library (`--tv`/`--movies` repeat); the rig worker adds `/media/sources/tv` and `/media/sources/movies`. Plex's copy wins; a missing root detaches nothing; the empty-Plex-tree guard stays for Plex's tree only
 - [x] Originals under `RC_DELETE_SOURCES_UNDER` (`/media/sources` on the rig; unset: never) are deleted once their encode is whole and checked; realpath check, no symlinks, never Plex's trees. The episode keeps its encode and manifest entry (`source_deleted_at`) and is not converted again
 - [x] `ingest acquire [--dry-run]`: carried titles with no files anywhere go to sonarr-livetv / radarr-livetv (by library id, else exact title + first-aired year; unresolved otherwise). Refuses an instance whose root folders aren't exactly `/tv` / `/movies`; idempotent. Runs in the worker only with `RC_ACQUIRE=1` (off)
-- [ ] Brandon finalizes the show lineup, reviews an `acquire --dry-run`, then sets `RC_ACQUIRE=1` and the two API keys in the rig's `ops/rig/.env` and redeploys the rig worker
+- [x] Brandon's final list (Nov 7, 410 titles: 204 shows, 173 movies, 33 specials) applied to the YAML (`m4/final-lineup`, stacked on #22). `python -m retro_cable.channel_builder.lineup prune` kept 98 carried titles and removed 177 (61 `remove` rows, 116 not in the list). Templates were fixed where their pools emptied; no template was dropped and every channel still carries something. The other 313 kept titles are for the channel builder to place. Kept titles have the list's TMDB id and first-aired year in `overrides.yaml`; the builder records them for the shows it places (overlay `ids[]`); acquire prefers them; `/api/admin/library` lists carried titles with nothing on disk, so the rig sees builder-placed shows
+- [x] `acquire --dry-run` on the real instances (read-only, Nov 7): 80 carried titles have no files; 72 resolve (65 by TMDB id) and 8 don't (5 maybe already on the NAS under another folder name, 3 with no TMDB id or year). Details in `docs/specs/ops.md`
+- [ ] Brandon reviews the prune (judgment calls in the PR; KTVU's Fox Kids block now has nothing in 1990–91 and 1996–98) and the dry run, then sets `RC_ACQUIRE=1` and the two API keys in the rig's `ops/rig/.env` and redeploys the rig worker
 
 ## Milestone M3 / Phase 11 (part): AI channel builder (in review, stacked on #18)
 
@@ -34,7 +36,7 @@ Shows Retro Cable needs that aren't on the NAS are downloaded, never into Plex (
 - [ ] Plex import and TMDB fill: `PLEX_URL` and `PLEX_TOKEN` are in the mini's `ops/.env` (Nov 2, read from the NAS Plex server's own settings; the token authenticates). Waiting on a TMDB v4 read access token as `TMDB_TOKEN`. Until both run, air dates come from the disk scan's synthesized dates
 - [ ] Brandon's check: open the TV from a LAN device; real episodes play on their channels, and at least three channels tune and play past a program boundary
 
-Waiting on Brandon: the show lineup (`catalog/carriage.yaml` is unchanged), and the TMDB token. Brandon approved M2 on Nov 2, with its defaults (library channels keep their shows; weekly cadence after a pretend premiere; label and colours; NVENC bitrate); only carried shows convert, and the rig reads the mini's `/admin` library.
+Waiting on Brandon: the TMDB token (his show lineup reached `catalog/carriage.yaml` in M4, `m4/final-lineup`). Brandon approved M2 on Nov 2, with its defaults (library channels keep their shows; weekly cadence after a pretend premiere; label and colours; NVENC bitrate); only carried shows convert, and the rig reads the mini's `/admin` library.
 
 Checks on #16 (`ae9ce4c`): server, web and local-test green; `make lint` and `make test` (server 397, tools 9, ops 44 + 2 skipped, web 79, e2e 8) pass in a clean worktree.
 

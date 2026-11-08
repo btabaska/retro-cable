@@ -14,6 +14,7 @@ from retro_cable.catalog import load_catalog, validate
 from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.channel_builder.__main__ import load_context, main
 from retro_cable.channel_builder.build import build_proposal
+from retro_cable.channel_builder.llm import LLMError
 from retro_cable.channel_builder.proposal import (
     NotApplied,
     Proposal,
@@ -236,6 +237,33 @@ def test_cli_proposes_checks_and_applies(
     db.close()
 
 
+def test_cli_resumes_a_proposal_after_the_model_drops_out(
+    catalog_dir: Path,
+    db_path: Path,
+    shows_csv: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    out = tmp_path / "out"
+    args = ["propose", "--shows", str(shows_csv), "--out", str(out),
+            "--db", str(db_path), "--catalog", str(catalog_dir), "--seed", "7"]  # fmt: skip
+
+    def drop(user: str, n: int) -> str:
+        raise LLMError("model endpoint unreachable at http://rig:4000: timed out", transient=True)
+
+    first = FakeLLM(hooks={"dayparts": drop})
+    assert main(args, llm=first, clock=lambda: NOW) == 1
+    assert "--resume" in capsys.readouterr().err
+    assert not (out / "proposal.json").exists()
+
+    second = FakeLLM()
+    assert main([*args, "--resume"], llm=second, clock=lambda: NOW) == 0
+    # Concepts and placements come back from the log; only the day parts are asked again.
+    assert second.calls and set(second.calls) == {"dayparts"}
+    assert "resumed" in capsys.readouterr().out
+    assert "Pixel Patrol" in (out / "proposal.md").read_text()
+
+
 def test_editing_a_built_channel_in_admin_keeps_its_day_parts_while_they_fit(
     catalog_dir: Path, db_path: Path, shows_csv: Path, tmp_path: Path
 ) -> None:
@@ -268,6 +296,67 @@ def test_editing_a_built_channel_in_admin_keeps_its_day_parts_while_they_fit(
     assert dropped.status_code == 200
     assert any("day-parts" in w["message"] for w in dropped.json()["check"]["warnings"])
     assert templates() == []
+
+
+def test_applying_records_the_lineups_tmdb_ids_and_years(
+    catalog_dir: Path, db_path: Path, shows_csv: Path
+) -> None:
+    """Placed and already-carried shows keep the list's TMDB id and first-aired year in the
+    overlay, so the effective overrides (and the mini's library list) hand them to acquire.
+    A malformed id (`mv:7`) is left out."""
+    proposal = draft(catalog_dir, db_path, shows_csv, FakeLLM())
+    placed = {s.show: s for c in proposal.channels for s in c.shows}
+    assert (placed["johnny-bravo"].tmdb_id, placed["johnny-bravo"].year) == ("tv:2", 1997)
+    assert (placed["snow-day-rescue"].tmdb_id, placed["snow-day-rescue"].year) == (None, 1999)
+    db = connect(db_path)
+    ctx = load_context(db, catalog_dir, seed=7)
+    apply_proposal(db, proposal, ctx.base, ctx.index, ctx.library, 7, NOW)
+    merged = apply_overlay(ctx.base, store.head(db).overlay)
+    db.close()
+    lineup = {o.show: (o.tmdb_id, o.year) for o in merged.overrides.shows}
+    assert lineup["johnny-bravo"] == ("tv:2", 1997)
+    assert lineup["psych"] == ("tv:8", 2006)
+    assert lineup["the-simpsons"] == ("tv:3", 1989)  # already carried
+    assert lineup["halloweentown"] == (None, 1998)  # `mv:7` is not a TMDB id
+    assert validate(merged) == []
+
+
+def test_a_placed_show_with_a_carried_shows_tmdb_id_is_flagged(
+    make_catalog: MakeCatalog, db_path: Path, shows_csv: Path
+) -> None:
+    """A proposal drafted before the catalog had TMDB ids can place a title variant of a
+    carried show as a second show; the check warns."""
+    overrides = 'shows:\n  - { show: x-men, tmdb_id: "tv:2" }\n'  # Johnny Bravo's id
+    catalog_dir = make_catalog(overrides=overrides)
+    proposal = draft(catalog_dir, db_path, shows_csv, FakeLLM())
+    db = connect(db_path)
+    ctx = load_context(db, catalog_dir, seed=7)
+    db.close()
+    checked = check_proposal(proposal, ctx.base, ctx.head, ctx.index, ctx.library, 7)
+    assert any(
+        i.severity == "warning" and i.show == "johnny-bravo" and "x-men" in i.message
+        for i in checked.issues
+    ), checked.issues
+
+
+def test_cli_apply_fills_ids_from_the_list_into_an_older_proposal(
+    catalog_dir: Path, db_path: Path, shows_csv: Path, tmp_path: Path
+) -> None:
+    proposal = draft(catalog_dir, db_path, shows_csv, FakeLLM())
+    older = json.loads(proposal.model_dump_json())
+    for ch in older["channels"]:
+        for s in ch["shows"]:
+            del s["tmdb_id"], s["year"]
+    for a in older["already_carried"]:
+        del a["tmdb_id"], a["year"]
+    path = tmp_path / "proposal.json"
+    path.write_text(json.dumps(older))
+    common = ["--db", str(db_path), "--catalog", str(catalog_dir), "--seed", "7"]
+    assert main(["apply", str(path), "--shows", str(shows_csv), *common], clock=lambda: NOW) == 0
+    db = connect(db_path)
+    ids = {i.show: (i.tmdb_id, i.year) for i in store.head(db).overlay.ids}
+    db.close()
+    assert ids["johnny-bravo"] == ("tv:2", 1997) and ids["the-simpsons"] == ("tv:3", 1989)
 
 
 def test_the_yaml_catalog_is_never_written(

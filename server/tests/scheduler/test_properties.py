@@ -252,3 +252,26 @@ def test_a_program_in_a_block_runs_past_the_block_end(catalog: Catalog) -> None:
     (slot,) = straddling
     assert slot.kind == "episode" and slot.seconds == runtime
     _assert_full_runtime(sched, library, "ktvu", friday)
+
+
+@pytest.mark.parametrize("friday", [date(1991, 3, 1), date(1998, 3, 6)])
+def test_a_block_with_nothing_to_air_gives_way_to_the_channel(
+    catalog: Catalog, friday: date
+) -> None:
+    """Fox Kids carries X-Men only 1992-1997: before and after, KTVU's 4-8 p.m. plays its
+    regular shows instead of going Off Air (Brandon, Nov 7 2026)."""
+    sched = Scheduler(catalog, make_library(), seed=3)
+    four, eight = (datetime.combine(friday, time(h), NY) for h in (16, 20))
+    block = [s for s in sched.day("ktvu", friday) if four <= s.start < eight]
+    assert block and all(s.title != OFF_AIR for s in block)
+    assert {s.show for s in block if s.kind == "episode"} == {"the-simpsons"}
+
+
+def test_a_block_with_something_to_air_keeps_it(catalog: Catalog) -> None:
+    sched = Scheduler(catalog, make_library(), seed=3)
+    friday = date(1995, 3, 3)
+    four, eight = (datetime.combine(friday, time(h), NY) for h in (16, 20))
+    shows = {
+        s.show for s in sched.day("ktvu", friday) if four <= s.start < eight and s.kind == "episode"
+    }
+    assert shows == {"x-men"}

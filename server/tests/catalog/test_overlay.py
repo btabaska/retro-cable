@@ -5,13 +5,14 @@ import pytest
 
 from retro_cable.admin import store
 from retro_cable.catalog import load_catalog, validate
-from retro_cable.catalog.models import Carriage, Channel, Synthetic, Template
+from retro_cable.catalog.models import Carriage, Channel, ShowIds, Synthetic, Template
 from retro_cable.catalog.overlay import (
     Overlay,
     apply_overlay,
     canonical,
     parse,
     with_channel,
+    with_ids,
     with_premiere,
     without_channel,
 )
@@ -211,3 +212,50 @@ def test_removing_a_channel_drops_its_templates() -> None:
     # Setting a premiere leaves the templates alone.
     kept = with_premiere(overlay, "the-simpsons", "custom-toons", date(1991, 1, 1))
     assert kept.templates == [toons_template()]
+
+
+# --- lineup ids in the overlay (M4, channel builder) ------------------------------------
+
+
+def test_overlay_ids_fill_the_effective_overrides(make_catalog: MakeCatalog) -> None:
+    overrides = (
+        "shows:\n"
+        '  - { show: dragon-ball-z, plex_title: "Dragon Ball Z (1989)", tmdb_id: "tv:12971" }\n'
+    )
+    catalog = load_catalog(make_catalog(overrides=overrides))
+    overlay = with_ids(
+        with_channel(Overlay(), *toons()),
+        [
+            ShowIds(show="the-simpsons", tmdb_id="tv:456", year=1989),
+            ShowIds(show="dragon-ball-z", tmdb_id="tv:1", year=1989),  # YAML's id wins
+            ShowIds(show="not-carried", tmdb_id="tv:9"),  # nothing carries it: ignored
+        ],
+    )
+    merged = apply_overlay(catalog, overlay)
+    by_show = {o.show: o for o in merged.overrides.shows}
+    assert (by_show["the-simpsons"].tmdb_id, by_show["the-simpsons"].year) == ("tv:456", 1989)
+    assert by_show["dragon-ball-z"].tmdb_id == "tv:12971"
+    assert by_show["dragon-ball-z"].year == 1989  # only the missing field is filled
+    assert by_show["dragon-ball-z"].plex_title == "Dragon Ball Z (1989)"
+    assert "not-carried" not in by_show
+    assert validate(merged) == []
+    assert merged.version != apply_overlay(catalog, with_channel(Overlay(), *toons())).version
+
+
+def test_an_overlay_without_ids_keeps_its_text_and_ids_survive_channel_edits() -> None:
+    overlay = with_channel(Overlay(), *toons())
+    assert '"ids"' not in canonical(overlay)
+    both = with_ids(overlay, [ShowIds(show="x-men", year=1992), ShowIds(show="a-show", year=1990)])
+    text = canonical(both)
+    assert text.index('"a-show"') < text.index('"x-men"')  # sorted, whatever the order set
+    assert parse(text) == parse(canonical(with_ids(overlay, list(reversed(both.ids)))))
+    # Ids belong to shows, not channels: removing or replacing a channel keeps them.
+    assert without_channel(both, "custom-toons").ids == both.ids
+    assert with_channel(both, *toons(51)).ids == both.ids
+    assert with_premiere(both, "x-men", "ktvu", date(1993, 1, 1)).ids == both.ids
+    # Setting a show's ids again replaces them.
+    again = with_ids(both, [ShowIds(show="x-men", tmdb_id="tv:5")])
+    assert [(i.show, i.tmdb_id, i.year) for i in again.ids] == [
+        ("a-show", None, 1990),
+        ("x-men", "tv:5", None),
+    ]

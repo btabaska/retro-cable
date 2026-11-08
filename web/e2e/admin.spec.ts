@@ -106,42 +106,42 @@ interface GuideBody {
 }
 
 test("give a YAML channel's show a pretend premiere, see the mark in the guide, then undo", async ({ page, request }) => {
-  const bear = async () => {
+  const evens = async () => {
     const guide = (await (await request.get("/api/guide?year=2000&date=06-05&hours=24")).json()) as GuideBody;
     return (guide.channels.find((r) => r.channel.id === "disney")?.slots ?? []).filter(
-      (s) => s.show === "bear-in-the-big-blue-house",
+      (s) => s.show === "even-stevens",
     );
   };
-  const before = await bear();
+  const before = await evens();
   expect(before.every((s) => !s.transplant)).toBe(true);
 
   await page.goto("/admin");
   await page.getByTestId("admin-channel-disney").click();
   const shows = page.getByTestId("editor-shows");
-  await expectSlow(shows).toContainText("Bear in the Big Blue House");
+  await expectSlow(shows).toContainText("Even Stevens");
   // Read-only rows: no chevrons (M2 D26), but a pretend premiere field each.
   await expect(shows.getByText("⌄")).toHaveCount(0);
-  const row = shows.getByRole("listitem").filter({ hasText: "Bear in the Big Blue House" });
-  await row.getByLabel("Pretend premiere").fill("1999-01-04");
+  const row = shows.getByRole("listitem").filter({ hasText: "Even Stevens" });
+  await row.getByLabel("Pretend premiere").fill("2000-01-03");
   await row.getByRole("button", { name: "Set" }).click();
   const toast = page.getByRole("status");
-  await expectSlow(toast).toContainText("Set the pretend premiere of Bear in the Big Blue House");
+  await expectSlow(toast).toContainText("Set the pretend premiere of Even Stevens");
   await toast.hover();
-  await expect(row).toContainText("Pretend premiere Jan 1999");
-  await expect(row).toContainText("S1E1 airs Jan 4, 1999");
+  await expect(row).toContainText("Pretend premiere Jan 2000");
+  await expect(row).toContainText("S1E1 airs Jan 3, 2000");
   await shot(page, "admin-5-premiere");
 
-  // The guide follows on the next read: Bear carries the mark and its shifted dates on Disney
-  // Channel, and only there.
-  await expectSlow.poll(async () => (await bear()).some((s) => s.transplant)).toBe(true);
-  for (const s of await bear()) {
+  // The guide follows on the next read: Even Stevens carries the mark and its shifted dates on
+  // Disney Channel, and only there.
+  await expectSlow.poll(async () => (await evens()).some((s) => s.transplant)).toBe(true);
+  for (const s of await evens()) {
     expect(s.transplant).toBe(true);
-    expect((s.air_date ?? "") >= "1999-01-04").toBe(true);
+    expect((s.air_date ?? "") >= "2000-01-03").toBe(true);
   }
 
   await toast.getByRole("button", { name: "Undo" }).click();
   await expectSlow(page.getByRole("status")).toContainText("Restored");
-  await expectSlow.poll(async () => (await bear()).some((s) => s.transplant)).toBe(false);
+  await expectSlow.poll(async () => (await evens()).some((s) => s.transplant)).toBe(false);
 });
 
 test("the Media tab shows conversion progress or says it isn't available", async ({ page }) => {

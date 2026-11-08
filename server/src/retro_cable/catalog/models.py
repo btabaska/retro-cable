@@ -149,6 +149,9 @@ class SyntheticFile(Model):
 # --- overrides.yaml ------------------------------------------------------------
 
 EpisodeKey = Annotated[str, Field(pattern=r"^S\d{1,3}E\d{1,4}$")]
+TMDB_REF = r"^(tv|movie):[1-9][0-9]{0,9}$"
+TmdbRef = Annotated[str, Field(pattern=TMDB_REF, description="A TMDB id: tv:N or movie:N")]
+FirstYear = Annotated[int, Field(ge=1900, le=2100)]
 
 
 class ShowOverride(Model):
@@ -164,6 +167,22 @@ class ShowOverride(Model):
         default=False,
         description="Holiday specials show: tagged episodes air only in their holiday's season",
     )
+    tmdb_id: TmdbRef | None = Field(
+        default=None, description="TMDB id from the lineup; ingest acquire looks titles up by it"
+    )
+    year: FirstYear | None = Field(
+        default=None,
+        description="Year it first aired (a movie: released), for acquire's title+year lookup",
+    )
+
+
+class ShowIds(Model):
+    """What the lineup knows about a show: kept by the channel builder in the admin overlay
+    and merged into the effective catalog's overrides (catalog/overlay.py)."""
+
+    show: Slug
+    tmdb_id: TmdbRef | None = None
+    year: FirstYear | None = None
 
 
 class OverridesFile(Model):

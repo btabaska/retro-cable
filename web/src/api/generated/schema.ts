@@ -651,6 +651,16 @@ export interface components {
             last_year: number | null;
             /** Title */
             title: string;
+            /**
+             * Tmdb Id
+             * @description TMDB id from the lineup (tv:N or movie:N), for ingest acquire
+             */
+            tmdb_id?: string | null;
+            /**
+             * Year
+             * @description First-aired year from the lineup
+             */
+            year?: number | null;
         };
         /** LibraryList */
         LibraryList: {

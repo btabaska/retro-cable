@@ -32,9 +32,9 @@ from retro_cable.admin.drafts import (
     to_models,
 )
 from retro_cable.catalog import Catalog, validate
-from retro_cable.catalog.models import CUSTOM_PREFIX, Template
-from retro_cable.catalog.overlay import Overlay, apply_overlay
-from retro_cable.channel_builder.shows import ShowRow
+from retro_cable.catalog.models import CUSTOM_PREFIX, ShowIds, Template
+from retro_cable.catalog.overlay import Overlay, apply_overlay, with_ids
+from retro_cable.channel_builder.shows import ShowRow, lineup_ref, lineup_year
 from retro_cable.scheduler import Library, Scheduler
 
 ChannelType = Literal["network", "marathon", "movie"]
@@ -76,6 +76,8 @@ class ProposedShow(BaseModel):
     )
     on_nas: bool = False
     in_library: bool = Field(default=False, description="Known to the server's library")
+    tmdb_id: str | None = Field(default=None, description="The list's TMDB id (tv:N or movie:N)")
+    year: int | None = Field(default=None, description="The list's first-aired year")
 
 
 class DayPartPlan(BaseModel):
@@ -110,6 +112,8 @@ class AlreadyCarried(BaseModel):
     show: str
     title: str
     channels: list[str]
+    tmdb_id: str | None = None
+    year: int | None = None
 
 
 class Issue(BaseModel):
@@ -340,6 +344,8 @@ def check_proposal(
         else:
             out.overlay = overlay
             out.applied.append(ch.id)
+    out.issues += _same_tmdb_id(proposal, apply_overlay(base, head))
+    out.overlay = with_ids(out.overlay, _lineup_ids(proposal, out.applied, base, out.overlay))
     carried = {a.show for a in proposal.already_carried}
     unplaced = {u.show for u in proposal.unplaced}
     for dup in sorted(shows_placed & unplaced):
@@ -347,6 +353,78 @@ def check_proposal(
     for dup in sorted(carried & unplaced):
         out.issues.append(Issue(severity="warning", show=dup, message="carried and unplaced"))
     return out
+
+
+def _lineup_ids(
+    proposal: Proposal, applied: list[str], base: Catalog, overlay: Overlay
+) -> list[ShowIds]:
+    """The list's TMDB ids and years of the shows on applied channels and of the shows already
+    carried, where the effective catalog doesn't have them yet (YAML values stay)."""
+    have = {o.show: o for o in apply_overlay(base, overlay).overrides.shows}
+    entries = [
+        (s.show, s.tmdb_id, s.year)
+        for ch in proposal.channels
+        if ch.id in applied
+        for s in ch.shows
+    ]
+    entries += [(a.show, a.tmdb_id, a.year) for a in proposal.already_carried]
+    out: dict[str, ShowIds] = {}
+    for show, tmdb_id, year in entries:
+        ref = lineup_ref(tmdb_id or "")
+        year = year if year is not None and 1900 <= year <= 2100 else None
+        known = have.get(show)
+        if known is not None:
+            ref = None if known.tmdb_id else ref
+            year = None if known.year else year
+        if (ref or year) and show not in out:
+            out[show] = ShowIds(show=show, tmdb_id=ref, year=year)
+    return list(out.values())
+
+
+def _same_tmdb_id(proposal: Proposal, current: Catalog) -> list[Issue]:
+    """A placed show with the TMDB id of a show some channel already carries is probably that
+    show under another title (`Digimon: Digital Monsters` for `Digimon`)."""
+    carried = {c.show for c in current.carriage.carriage}
+    owner = {o.tmdb_id: o.show for o in current.overrides.shows if o.tmdb_id and o.show in carried}
+    issues: list[Issue] = []
+    for ch in proposal.channels:
+        for s in ch.shows:
+            other = owner.get(s.tmdb_id or "")
+            if other is not None and other != s.show:
+                issues.append(
+                    Issue(
+                        severity="warning",
+                        channel=ch.id,
+                        show=s.show,
+                        message=f"{s.title} has the TMDB id {s.tmdb_id} of {other}, which a"
+                        " channel already carries: the same show twice?",
+                    )
+                )
+    return issues
+
+
+def fill_from_list(proposal: Proposal, rows: Iterable[ShowRow]) -> Proposal:
+    """A proposal drafted before shows kept their TMDB id and year, with them filled in from
+    the list (by show id, else by title)."""
+    by_id = {r.id: r for r in rows}
+    by_title = {r.title: r for r in by_id.values()}
+
+    def fill[T: (ProposedShow, AlreadyCarried)](item: T) -> T:
+        row = by_id.get(item.show) or by_title.get(item.title)
+        if row is None:
+            return item
+        return item.model_copy(
+            update={
+                "tmdb_id": item.tmdb_id or lineup_ref(row.tmdb_id),
+                "year": item.year or lineup_year(row),
+            }
+        )
+
+    channels = [
+        ch.model_copy(update={"shows": [fill(s) for s in ch.shows]}) for ch in proposal.channels
+    ]
+    carried = [fill(a) for a in proposal.already_carried]
+    return proposal.model_copy(update={"channels": channels, "already_carried": carried})
 
 
 def _week(year: int, launch: int | None) -> date:
@@ -456,6 +534,7 @@ def _check_reuse(
         carriage=[*head.carriage, *carriage],
         premieres=[*(p for p in head.premieres if (p.show, p.channel) not in replaced), *premieres],
         templates=head.templates,
+        ids=head.ids,
     )
     merged = apply_overlay(base, overlay)
     problems = validate(merged)

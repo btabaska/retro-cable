@@ -3,6 +3,7 @@ day-part templates, and the model wrapper's parsing and retries (with a fake mod
 
 import io
 import json
+import urllib.error
 import urllib.request
 from datetime import date
 from pathlib import Path
@@ -13,8 +14,10 @@ from pydantic import BaseModel
 
 from retro_cable.channel_builder.llm import (
     InvalidReply,
+    LLMError,
     Message,
     OpenAIChat,
+    ReplyLog,
     Transcript,
     ask_json,
     extract_json,
@@ -73,6 +76,22 @@ def test_duplicate_titles_keep_the_first_row(tmp_path: Path) -> None:
 )
 def test_first_aired_formats(text: str, expected: date | None) -> None:
     assert parse_first_aired(text) == expected
+
+
+def test_a_carried_shows_tmdb_id_wins_over_its_title(tmp_path: Path) -> None:
+    """The list says `The Adventures of Jimmy Neutron, Boy Genius`; the catalog carries `The
+    Adventures of Jimmy Neutron` with the same TMDB id (overrides.yaml): one show, one id."""
+    path = tmp_path / "s.csv"
+    path.write_text(
+        "action,category,title,kind,first_aired,tmdb_id\n"
+        'keep,kids,"The Adventures of Jimmy Neutron, Boy Genius",show,2002-07-20,tv:2129\n'
+        "keep,kids,Recess,show,1997,tv:1\n"
+    )
+    rows = read_shows(path, known_ids({}, {}), {"tv:2129": "the-adventures-of-jimmy-neutron"})
+    assert [(r.id, r.tmdb_id, r.debut_year) for r in rows] == [
+        ("the-adventures-of-jimmy-neutron", "tv:2129", 2002),
+        ("recess", "tv:1", 1997),
+    ]
 
 
 # --- dates ---------------------------------------------------------------------------------
@@ -250,3 +269,76 @@ def test_openai_chat_posts_to_the_local_endpoint(monkeypatch: pytest.MonkeyPatch
     assert sent["headers"]["Authorization"] == "Bearer sk-test-not-real"
     assert sent["body"]["model"] == "q38"
     assert sent["body"]["response_format"] == {"type": "json_object"}
+
+
+def test_openai_chat_waits_out_a_busy_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The rig is shared: a model swap or a long job ahead of ours shows up as a 502 or a
+    timeout, and one of those must not throw away an hour of replies."""
+    tries: list[str] = []
+
+    def flaky_urlopen(req: urllib.request.Request, timeout: float) -> io.BytesIO:
+        tries.append(req.full_url)
+        if len(tries) == 1:
+            raise urllib.error.HTTPError(req.full_url, 502, "Bad Gateway", {}, None)  # type: ignore[arg-type]
+        if len(tries) == 2:
+            raise TimeoutError("timed out")
+        return io.BytesIO(json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", flaky_urlopen)
+    llm = OpenAIChat(url="http://rig:4000", attempts=3, backoff=0)
+    assert llm.complete([{"role": "user", "content": "hi"}]) == "{}"
+    assert len(tries) == 3
+
+
+def test_openai_chat_gives_up_and_never_retries_a_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codes = iter([503, 503, 401])
+    tries: list[int] = []
+
+    def failing_urlopen(req: urllib.request.Request, timeout: float) -> io.BytesIO:
+        code = next(codes)
+        tries.append(code)
+        raise urllib.error.HTTPError(req.full_url, code, "no", {}, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(urllib.request, "urlopen", failing_urlopen)
+    with pytest.raises(LLMError, match="503"):
+        OpenAIChat(attempts=2, backoff=0).complete([{"role": "user", "content": "hi"}])
+    with pytest.raises(LLMError, match="401"):
+        OpenAIChat(attempts=3, backoff=0).complete([{"role": "user", "content": "hi"}])
+    assert tries == [503, 503, 401]  # a bad key is not worth asking again
+
+
+class Counting:
+    model = "fake"
+
+    def __init__(self, fail_after: int | None = None) -> None:
+        self.calls = 0
+        self.fail_after = fail_after
+
+    def complete(self, messages: list[Message]) -> str:
+        if self.fail_after is not None and self.calls >= self.fail_after:
+            raise LLMError("model endpoint unreachable", transient=True)
+        self.calls += 1
+        return json.dumps({"echo": messages[-1]["content"]})
+
+
+def test_reply_log_replays_a_run_cut_short(tmp_path: Path) -> None:
+    path = tmp_path / "replies.jsonl"
+    first = ReplyLog(Counting(fail_after=2), path)
+    assert first.complete([{"role": "user", "content": "a"}]) == '{"echo": "a"}'
+    assert first.complete([{"role": "user", "content": "b"}]) == '{"echo": "b"}'
+    with pytest.raises(LLMError):
+        first.complete([{"role": "user", "content": "c"}])
+    with path.open("a") as f:
+        f.write('{"key": "half a li')  # the process died mid-write
+
+    inner = Counting()
+    resumed = ReplyLog(inner, path, replay=True)
+    for text in "abc":
+        assert resumed.complete([{"role": "user", "content": text}]) == f'{{"echo": "{text}"}}'
+    assert inner.calls == 1 and resumed.replayed == 2  # only "c" went to the model
+    assert "sk-" not in path.read_text()
+
+    fresh = ReplyLog(Counting(), path)  # without replay the old replies are dropped
+    assert fresh.replayed == 0 and path.read_text() == ""
