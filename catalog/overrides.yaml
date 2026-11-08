@@ -58,7 +58,7 @@ shows:
   - { show: johnny-bravo, tmdb_id: "tv:2405", year: 1997 }
   - { show: johnny-tsunami, tmdb_id: "movie:24020", year: 1999 }
   - { show: just-shoot-me, tmdb_id: "tv:4576", year: 1997 }
-  - { show: justice-league, year: 2001 }
+  - { show: justice-league, year: 2001, plex_title: "Justice League (Unlimited)" }  # NAS folder: JL and JLU
   - { show: kim-possible, tmdb_id: "tv:2345", year: 2002 }
   - { show: kratts-creatures, tmdb_id: "tv:933", year: 1996 }
   - { show: lilo-and-stitch-the-series, tmdb_id: "tv:2355", year: 2003 }
@@ -95,7 +95,7 @@ shows:
   - { show: the-joy-of-painting, tmdb_id: "tv:10382", year: 1983 }
   - { show: the-luck-of-the-irish, tmdb_id: "movie:46004", year: 2001 }
   - { show: the-magic-school-bus, tmdb_id: "tv:7248", year: 1994 }
-  - { show: the-office, tmdb_id: "tv:2316", year: 2005 }
+  - { show: the-office, tmdb_id: "tv:2316", year: 2005, plex_title: "The Office Extended" }  # NAS folder: extended cuts
   - { show: the-powerpuff-girls, tmdb_id: "tv:607", year: 1998 }
   - { show: the-proud-family, tmdb_id: "tv:543", year: 2001 }
   - { show: the-simpsons, tmdb_id: "tv:456", year: 1989 }
