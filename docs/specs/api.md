@@ -70,6 +70,7 @@ Admin routes live under `/admin/*` (`/api/admin/*` behind Caddy) and appear in `
 | `POST /admin/undo` | `adminUndo` | Reverts the last save or delete. Returns 409 when there is nothing to undo |
 | `GET /admin/state` | `adminState` | Revision, catalog version and can_undo |
 | `GET /admin/media/progress` | `adminMediaProgress` | How far the rig's conversion has got (M2): see below. 404 until the rig has written `progress.json` |
+| `GET /admin/station/runs?limit=` | `adminStationRuns` | The weekly station manager's runs, newest first (M5; `limit` 1 to 100, default 20): `auto_apply` (`RC_STATION_AUTO_APPLY` on this server) and per run its id, `created_at`, `week_of`, `status` (`applied`, `proposed`, `dry_run`, `skipped`, `failed`), model, the `revision_id` it saved, a summary, the report (signals, changes, power hours, what was left out; `catalog.md`, M5) and `can_undo` (applied and still the head revision: `POST /admin/undo` reverts it) |
 
 **Conversion progress** (`GET /admin/media/progress`, M2 B13) reads `progress.json` at the media root, which the rig's worker keeps current (`ingest/progress.py`, see `ops.md`):
 
@@ -98,3 +99,12 @@ Warnings don't block saving: a show with no playable files yet; a show with no a
 ### Conversion progress: the Media tab (M2 B13)
 
 The `/admin` Media tab polls `GET /admin/media/progress` (above) every 10 s and says "Conversion status isn't available on this server yet" while it returns 404. It shows "Estimating…" until 10 files are done, then averages the last 20 `recent_seconds` times the files left and rounds the ETA to 10 minutes.
+
+## Implemented (M5: viewing reports)
+
+`POST /watch` (`postWatch`, `/api/watch` behind Caddy): the TV reports what was watched, for the weekly station manager (`catalog.md`, M5). LAN-only like everything else. Fire and forget: 204 with no body.
+
+- **Body** (`WatchReport`; unknown fields are refused): `session` (8 to 64 of `A-Za-z0-9_-`, one per program the app plays), `device` (optional label, same characters; the apps send none yet), `channel` (a channel in the effective catalog, else 422), `item` (show or movie id, a slug), `kind` (`episode` or `movie`), `season`, `episode`, `year` (1990 to 2010), `offset` (seconds in when tuned in), `seconds` (watched so far, 0 to 6 h), `runtime` (1 s to 6 h), `ended` (`tune_away`, `power_off`, `program_end`, or null while playing).
+- **Stored** in `watch_sessions` (migration 0007). The first report of a session inserts it: the server stamps `started_at` as now minus `seconds` (real UTC), works out `sim_date` from that and `year` (the simulated-clock rule), and caps `seconds` at `runtime`. Later reports with the same `session` update it: seconds only grow, never past the runtime or the real time since it started plus 60 s, and `ended` is set once. A session id reused for another channel or program is refused (409).
+- **Privacy.** No IP addresses, tokens, URLs or file paths in rows, and nothing logs a report (uvicorn runs without an access log).
+- **Never slows tuning.** Reports are written on the schedule cache's own long-lived connection, and SQLite's `data_version` moves only for commits by other connections, so a report every minute never makes the next `/tune` rebuild the schedules (`tests/test_schedule_cache.py`).

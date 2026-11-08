@@ -161,6 +161,28 @@ def _check_templates(catalog: Catalog) -> list[str]:
     return errors
 
 
+def _check_power_hours(catalog: Catalog) -> list[str]:
+    """Power hours (M5, from the station manager): a known non-movie channel, at most one
+    each, pooling shows the channel carries."""
+    errors: list[str] = []
+    kinds = {c.id: c.type for c in catalog.channels.channels}
+    shows = {(c.channel, c.show) for c in catalog.carriage.carriage if c.kind == "show"}
+    seen: set[str] = set()
+    for ph in catalog.power_hours:
+        if ph.channel not in kinds:
+            errors.append(f"power hour: unknown channel '{ph.channel}'")
+            continue
+        if kinds[ph.channel] == "movie":
+            errors.append(f"power hour: '{ph.channel}' is a movie channel")
+        if ph.channel in seen:
+            errors.append(f"power hour: '{ph.channel}' has two")
+        seen.add(ph.channel)
+        for e in ph.pool:
+            if (ph.channel, e.show) not in shows:
+                errors.append(f"power hour: '{e.show}' is not carried on {ph.channel}")
+    return errors
+
+
 def validate(catalog: Catalog) -> list[str]:
     """Every problem in a loaded catalog, as human-readable lines; empty means valid."""
     channel_ids = {c.id for c in catalog.channels.channels}
@@ -171,6 +193,7 @@ def validate(catalog: Catalog) -> list[str]:
         *_check_carriage(catalog, channel_ids),
         *_check_shows(catalog, holiday_ids),
         *_check_templates(catalog),
+        *_check_power_hours(catalog),
     ]
 
 

@@ -22,7 +22,14 @@ from zoneinfo import ZoneInfo
 
 from retro_cable.catalog import Catalog, effective_dates
 from retro_cable.catalog.holidays import STRENGTH_BOOST, Tagger, holiday_date, mode_for
-from retro_cable.catalog.models import Carriage, Channel, DayPart, Identity, Template
+from retro_cable.catalog.models import (
+    Carriage,
+    Channel,
+    DayPart,
+    Identity,
+    PowerHour,
+    Template,
+)
 from retro_cable.scheduler.clock import broadcast_day, broadcast_day_bounds
 from retro_cable.scheduler.library import Bumper, Library, Program
 
@@ -113,6 +120,7 @@ class Scheduler:
         # Synthetic premieres by (channel, show); the last entry wins (admin over YAML).
         self._premieres = {(s.channel, s.show): s for s in catalog.synthetic.synthetic}
         self._carriage: dict[str, list[Carriage]] = {}
+        self._power = {p.channel: p for p in catalog.power_hours}
         for c in catalog.carriage.carriage:
             self._carriage.setdefault(c.channel, []).append(c)
         self._programs = {
@@ -215,6 +223,37 @@ class Scheduler:
                 break
         return current, boundary.astimezone(UTC)
 
+    def _power_hour(
+        self, channel_id: str, local: datetime, under: DayPart | None
+    ) -> tuple[DayPart | None, datetime | None]:
+        """The station manager's power hour (M5) on a channel at a local time, as a day-part
+        ending at its UTC end, or (None, the UTC instant it starts later today, if it does).
+        It takes `under`'s primetime flag, so NEW episodes and holiday specials keep to prime.
+        """
+        ph: PowerHour | None = self._power.get(channel_id)
+        if ph is None:
+            return None, None
+        day = local.date()
+        hour, minute = (int(x) for x in ph.start.split(":"))
+        start = datetime.combine(day, time(hour, minute), tzinfo=self.tz)
+        end_hour = hour + ph.hours
+        end = (  # a power hour stops at midnight at the latest
+            datetime.combine(day + timedelta(days=1), time(0), tzinfo=self.tz)
+            if end_hour >= 24
+            else datetime.combine(day, time(end_hour, minute), tzinfo=self.tz)
+        )
+        if local < start:
+            return None, start.astimezone(UTC)
+        if local >= end:
+            return None, None
+        part = DayPart(
+            weekday=WEEKDAYS[day.weekday()],  # type: ignore[arg-type]
+            start=ph.start,
+            primetime=bool(under and under.primetime),
+            pool=ph.pool,
+        )
+        return part, end.astimezone(UTC)
+
     def _pool(self, channel_id: str, part: DayPart | None, day: date) -> list[_Source]:
         active = [c for c in self._carriage.get(channel_id, []) if _carried(c, day)]
         weights: dict[tuple[str, str], float] = {}
@@ -245,6 +284,15 @@ class Scheduler:
             _Source(show, kind, w)  # type: ignore[arg-type]
             for (show, kind), w in weights.items()
             if show not in self._excluded
+        ]
+
+    def _candidates(
+        self, channel: Channel, part: DayPart | None, day: date
+    ) -> list[tuple[_Source, list[Program]]]:
+        return [
+            (s, progs)
+            for s in self._pool(channel.id, part, day)
+            if (progs := self._eligible(channel, s, day))
         ]
 
     def tags(self, program: Program) -> frozenset[str]:
@@ -356,11 +404,15 @@ class Scheduler:
             if marathon:
                 t = self._marathon_step(channel, day, marathon, slots, t, end, rng)
                 continue
-            candidates = [
-                (s, progs)
-                for s in self._pool(channel.id, part, sim_date)
-                if (progs := self._eligible(channel, s, sim_date))
-            ]
+            candidates = self._candidates(channel, part, sim_date)
+            power, power_edge = self._power_hour(channel.id, local, part)
+            if power is not None and power_edge is not None:
+                # The power hour plays when one of its shows can air; else the usual part.
+                found = self._candidates(channel, power, sim_date)
+                if found:
+                    part, boundary, candidates = power, power_edge, found
+            elif power_edge is not None:
+                boundary = min(boundary, power_edge)  # Off Air stops where the power hour begins
             holidays = self._holidays(channel, part, local)
             room = end - t
             special = None

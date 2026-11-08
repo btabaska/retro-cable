@@ -16,7 +16,15 @@ import pytest
 import yaml
 
 OPS = Path(__file__).resolve().parents[1]
-SCRIPTS = ["deploy.sh", "rollback.sh", "smoke.sh", "rig/worker.sh", "rig/up.sh"]
+SCRIPTS = [
+    "deploy.sh",
+    "rollback.sh",
+    "smoke.sh",
+    "station-manager.sh",
+    "systemd/install.sh",
+    "rig/worker.sh",
+    "rig/up.sh",
+]
 
 
 def load(name: str) -> dict[str, Any]:
@@ -686,3 +694,139 @@ def test_deploy_reads_host_settings_from_env_file(
 
     assert result.returncode == 0, result.stderr
     assert any(c.endswith(" build") for c in log.read_text().splitlines())
+
+
+# --- the weekly station manager (M5) ------------------------------------------
+
+
+def unit(name: str) -> dict[str, dict[str, str]]:
+    """A systemd unit file as {section: {key: value}} (last value wins)."""
+    out: dict[str, dict[str, str]] = {}
+    section = ""
+    for raw in (OPS / "systemd" / name).read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("["):
+            section = line.strip("[]")
+            out[section] = {}
+        else:
+            key, value = line.split("=", 1)
+            out[section][key] = value
+    return out
+
+
+def test_station_manager_timer_runs_sundays_at_2am_new_york_and_catches_up() -> None:
+    timer = unit("retro-cable-station-manager.timer")
+    assert timer["Timer"]["OnCalendar"] == "Sun *-*-* 02:00:00 America/New_York"
+    assert timer["Timer"]["Persistent"] == "true"
+    assert timer["Timer"]["Unit"] == "retro-cable-station-manager.service"
+    assert timer["Install"]["WantedBy"] == "timers.target"
+
+
+def test_station_manager_service_runs_the_job_script_after_docker() -> None:
+    service = unit("retro-cable-station-manager.service")
+    assert service["Service"]["Type"] == "oneshot"
+    assert service["Service"]["ExecStart"] == "/opt/retro-cable/ops/station-manager.sh"
+    assert "docker.service" in service["Unit"]["After"]
+    assert service["Unit"]["Requires"] == "docker.service"
+    assert service["Service"]["User"] == "CHECKOUT_OWNER"  # filled in by install.sh
+
+
+def test_station_manager_and_deploy_share_one_lock() -> None:
+    for script in ("deploy.sh", "station-manager.sh"):
+        text = (OPS / script).read_text()
+        assert 'exec 9>"$state/deploy.lock"' in text and "flock -w" in text
+    assert '"$here/systemd/install.sh" --check || true' in (OPS / "deploy.sh").read_text()
+
+
+def test_station_manager_runs_the_job_in_the_api_container(
+    tmp_path: Path, fake_docker: tuple[Path, Path]
+) -> None:
+    bin_dir, log = fake_docker
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "RC_STATE_DIR": str(tmp_path / "state"),
+        "RC_API_WAIT_DELAY": "0",
+    }
+    result = run("station-manager.sh", "--dry-run", env=env)
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text().splitlines()
+    compose = f"compose -f {OPS / 'compose.yml'}"
+    assert calls[0].endswith(f"{compose} exec -T api true")
+    assert calls[-1].endswith(
+        f"{compose} exec -T api python -m retro_cable.station_manager run --dry-run"
+    )
+
+
+def test_station_manager_gives_up_when_the_api_is_not_running(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text("#!/usr/bin/env bash\nexit 1\n")
+    (bin_dir / "docker").chmod(0o755)
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "RC_STATE_DIR": str(tmp_path / "state"),
+        "RC_API_WAIT": "2",
+        "RC_API_WAIT_DELAY": "0",
+    }
+    result = run("station-manager.sh", env=env)
+    assert result.returncode == 1
+    assert "isn't running" in result.stderr
+
+
+def test_install_renders_the_units_once_and_enables_the_timer(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "systemctl.log"
+    (bin_dir / "systemctl").write_text(f'#!/usr/bin/env bash\necho "$*" >> {calls}\n')
+    (bin_dir / "systemctl").chmod(0o755)
+    dest = tmp_path / "systemd"
+    dest.mkdir()
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "RC_SYSTEMD_DIR": str(dest),
+        "RC_SERVICE_USER": "deployer",
+    }
+    assert run("systemd/install.sh", "--check", env=env).returncode == 1  # not installed yet
+
+    result = run("systemd/install.sh", env=env)
+    assert result.returncode == 0, result.stderr
+    service = (dest / "retro-cable-station-manager.service").read_text()
+    repo = str(OPS.parent)
+    assert "User=deployer" in service
+    assert f"ExecStart={repo}/ops/station-manager.sh" in service
+    timer = (OPS / "systemd" / "retro-cable-station-manager.timer").read_text()
+    assert (dest / "retro-cable-station-manager.timer").read_text() == timer.replace(
+        "/opt/retro-cable", repo
+    )
+    assert calls.read_text().splitlines() == [
+        "daemon-reload",
+        "enable --now retro-cable-station-manager.timer",
+        "list-timers retro-cable-station-manager.timer --no-pager",
+    ]
+
+    # Again: nothing to rewrite, so no reload; the check passes.
+    calls.write_text("")
+    assert run("systemd/install.sh", env=env).returncode == 0
+    assert "daemon-reload" not in calls.read_text()
+    assert run("systemd/install.sh", "--check", env=env).returncode == 0
+
+
+def test_install_refuses_without_write_access(tmp_path: Path) -> None:
+    dest = tmp_path / "ro"
+    dest.mkdir(mode=0o555)
+    result = run("systemd/install.sh", env={"RC_SYSTEMD_DIR": str(dest)})
+    assert result.returncode == 1 and "sudo" in result.stderr
+
+
+def test_api_gets_the_local_model_settings_and_the_example_names_them() -> None:
+    env = load("compose.yml")["services"]["api"]["environment"]
+    assert env["RC_LLM_URL"] == "${RC_LLM_URL:-http://rig:4000}"
+    assert env["RC_LLM_KEY"] == "${RC_LLM_KEY:-}"
+    assert env["RC_LLM_MODEL"] == "${RC_LLM_MODEL:-chat}"
+    assert env["RC_STATION_AUTO_APPLY"] == "${RC_STATION_AUTO_APPLY:-1}"
+    text = (OPS / ".env.example").read_text()
+    for key in ("RC_LLM_URL", "RC_LLM_KEY", "RC_LLM_MODEL", "RC_STATION_AUTO_APPLY"):
+        assert f"# {key}=" in text
+    assert re.search(r"^# RC_LLM_KEY=\s", text, flags=re.M), "names only, never a key"

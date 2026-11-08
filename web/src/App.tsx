@@ -3,6 +3,7 @@ import { type Lineup, liveApi, type TvApi } from "./api/client";
 import { Player, type PlayerMode } from "./components/Player";
 import { useNow } from "./hooks/useNow";
 import { useTuner } from "./hooks/useTuner";
+import { useWatchReporter } from "./hooks/useWatchReporter";
 import { stepChannel } from "./lib/channels";
 import { load, save } from "./lib/storage";
 import { simulatedNow } from "./lib/time";
@@ -127,6 +128,12 @@ export function App({ api = liveApi }: AppProps) {
   let mode: PlayerMode = "hidden";
   if (powered && screen === "live") mode = "live";
   else if (powered && screen === "guide") mode = "pip";
+
+  // What is on screen, for the weekly station manager (full screen or the guide's PiP).
+  useWatchReporter(
+    mode !== "hidden" && tunedId && tuner.slot ? { channel: tunedId, year, slot: tuner.slot, simNow: now } : null,
+    api.reportWatch,
+  );
 
   let body;
   if (!powered) {

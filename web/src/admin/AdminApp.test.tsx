@@ -122,6 +122,7 @@ function fakeApi(): AdminApi & { channels: AdminChannelRow[] } {
     deleteChannel: vi.fn(() => Promise.reject(new Error("unused"))),
     setPremiere: vi.fn(() => Promise.reject(new Error("unused"))),
     getMediaProgress: vi.fn(() => Promise.reject(new NotAvailable("no"))),
+    getStationRuns: vi.fn(() => Promise.resolve({ auto_apply: true, runs: [] })),
     undo: vi.fn(() => {
       channels.pop();
       return Promise.resolve({ message: "Restored", state: state(10, false) });
@@ -541,5 +542,58 @@ describe("AdminApp M2", () => {
     await user.click(screen.getByRole("button", { name: "Channels" }));
     await user.click(await screen.findByRole("button", { name: "Media" }));
     expect(await screen.findByText("Nothing to convert.")).toBeInTheDocument();
+  });
+
+  it("lists the station manager's runs and undoes the latest", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    const signals = {
+      total_seconds: 16080, sessions: 24, year: 1995, shows: [], channels: [],
+      heatmap: [], busiest_hours: [20],
+    };
+    const report = {
+      weeks: 4, since: "2026-10-11T07:00:00Z", until: "2026-11-08T07:00:00Z", signals,
+      power_window: { start: "20:00", hours: 1 },
+      changes: [{ knob: "pool:ktvu-base:20:00:the-simpsons", channel: "ktvu", show: "the-simpsons",
+                  title: "The Simpsons", template: "ktvu-base", start: "20:00", before: 1, after: 1.62,
+                  why: "finished every time" }],
+      power_hours: [{ channel: "ktvu", start: "20:00", hours: 1, shows: ["the-simpsons"],
+                      titles: ["The Simpsons"], weights: [2] }],
+      dropped: [], model_summary: "More Simpsons", notes: [],
+      before: { carriage: [], pools: [], power_hours: [] }, after: null,
+    };
+    vi.mocked(api.getStationRuns).mockResolvedValue({
+      auto_apply: true,
+      runs: [
+        { id: 2, created_at: "2026-11-08T07:04:00Z", week_of: "2026-11-08", status: "applied",
+          model: "chat", revision_id: 9, summary: "Applied 1 weight on 1 channel.", report,
+          can_undo: true },
+        { id: 1, created_at: "2026-11-01T07:00:00Z", week_of: "2026-11-01", status: "skipped",
+          model: "chat", revision_id: null, summary: "Not enough viewing yet.",
+          report: { ...report, changes: [], power_hours: [] }, can_undo: false },
+      ],
+    });
+    render(<AdminApp api={api} />);
+    await user.click(await screen.findByRole("button", { name: "Station" }));
+    const runs = await screen.findByTestId("station-runs");
+    const [latest, older] = Array.from(runs.querySelectorAll(":scope > li"));
+    expect(latest).toHaveTextContent("Week of Nov 8, 2026");
+    expect(latest).toHaveTextContent("Applied");
+    expect(latest).toHaveTextContent("4 h 28 min watched in 4 weeks");
+    expect(latest).toHaveTextContent("Power hour 8 PM to 9 PM: The Simpsons");
+    expect(latest).toHaveTextContent("The Simpsons, 8 PM part: ×1 → ×1.62");
+    expect(older).toHaveTextContent("No change");
+    expect(screen.getByRole("heading", { level: 1, name: "Station manager" })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Undo this week's changes" }));
+    expect(api.undo).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Restored")).toBeInTheDocument();
+  });
+
+  it("says when the station manager hasn't run yet", async () => {
+    const user = userEvent.setup();
+    render(<AdminApp api={fakeApi()} />);
+    await user.click(await screen.findByRole("button", { name: "Station" }));
+    expect(await screen.findByText(/hasn't run yet/)).toBeInTheDocument();
+    expect(screen.getByTestId("station-mode")).toHaveTextContent("Changes apply on their own");
   });
 });

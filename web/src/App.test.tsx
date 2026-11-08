@@ -102,6 +102,28 @@ describe("App", () => {
     expect(screen.getByTestId("banner-number")).toHaveTextContent("02");
   });
 
+  it("reports what was watched when changing channel, without waiting on it", async () => {
+    const user = userEvent.setup();
+    const reportWatch = vi.fn();
+    render(<App api={{ ...fakeApi(), reportWatch }} />);
+    await user.keyboard("{Enter}");
+    await screen.findByTestId("banner-title");
+    const later = Date.now() + 120_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(later);
+    await user.keyboard("{ArrowUp}");
+    await vi.waitFor(() => {
+      expect(screen.getByTestId("banner-title")).toHaveTextContent("Friends");
+    });
+    clock.mockRestore();
+    expect(reportWatch).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "ktvu", item: "the simpsons", ended: "tune_away", year: 1998 }),
+      false,
+    );
+    const [[sent]] = reportWatch.mock.calls as [[{ seconds: number; offset: number }]];
+    expect(sent.seconds).toBeGreaterThanOrEqual(119);
+    expect(sent.offset).toBe(600);
+  });
+
   it("changes channel and goes back to the last one", async () => {
     const user = userEvent.setup();
     const api = fakeApi();

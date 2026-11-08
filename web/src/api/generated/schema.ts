@@ -170,6 +170,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/station/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Adminstationruns
+         * @description Recent station manager runs: applied, proposed, dry, skipped and failed.
+         */
+        get: operations["adminStationRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/undo": {
         parameters: {
             query?: never;
@@ -285,6 +305,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Postwatch
+         * @description Record (or update) what is being watched. Fire and forget: the app ignores the
+         *     answer, and nothing waits on it.
+         */
+        post: operations["postWatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -392,6 +433,49 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /**
+         * CarriageTune
+         * @description A weight multiplier for one show on one channel: every carriage window of it, so the
+         *     all-day rotation, tag pools and empty block parts.
+         */
+        CarriageTune: {
+            /** Channel */
+            channel: string;
+            /**
+             * Factor
+             * @description Multiplier on the base weight
+             */
+            factor: number;
+            /** Show */
+            show: string;
+        };
+        /** Change */
+        Change: {
+            /** After */
+            after: number;
+            /** Before */
+            before: number;
+            /** Channel */
+            channel: string;
+            /** Knob */
+            knob: string;
+            /** Show */
+            show: string;
+            /** Start */
+            start?: string | null;
+            /** Template */
+            template?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Why
+             * @default
+             */
+            why: string;
+        };
         /** ChangeResult */
         ChangeResult: {
             /** Message */
@@ -452,6 +536,20 @@ export interface components {
              * @enum {string}
              */
             type: "network" | "marathon" | "movie";
+        };
+        /** ChannelSignal */
+        ChannelSignal: {
+            /** Channel */
+            channel: string;
+            /**
+             * Mean Seconds
+             * @description Dwell: average seconds per program watched
+             */
+            mean_seconds: number;
+            /** Seconds */
+            seconds: number;
+            /** Sessions */
+            sessions: number;
         };
         /** CheckIssue */
         CheckIssue: {
@@ -525,6 +623,15 @@ export interface components {
              * @description Last year carried; default open
              */
             until_year?: number | null;
+        };
+        /** Dropped */
+        Dropped: {
+            /** Channel */
+            channel?: string | null;
+            /** Reason */
+            reason: string;
+            /** What */
+            what: string;
         };
         /** Guide */
         Guide: {
@@ -737,6 +844,92 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * Pool
+         * @description One weighted entry in a day-part pool: a specific carried show, or every show with a tag.
+         */
+        Pool: {
+            /** Show */
+            show?: string | null;
+            /** Tag */
+            tag?: string | null;
+            /**
+             * Weight
+             * @default 1
+             */
+            weight: number;
+        };
+        /**
+         * PoolTune
+         * @description A weight multiplier for one show in a template's parts that start at `start` (the same
+         *     day-part on every weekday it appears).
+         */
+        PoolTune: {
+            /**
+             * Factor
+             * @description Multiplier on the base weight
+             */
+            factor: number;
+            /** Show */
+            show: string;
+            /** Start */
+            start: string;
+            /** Template */
+            template: string;
+        };
+        /**
+         * PowerHour
+         * @description Brandon's busiest viewing hour(s) as a day-part on one channel, every day, ahead of the
+         *     channel's templates (or its all-day rotation). Like any part it starts when the program
+         *     already running ends. When none of its shows can air on a date, the usual part plays.
+         */
+        PowerHour: {
+            /** Channel */
+            channel: string;
+            /**
+             * Hours
+             * @default 1
+             */
+            hours: number;
+            /**
+             * Pool
+             * @description The channel's top shows, by weight
+             */
+            pool: components["schemas"]["Pool"][];
+            /**
+             * Start
+             * @description Local HH:MM it begins
+             */
+            start: string;
+        };
+        /** PowerHourPlan */
+        PowerHourPlan: {
+            /** Channel */
+            channel: string;
+            /** Hours */
+            hours: number;
+            /** Shows */
+            shows: string[];
+            /** Start */
+            start: string;
+            /**
+             * Titles
+             * @default []
+             */
+            titles: string[];
+            /** Weights */
+            weights: number[];
+        };
+        /** PowerWindow */
+        PowerWindow: {
+            /** Hours */
+            hours: number;
+            /**
+             * Start
+             * @description Local HH:MM
+             */
+            start: string;
+        };
         /** PremiereRequest */
         PremiereRequest: {
             /**
@@ -775,6 +968,44 @@ export interface components {
             /** Weekday */
             weekday: string;
         };
+        /** RunReport */
+        RunReport: {
+            /** @description The tuning it applied or proposes */
+            after?: components["schemas"]["Tuning"] | null;
+            /** @description The tuning the run started from */
+            before?: components["schemas"]["Tuning"];
+            /** Changes */
+            changes?: components["schemas"]["Change"][];
+            /** Dropped */
+            dropped?: components["schemas"]["Dropped"][];
+            /**
+             * Model Summary
+             * @description The model's own one-line summary
+             * @default
+             */
+            model_summary: string;
+            /** Notes */
+            notes?: string[];
+            /** Power Hours */
+            power_hours?: components["schemas"]["PowerHourPlan"][];
+            power_window?: components["schemas"]["PowerWindow"] | null;
+            signals: components["schemas"]["Signals"];
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+            /**
+             * Weeks
+             * @description Weeks of viewing read
+             */
+            weeks: number;
+        };
         /** SaveResult */
         SaveResult: {
             /** Channel Id */
@@ -783,6 +1014,104 @@ export interface components {
             /** Message */
             message: string;
             state: components["schemas"]["AdminState"];
+        };
+        /** ShowSignal */
+        ShowSignal: {
+            /** Channel */
+            channel: string;
+            /**
+             * Completion
+             * @description Seconds watched over seconds available (0-1)
+             */
+            completion: number;
+            /**
+             * Early Tune Aways
+             * @description Tune-aways in under 3 minutes
+             */
+            early_tune_aways: number;
+            /** Seconds */
+            seconds: number;
+            /** Sessions */
+            sessions: number;
+            /** Show */
+            show: string;
+        };
+        /** Signals */
+        Signals: {
+            /**
+             * Busiest Hours
+             * @description Hours of the day, busiest first (up to 3)
+             */
+            busiest_hours: number[];
+            /**
+             * Channels
+             * @description Most watched first
+             */
+            channels: components["schemas"]["ChannelSignal"][];
+            /**
+             * Heatmap
+             * @description Seconds watched by real weekday (Monday first) and hour, in the catalog zone
+             */
+            heatmap: number[][];
+            /** Sessions */
+            sessions: number;
+            /**
+             * Shows
+             * @description Per channel and show, most watched first
+             */
+            shows: components["schemas"]["ShowSignal"][];
+            /** Total Seconds */
+            total_seconds: number;
+            /**
+             * Year
+             * @description The simulated year watched most
+             */
+            year: number | null;
+        };
+        /** StationRunRow */
+        StationRunRow: {
+            /**
+             * Can Undo
+             * @description Applied and still the latest /admin revision
+             */
+            can_undo: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Model */
+            model: string;
+            report: components["schemas"]["RunReport"];
+            /**
+             * Revision Id
+             * @description The /admin revision an applied run saved
+             */
+            revision_id: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "applied" | "proposed" | "dry_run" | "skipped" | "failed";
+            /** Summary */
+            summary: string;
+            /**
+             * Week Of
+             * @description YYYY-MM-DD, the Sunday the run's week starts
+             */
+            week_of: string;
+        };
+        /** StationRuns */
+        StationRuns: {
+            /**
+             * Auto Apply
+             * @description RC_STATION_AUTO_APPLY on this server
+             */
+            auto_apply: boolean;
+            /** Runs */
+            runs: components["schemas"]["StationRunRow"][];
         };
         /** Tune */
         Tune: {
@@ -846,6 +1175,19 @@ export interface components {
             /** Transplant */
             transplant: boolean;
         };
+        /**
+         * Tuning
+         * @description What the weekly station manager changes (M5): weights and power hours, never which
+         *     shows are carried, their dates, launches, premieres or holidays.
+         */
+        Tuning: {
+            /** Carriage */
+            carriage?: components["schemas"]["CarriageTune"][];
+            /** Pools */
+            pools?: components["schemas"]["PoolTune"][];
+            /** Power Hours */
+            power_hours?: components["schemas"]["PowerHour"][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -865,6 +1207,64 @@ export interface components {
             commit: string;
             /** Version */
             version: string;
+        };
+        /**
+         * WatchReport
+         * @description One program watched on one channel, so far.
+         */
+        WatchReport: {
+            /** Channel */
+            channel: string;
+            /**
+             * Device
+             * @description App-chosen label, if any
+             */
+            device?: string | null;
+            /**
+             * Ended
+             * @description Why it ended; null while playing
+             */
+            ended?: ("tune_away" | "power_off" | "program_end") | null;
+            /** Episode */
+            episode?: number | null;
+            /**
+             * Item
+             * @description Show or movie id
+             */
+            item: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "episode" | "movie";
+            /**
+             * Offset
+             * @description Seconds in when tuned in
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Runtime
+             * @description The program's full length
+             */
+            runtime: number;
+            /** Season */
+            season?: number | null;
+            /**
+             * Seconds
+             * @description Seconds watched so far
+             */
+            seconds: number;
+            /**
+             * Session
+             * @description Random id the app picks per program
+             */
+            session: string;
+            /**
+             * Year
+             * @description Simulated year
+             */
+            year: number;
         };
     };
     responses: never;
@@ -1275,6 +1675,38 @@ export interface operations {
             };
         };
     };
+    adminStationRuns: {
+        parameters: {
+            query?: {
+                /** @description Newest first */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationRuns"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     adminUndo: {
         parameters: {
             query?: never;
@@ -1461,6 +1893,42 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Version"];
                 };
+            };
+        };
+    };
+    postWatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The session id already names another program */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a valid report, or an unknown channel */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

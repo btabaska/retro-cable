@@ -535,6 +535,7 @@ def _check_reuse(
         premieres=[*(p for p in head.premieres if (p.show, p.channel) not in replaced), *premieres],
         templates=head.templates,
         ids=head.ids,
+        tuning=head.tuning,
     )
     merged = apply_overlay(base, overlay)
     problems = validate(merged)

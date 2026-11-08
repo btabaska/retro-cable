@@ -1,6 +1,20 @@
 # Status
 
-**Current phase:** Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it, and M4 (Live TV downloads) on top of M3. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+**Current phase:** Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it, M4 (Live TV downloads) on top of M3, and M5 (the weekly station manager) on top of M4. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+
+## Milestone M5: the weekly AI station manager (in review, stacked on #23)
+
+Brandon (Nov 7 2026): "make sure it runs on a weekly schedule, like Sundays at 2am, to build the schedule using viewership data from what has been watched and when." Specs: `catalog.md` and `ops.md` (M5), `api.md` and `web.md` (M5: viewing reports), `scheduler.md` (M5: power hours).
+
+- [x] Viewing data: the TV reports each program it plays (heartbeat every minute, program end, tune-away, page hidden, power-off by `sendBeacon`; never blocks tuning, failures silent; under 10 s is surfing and isn't sent) to `POST /api/watch`, stored in `watch_sessions` (migration 0007) with no IPs, tokens or URLs
+- [x] Signals in code: watch time, completion and early tune-aways (under 3 minutes) per channel and show, channel dwell, an hour-of-week heatmap in New York time
+- [x] `python -m retro_cable.station_manager run [--dry-run] [--weeks 4]`: under 2 hours of viewing in the window it records "not enough viewing yet" and changes nothing; otherwise the rig's local model proposes weight changes and a power hour (Brandon's busiest hour, every day, from his most finished shows per channel)
+- [x] Guardrails in code: weights and power hours only (nothing carried or dropped, no dates, launches, premieres or holidays), the authenticity dial caps drift (default 30: x0.62 to x1.62), at most a fifth of a channel's weights per week, the /admin checks and a week's smoke test per channel; a Hypothesis property keeps the scheduler invariants
+- [x] Auto-apply on by default (`RC_STATION_AUTO_APPLY=1`): one /admin revision per week, undone in one tap; every run (applied, proposed, dry, skipped, failed) recorded and shown in /admin's new Station tab (`GET /api/admin/station/runs`)
+- [x] Timer: `ops/systemd/retro-cable-station-manager.{service,timer}`, Sundays 02:00 America/New_York, `Persistent=true`, running the job in the api container; shares a lock with `deploy.sh`
+- [ ] On the mini: add `RC_LLM_URL=http://192.168.10.12:4000`, `RC_LLM_MODEL=chat` and `RC_LLM_KEY` to `/opt/retro-cable/ops/.env`, deploy, then `sudo ops/systemd/install.sh` once
+- [ ] Brandon watches for a couple of weeks (2 hours is the minimum), then reads the first applied run in /admin → Station
+- Not yet: likes (hold Select on the banner), the authenticity dial in /admin, Telegram reports
 
 ## Milestone M4: Live TV downloads (in review, stacked on #21)
 

@@ -17,9 +17,10 @@ from fastapi.responses import FileResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
-from retro_cable import __version__, media, tv
+from retro_cable import __version__, media, tv, watch
 from retro_cable.admin import media as admin_media
 from retro_cable.admin import router as admin
+from retro_cable.admin import station as admin_station
 from retro_cable.admin import store
 from retro_cable.catalog import Catalog, load_catalog
 from retro_cable.catalog.overlay import Overlay, apply_overlay
@@ -124,6 +125,18 @@ class _Schedules:
         with self._lock:
             self._scheduler = None
 
+    def write(self, fn: Callable[[sqlite3.Connection], None]) -> None:
+        """Run a small write that no schedule depends on (a viewing report) on the watched
+        connection itself. `data_version` moves only for commits by other connections, so
+        the TV's reports every minute never make the next /tune rebuild every schedule."""
+        with self._lock:
+            if not self.settings.db_path.exists():
+                self.settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+                connect(self.settings.db_path).close()
+            self._db_stamp()  # opens (and migrates) the watched connection if need be
+            assert self._watch is not None
+            fn(self._watch)
+
     @property
     def base(self) -> Catalog:
         self()
@@ -205,6 +218,8 @@ def create_app(
     app.include_router(tv.router(schedules, clock, sign))
     app.include_router(admin.router(schedules, clock, config.db_path, config.seed))
     app.include_router(admin_media.router(config.media_dir, clock))
+    app.include_router(admin_station.router(config.db_path))
+    app.include_router(watch.router(schedules, clock))
 
     @app.get("/media/{path:path}", name="getMedia", include_in_schema=False)
     def get_media(

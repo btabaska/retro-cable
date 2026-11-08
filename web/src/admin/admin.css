@@ -763,3 +763,19 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Station tab (M5): what the weekly station manager changed. */
+.adm-station-changes {
+  margin: 8px 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--rc-admin-font-meta);
+}
+
+.adm-card > .adm-note,
+.adm-card > .adm-hint {
+  display: block;
+  margin-top: 6px;
+}
