@@ -34,7 +34,9 @@ Rules:
   premiere anywhere, or a US debut). Seasons a part_of or episodes_of show needs are kept.
   Sonarr then adds no new seasons of that show, and unfinished downloads holding only those
   seasons are cancelled (see trim_seasons).
-- `dry_run` only reads (GET); nothing is added, changed or cancelled.
+- radarr-livetv is asked to search its missing movies again about daily: Radarr searches
+  a movie only when it is added, and its RSS sync sees only new posts.
+- `dry_run` only reads (GET); nothing is added, changed, cancelled or searched.
 
 The API keys travel in a header (ingest/http.py) and never appear in output or a repr.
 """
@@ -43,7 +45,7 @@ import re
 import sqlite3
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Any, Literal
 
@@ -218,6 +220,7 @@ class InstanceReport:
     # Seasons unmonitored because they can never air (sonarr-livetv; see trim_seasons): id,
     # title, seasons and (not in a dry run) how many unfinished downloads were cancelled.
     trimmed: list[dict[str, Any]] = field(default_factory=list)
+    searched_missing: bool = False  # radarr-livetv was asked to search its missing movies
 
 
 @dataclass
@@ -666,6 +669,41 @@ def trim_seasons(request: Request, rules: Airable, report: InstanceReport, dry_r
         report.trimmed.append(entry)
 
 
+SEARCH_EVERY = timedelta(hours=23)  # about daily, with the worker's 6-hour passes
+_SEARCHED = "acquire-search-movies"  # import_runs source
+
+
+def search_missing_movies(
+    db: sqlite3.Connection, request: Request, report: InstanceReport, now: datetime
+) -> None:
+    """Ask radarr-livetv to search all its missing movies again, at most daily. Radarr
+    searches a movie once, when it is added, and its RSS sync only sees new posts, so a
+    release that was missing then (or had no seeders) is otherwise never found."""
+    last = db.execute(
+        "SELECT MAX(started_at) FROM import_runs WHERE source = ?", (_SEARCHED,)
+    ).fetchone()[0]
+    if last is not None and now - datetime.fromisoformat(last) < SEARCH_EVERY:
+        return
+    try:
+        roots = [str(r.get("path", "")).rstrip("/") or "/"
+                 for r in request("GET", "/api/v3/rootfolder", None, None) or []]  # fmt: skip
+        if roots != [RADARR_ROOT]:
+            report.error = report.error or f"{RADARR}'s root folders are {roots}: not searching"
+            return
+        search = {"name": "MissingMoviesSearch", "filterKey": "monitored", "filterValue": "true"}
+        request("POST", "/api/v3/command", None, search)
+    except _ERRORS as err:
+        report.failed.append({"id": "missing", "title": "", "reason": f"search: {err}"})
+        return
+    stamp = now.isoformat()
+    db.execute(
+        "INSERT INTO import_runs (source, started_at, finished_at, stats) VALUES (?, ?, ?, '{}')",
+        (_SEARCHED, stamp, stamp),
+    )
+    db.commit()
+    report.searched_missing = True
+
+
 def acquire(
     db: sqlite3.Connection,
     catalog: Catalog,
@@ -674,6 +712,7 @@ def acquire(
     radarr: Request | None,
     dry_run: bool,
     extra: Iterable[Mapping[str, Any]] = (),
+    now: datetime | None = None,
 ) -> AcquireReport:
     """Add every carried title with no files to sonarr-livetv or radarr-livetv (see the
     module docstring). An instance that is None is unset (RC_*_LIVETV_URL and _KEY)."""
@@ -684,4 +723,6 @@ def acquire(
     _add(RADARR_API, radarr, [w for w in found if w.kind == "movie"], report.movies, dry_run)
     if sonarr is not None and report.shows.error is None:
         trim_seasons(sonarr, airable(db, catalog, extra), report.shows, dry_run)
+    if radarr is not None and report.movies.error is None and now is not None and not dry_run:
+        search_missing_movies(db, radarr, report.movies, now)
     return report

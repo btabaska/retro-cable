@@ -281,7 +281,8 @@ def _mini_items(args: argparse.Namespace) -> list[dict[str, object]]:
 def _acquire(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace) -> int:
     # The mini's /admin channels count as carried.
     report = acquire(db, catalog, sonarr=_arr("SONARR"), radarr=_arr("RADARR"),
-                     dry_run=args.dry_run, extra=_mini_items(args))  # fmt: skip
+                     dry_run=args.dry_run, extra=_mini_items(args),
+                     now=datetime.now(UTC))  # fmt: skip
     print(json.dumps(asdict(report), indent=2))
     return 0 if report.ok else 1
 

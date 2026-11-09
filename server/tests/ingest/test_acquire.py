@@ -890,3 +890,34 @@ def test_a_remake_with_the_same_title_is_told_apart_by_year(
     out = _trim(library, make_catalog, alone, files={"overrides": years})
     assert out["shows"]["trimmed"] == [], "only the 1989 show is carried: not this series"
     assert not any(path == "/api/v3/episode" for path in alone.gets)
+
+
+# --- searching again for missing movies (Nov 9 2026) -------------------------------------
+
+
+def test_missing_movies_are_searched_again_once_a_day(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Radarr searches a movie when it is added and never again; its RSS feed only sees new
+    posts. So acquire asks radarr-livetv to search its missing movies again, at most daily."""
+    from datetime import UTC, datetime, timedelta
+
+    catalog = load_catalog(make_catalog())
+    first = datetime(2026, 11, 9, 5, 0, tzinfo=UTC)
+
+    def run(now: datetime, **kw: Any) -> tuple[FakeArr, dict[str, Any]]:
+        radarr = FakeArr("movie", lookups=RADARR_LOOKUPS)
+        report = acquire(library, catalog, sonarr=None, radarr=radarr, now=now, **kw)
+        out: dict[str, Any] = asdict(report)
+        return radarr, out
+
+    radarr, out = run(first, dry_run=False)
+    assert {"name": "MissingMoviesSearch", "filterKey": "monitored",
+            "filterValue": "true"} in radarr.commands  # fmt: skip
+    assert out["movies"]["searched_missing"] is True
+    radarr, out = run(first + timedelta(hours=6), dry_run=False)
+    assert radarr.commands == [] and out["movies"]["searched_missing"] is False
+    radarr, _ = run(first + timedelta(days=1, minutes=1), dry_run=True)
+    assert radarr.commands == [], "a dry run searches nothing"
+    radarr, _ = run(first + timedelta(days=1, minutes=1), dry_run=False)
+    assert [c["name"] for c in radarr.commands] == ["MissingMoviesSearch"]
