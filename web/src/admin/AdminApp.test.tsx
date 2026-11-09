@@ -28,8 +28,8 @@ const row = (id: string, number: number, name: string, custom = false): AdminCha
 });
 
 const LIBRARY: LibraryEntry[] = [
-  { id: "courage", title: "Courage the Cowardly Dog", kind: "show", first_year: 1999, last_year: 2002, debut: "1999-11-12", episodes: 52, channels: [] },
-  { id: "johnny-bravo", title: "Johnny Bravo", kind: "show", first_year: 1997, last_year: 2004, episodes: 67, channels: [] },
+  { id: "courage", title: "Courage the Cowardly Dog", kind: "show", first_year: 1999, last_year: 2002, debut: "1999-11-12", episodes: 52, channels: [], shifted: false },
+  { id: "johnny-bravo", title: "Johnny Bravo", kind: "show", first_year: 1997, last_year: 2004, episodes: 67, channels: [], shifted: false },
   {
     id: "the-simpsons",
     title: "The Simpsons",
@@ -38,6 +38,7 @@ const LIBRARY: LibraryEntry[] = [
     last_year: 2010,
     episodes: 400,
     channels: [{ id: "ktvu", name: "KTVU (Fox)", number: 2 }],
+    shifted: false,
   },
 ];
 

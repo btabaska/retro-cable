@@ -139,6 +139,17 @@ def test_library_counts_seasons_of_another_series_as_their_own_show(
     assert items["the-simpsons"]["episodes"] == 200 - 22
 
 
+def test_library_says_which_shows_air_on_shifted_dates(client: TestClient) -> None:
+    """A pretend premiere on any channel (gravity-falls) or a US debut (dragon-ball-z) moves
+    a show's air dates; the rig's `ingest acquire` keeps every season of those, and of the
+    rest asks only for seasons that can air by 2010."""
+    items = {i["id"]: i for i in client.get("/admin/library").json()["items"]}
+    assert items["gravity-falls"]["shifted"] is True
+    assert items["dragon-ball-z"]["shifted"] is True
+    assert items["the-simpsons"]["shifted"] is False
+    assert items["courage-the-cowardly-dog"]["shifted"] is False
+
+
 def test_list_channels_marks_yaml_channels_read_only(client: TestClient) -> None:
     body = client.get("/admin/channels").json()
     assert body["state"] == {

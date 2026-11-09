@@ -756,6 +756,12 @@ export interface components {
             kind: "show" | "movie";
             /** Last Year */
             last_year: number | null;
+            /**
+             * Shifted
+             * @description Airs on moved dates somewhere: a pretend premiere on some channel or a US debut (ingest acquire keeps all its seasons)
+             * @default false
+             */
+            shifted: boolean;
             /** Title */
             title: string;
             /**

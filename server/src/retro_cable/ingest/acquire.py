@@ -29,7 +29,12 @@ Rules:
 - An instance whose root folders are not exactly `/tv` (Sonarr) or `/movies` (Radarr) is
   refused before anything is looked up: that is how a Plex instance would look.
 - The quality profile is found by name (`LiveTV SD`), never by id.
-- `dry_run` only reads (GET); nothing is added.
+- Seasons of carried shows that can never air are unmonitored in sonarr-livetv: they began
+  after the last simulated day (Dec 31 2010) and the show is on no moved dates (a pretend
+  premiere anywhere, or a US debut). Seasons a part_of or episodes_of show needs are kept.
+  Sonarr then adds no new seasons of that show, and unfinished downloads holding only those
+  seasons are cancelled (see trim_seasons).
+- `dry_run` only reads (GET); nothing is added, changed or cancelled.
 
 The API keys travel in a header (ingest/http.py) and never appear in output or a repr.
 """
@@ -38,6 +43,8 @@ import re
 import sqlite3
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
+from datetime import date
+from pathlib import PurePosixPath
 from typing import Any, Literal
 
 from retro_cable.admin import store
@@ -46,6 +53,7 @@ from retro_cable.catalog.models import TMDB_REF
 from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.ingest.http import Request
 from retro_cable.ingest.plex import normalize_title
+from retro_cable.ingest.scan import show_title
 
 SONARR, RADARR = "sonarr-livetv", "radarr-livetv"
 PROFILE = "LiveTV SD"
@@ -207,6 +215,9 @@ class InstanceReport:
     present: list[str] = field(default_factory=list)  # already in the instance
     unresolved: list[dict[str, str]] = field(default_factory=list)
     failed: list[dict[str, str]] = field(default_factory=list)  # the add was refused
+    # Seasons unmonitored because they can never air (sonarr-livetv; see trim_seasons): id,
+    # title, seasons and (not in a dry run) how many unfinished downloads were cancelled.
+    trimmed: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -477,6 +488,160 @@ def _add_seasons(
     report.added.append(entry)
 
 
+@dataclass(frozen=True)
+class Airable:
+    """What decides which seasons of a sonarr-livetv series can ever air (`trim_seasons`)."""
+
+    last_day: date  # the last simulated day (channels.yaml year_range)
+    shows: Mapping[str, str]  # title key -> carried show id (carriage, plex_title, the mini)
+    shifted: frozenset[str]  # show ids on moved dates somewhere: a pretend premiere, a US debut
+    claimed: Mapping[str, frozenset[int]]  # series id -> seasons part_of/episodes_of need
+    claimed_tvdb: Mapping[int, frozenset[int]]  # the same, by the series' TheTVDB id
+
+
+def airable(
+    db: sqlite3.Connection, catalog: Catalog, extra: Iterable[Mapping[str, Any]] = ()
+) -> Airable:
+    effective = apply_overlay(catalog, store.head(db).overlay)
+    shows: dict[str, str] = {}
+    shifted = {p.show for p in effective.synthetic.synthetic}
+    for c in effective.carriage.carriage:
+        if c.kind == "show":
+            shows.setdefault(_key(c.title), c.show)
+    for item in extra:  # the mini's /admin channels and its pretend premieres
+        ident = str(item.get("id") or "")
+        if ident and item.get("channels") and item.get("kind", "show") == "show":
+            shows.setdefault(_key(str(item.get("title") or ident)), ident)
+            if item.get("shifted"):
+                shifted.add(ident)
+    claimed: dict[str, set[int]] = {}
+    claimed_tvdb: dict[int, set[int]] = {}
+    for o in effective.overrides.shows:
+        if o.plex_title:
+            shows.setdefault(_key(o.plex_title), o.show)
+        if o.us_debut:
+            shifted.add(o.show)
+        if o.part_of is not None:
+            claimed.setdefault(o.part_of.show, set()).update(o.part_of.seasons)
+            claimed_tvdb.setdefault(o.part_of.tvdb_id, set()).update(o.part_of.seasons)
+        if o.episodes_of is not None:
+            seasons = {int(e[1:].split("E")[0]) for e in o.episodes_of.episodes}
+            claimed.setdefault(o.episodes_of.show, set()).update(seasons)
+            if o.episodes_of.tvdb_id is not None:
+                claimed_tvdb.setdefault(o.episodes_of.tvdb_id, set()).update(seasons)
+    return Airable(
+        date(effective.channels.year_range[1], 12, 31),
+        shows,
+        frozenset(shifted),
+        {k: frozenset(v) for k, v in claimed.items()},
+        {k: frozenset(v) for k, v in claimed_tvdb.items()},
+    )
+
+
+def _queue(request: Request) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        params = {"page": str(page), "pageSize": "500", "includeEpisode": "true"}
+        got = request("GET", "/api/v3/queue", params, None)
+        batch = (got or {}).get("records") or []
+        records += batch
+        if not batch or len(records) >= int((got or {}).get("totalRecords") or 0):
+            return records
+        page += 1
+
+
+def _cancel(request: Request, queue: list[dict[str, Any]], series: int, late: set[int]) -> int:
+    """Cancel this series' unfinished downloads that hold only `late` seasons."""
+    downloads: dict[str, list[dict[str, Any]]] = {}
+    for r in queue:
+        if r.get("seriesId") == series:
+            downloads.setdefault(str(r.get("downloadId") or r.get("id")), []).append(r)
+    cancelled = 0
+    for records in downloads.values():
+        seasons = {r.get("seasonNumber", (r.get("episode") or {}).get("seasonNumber"))
+                   for r in records}  # fmt: skip
+        unfinished = all(r.get("trackedDownloadState") in (None, "downloading")
+                         and r.get("status") != "completed" for r in records)  # fmt: skip
+        if seasons <= late and unfinished:
+            request("DELETE", f"/api/v3/queue/{records[0]['id']}",
+                    {"removeFromClient": "true", "blocklist": "false"}, None)  # fmt: skip
+            cancelled += 1
+    return cancelled
+
+
+def trim_seasons(request: Request, rules: Airable, report: InstanceReport, dry_run: bool) -> None:
+    """Unmonitor the seasons of carried shows in sonarr-livetv that can never air: they
+    began after the last simulated day and the show isn't on moved dates anywhere (a pretend
+    premiere or a US debut could bring them into range). Seasons a part_of or episodes_of
+    show needs are kept. Sonarr then adds no new seasons of that show either, and unfinished
+    downloads holding only those seasons are cancelled. Series no channel carries are left
+    alone. A season with no air dates is kept."""
+    try:
+        roots = sorted(
+            str(r.get("path", "")).rstrip("/") or "/"
+            for r in request("GET", "/api/v3/rootfolder", None, None) or []
+        )
+        if roots != [SONARR_ROOT]:
+            report.error = report.error or f"{SONARR}'s root folders are {roots}: not trimming"
+            return
+        listed = request("GET", "/api/v3/series", None, None) or []
+    except _ERRORS as err:
+        report.error = report.error or f"{SONARR}: {err}"
+        return
+    last = rules.last_day.isoformat()
+    queue: list[dict[str, Any]] | None = None
+    for record in listed:
+        folder = PurePosixPath(str(record.get("path") or "")).name
+        keys = (
+            [_key(str(record.get("title") or "")), _key(show_title(folder))]
+            if folder
+            else [_key(str(record.get("title") or ""))]
+        )
+        ident = next((rules.shows[k] for k in keys if k in rules.shows), None)
+        if ident is None or ident in rules.shifted:
+            continue
+        keep = rules.claimed.get(ident, frozenset()) | rules.claimed_tvdb.get(
+            int(record.get("tvdbId") or 0), frozenset()
+        )
+        watched = [
+            x.get("seasonNumber")
+            for x in record.get("seasons", [])
+            if x.get("monitored") and x.get("seasonNumber") not in keep
+        ]
+        if not watched:
+            continue
+        try:
+            episodes = request("GET", "/api/v3/episode",
+                               {"seriesId": str(record["id"])}, None) or []  # fmt: skip
+            began: dict[int, str] = {}
+            for e in episodes:
+                day, n = e.get("airDate"), e.get("seasonNumber")
+                if day and isinstance(n, int):
+                    began[n] = min(began.get(n, day), day)
+            late = sorted(n for n in watched if isinstance(n, int) and began.get(n, "") > last)
+            if not late:
+                continue
+            entry: dict[str, Any] = {"id": ident, "title": record.get("title"), "seasons": late}
+            if not dry_run:
+                body = record | {
+                    "monitorNewItems": "none",
+                    "seasons": [
+                        x | {"monitored": False} if x.get("seasonNumber") in late else x
+                        for x in record.get("seasons", [])
+                    ],
+                }
+                request("PUT", f"/api/v3/series/{record['id']}", None, body)
+                if queue is None:
+                    queue = _queue(request)
+                entry["cancelled"] = _cancel(request, queue, int(record["id"]), set(late))
+        except (*_ERRORS, AssertionError) as err:
+            report.failed.append({"id": ident, "title": str(record.get("title")),
+                                  "reason": f"trimming seasons: {err}"})  # fmt: skip
+            continue
+        report.trimmed.append(entry)
+
+
 def acquire(
     db: sqlite3.Connection,
     catalog: Catalog,
@@ -493,4 +658,6 @@ def acquire(
                            InstanceReport(RADARR))  # fmt: skip
     _add(SONARR_API, sonarr, [w for w in found if w.kind == "show"], report.shows, dry_run)
     _add(RADARR_API, radarr, [w for w in found if w.kind == "movie"], report.movies, dry_run)
+    if sonarr is not None and report.shows.error is None:
+        trim_seasons(sonarr, airable(db, catalog, extra), report.shows, dry_run)
     return report

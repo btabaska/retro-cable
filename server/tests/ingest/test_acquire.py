@@ -31,6 +31,8 @@ class FakeArr:
         existing: list[dict[str, Any]] | None = None,
         lookups: Mapping[str, Any] | None = None,
         fail_post: bool = False,
+        episodes: Mapping[int, list[dict[str, Any]]] | None = None,
+        queue: list[dict[str, Any]] | None = None,
     ) -> None:
         self.kind = kind
         self.roots = roots if roots is not None else (["/tv"] if kind == "series" else ["/movies"])
@@ -44,6 +46,9 @@ class FakeArr:
         self.posted: list[dict[str, Any]] = []
         self.put: list[dict[str, Any]] = []
         self.commands: list[dict[str, Any]] = []
+        self.episodes = dict(episodes or {})  # series id -> its episodes
+        self.queue = list(queue or [])
+        self.deleted: list[tuple[str, dict[str, str]]] = []
 
     def __call__(
         self, method: str, path: str, params: Mapping[str, str] | None = None, body: Any = None
@@ -56,6 +61,9 @@ class FakeArr:
         if method == "PUT":
             self.put.append(body)
             return body
+        if method == "DELETE":
+            self.deleted.append((path, q))
+            return None
         if method == "POST":
             if self.fail_post:
                 raise OSError("HTTP Error 400: Bad Request")
@@ -67,6 +75,12 @@ class FakeArr:
             return self.profiles
         if path == f"/api/v3/{self.kind}":
             return self.existing
+        if path == "/api/v3/episode":
+            return self.episodes.get(int(q["seriesId"]), [])
+        if path == "/api/v3/queue":
+            page, size = int(q.get("page", "1")), int(q.get("pageSize", "10"))
+            return {"totalRecords": len(self.queue),
+                    "records": self.queue[(page - 1) * size : page * size]}  # fmt: skip
         if path == "/api/v3/series/lookup":
             return self.lookups.get(q["term"], [])
         if path == "/api/v3/movie/lookup":
@@ -391,7 +405,11 @@ def test_unconfigured_or_failing_instances_are_reported(
     ]
 
 
-def test_nothing_wanted_means_no_calls(db: sqlite3.Connection, make_catalog: MakeCatalog) -> None:
+def test_nothing_wanted_means_nothing_added(
+    db: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Nothing is added and Radarr isn't asked anything; sonarr-livetv is only read, for
+    seasons that can never air (trim_seasons, which here finds none)."""
     carriage = "carriage:\n  - { show: the-simpsons, title: The Simpsons, channel: ktvu, from: 1990-01-01 }\n"
     catalog = load_catalog(make_catalog(carriage=carriage, templates="templates: []\n",
                                         synthetic="synthetic: []\n", overrides="shows: []\n"))  # fmt: skip
@@ -400,7 +418,9 @@ def test_nothing_wanted_means_no_calls(db: sqlite3.Connection, make_catalog: Mak
                " VALUES ('the-simpsons', 1, 1, '/x.mkv')")  # fmt: skip
     sonarr, radarr = FakeArr("series"), FakeArr("movie")
     report = acquire(db, catalog, sonarr=sonarr, radarr=radarr, dry_run=False)
-    assert sonarr.calls == radarr.calls == []
+    assert radarr.calls == []
+    assert {m for m, _, _ in sonarr.calls} == {"GET"}
+    assert sonarr.posted == sonarr.put == [] and sonarr.deleted == []
     report = acquire(db, catalog, sonarr=None, radarr=None, dry_run=False)
     assert report.shows.error is None and report.movies.error is None, "nothing to ask for"
 
@@ -720,3 +740,134 @@ def test_a_tv_movie_whose_series_nobody_carries_is_asked_for_by_season(
     )
     found, _, _ = wanted(library, catalog)
     assert "halloweentown" not in [w.id for w in found]
+
+
+# --- seasons that can never air (Nov 9 2026) --------------------------------------------------
+
+
+def aired(series_id: int, *seasons: tuple[int, str]) -> list[dict[str, Any]]:
+    """Two episodes per season, the first on the given date."""
+    return [{"seriesId": series_id, "seasonNumber": n, "episodeNumber": e, "airDate": d}
+            for n, d in seasons for e in (1, 2)]  # fmt: skip
+
+
+def live(title: str, ident: int, tvdb: int, year: int, seasons: list[int]) -> dict[str, Any]:
+    return series(title, year, tvdb, seasons={n: True for n in seasons}) | {
+        "id": ident, "path": f"/tv/{title} ({year})", "monitored": True,
+        "monitorNewItems": "all",
+    }  # fmt: skip
+
+
+SIMPSONS = live("The Simpsons", 1, 71663, 1989, [1, 22, 23])
+SIMPSONS_EPS = aired(1, (1, "1989-12-17"), (22, "2010-09-26"), (23, "2011-09-25"))
+
+
+def _trim(
+    library: sqlite3.Connection, make_catalog: MakeCatalog, sonarr: FakeArr, **kw: Any
+) -> dict[str, Any]:
+    catalog = load_catalog(make_catalog(**kw.pop("files", {})))
+    dry_run = kw.pop("dry_run", False)
+    out: dict[str, Any] = asdict(
+        acquire(library, catalog, sonarr=sonarr, radarr=None, dry_run=dry_run, **kw)
+    )
+    return out
+
+
+def test_seasons_first_aired_after_2010_are_unmonitored(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Simulated years end in 2010, so a season that began later never airs (unless the show
+    airs on moved dates: next test). It is unmonitored, Sonarr adds no new seasons, and its
+    unfinished downloads are cancelled; a season that began by 2010 stays."""
+    queue = [
+        # A queued pack of season 23 only: cancelled.
+        {"id": 50, "seriesId": 1, "downloadId": "a", "seasonNumber": 23, "status": "queued",
+         "trackedDownloadState": "downloading"},
+        {"id": 51, "seriesId": 1, "downloadId": "a", "seasonNumber": 23, "status": "queued",
+         "trackedDownloadState": "downloading"},
+        # Finished, or also holding season 22: left alone.
+        {"id": 52, "seriesId": 1, "downloadId": "b", "seasonNumber": 23, "status": "completed",
+         "trackedDownloadState": "importPending"},
+        {"id": 53, "seriesId": 1, "downloadId": "c", "seasonNumber": 22, "status": "queued",
+         "trackedDownloadState": "downloading"},
+        {"id": 54, "seriesId": 1, "downloadId": "c", "seasonNumber": 23, "status": "queued",
+         "trackedDownloadState": "downloading"},
+    ]  # fmt: skip
+    sonarr = FakeArr("series", existing=[SIMPSONS], episodes={1: SIMPSONS_EPS}, queue=queue,
+                     lookups=SONARR_LOOKUPS)  # fmt: skip
+    out = _trim(library, make_catalog, sonarr)
+    assert out["shows"]["trimmed"] == [
+        {"id": "the-simpsons", "title": "The Simpsons", "seasons": [23], "cancelled": 1}
+    ]
+    (put,) = [p for p in sonarr.put if p.get("id") == 1]
+    assert {x["seasonNumber"]: x["monitored"] for x in put["seasons"]} == {
+        1: True, 22: True, 23: False,
+    }  # fmt: skip
+    assert put["monitorNewItems"] == "none"
+    assert sonarr.deleted == [
+        ("/api/v3/queue/50", {"removeFromClient": "true", "blocklist": "false"})
+    ]
+    # Run again: nothing left to trim.
+    done = live("The Simpsons", 1, 71663, 1989, [1, 22]) | {"seasons": put["seasons"]}
+    again = FakeArr("series", existing=[done], episodes={1: SIMPSONS_EPS}, lookups=SONARR_LOOKUPS)
+    assert _trim(library, make_catalog, again)["shows"]["trimmed"] == []
+    assert again.put == []
+
+
+def test_shows_on_moved_dates_keep_every_season(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """A pretend premiere (synthetic.yaml, or the mini's /admin: `shifted`) or a US debut
+    moves the dates, so a later season may air after all."""
+    falls = live("Gravity Falls", 2, 259972, 2012, [1, 2])  # synthetic.yaml premiere
+    simpsons = SIMPSONS
+    sonarr = FakeArr("series", existing=[falls, simpsons], lookups=SONARR_LOOKUPS,
+                     episodes={1: SIMPSONS_EPS, 2: aired(2, (1, "2012-06-15"), (2, "2014-08-01"))})  # fmt: skip
+    mini = [{"id": "the-simpsons", "title": "The Simpsons", "kind": "show",
+             "channels": [{"id": "ktvu"}], "episodes": 3, "shifted": True}]  # fmt: skip
+    out = _trim(library, make_catalog, sonarr, extra=mini)
+    assert out["shows"]["trimmed"] == [] and sonarr.put == [] and sonarr.deleted == []
+
+
+def test_seasons_another_show_airs_as_are_kept(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """overrides.yaml part_of (and episodes_of) seasons belong to a show of their own, which
+    may have a pretend premiere: never trimmed."""
+    overrides = (
+        "shows:\n  - { show: x-men, year: 2011, part_of:"
+        " { show: the-simpsons, tvdb_id: 71663, seasons: [23] } }\n"
+    )
+    sonarr = FakeArr("series", existing=[SIMPSONS], episodes={1: SIMPSONS_EPS},
+                     lookups=SONARR_LOOKUPS)  # fmt: skip
+    out = _trim(library, make_catalog, sonarr, files={"overrides": overrides})
+    assert out["shows"]["trimmed"] == []
+
+
+def test_series_no_channel_carries_are_left_alone(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    other = live("Sesame Street", 3, 79591, 1969, [41, 42])
+    sonarr = FakeArr("series", existing=[other], lookups=SONARR_LOOKUPS,
+                     episodes={3: aired(3, (41, "2010-09-27"), (42, "2011-09-26"))})  # fmt: skip
+    assert _trim(library, make_catalog, sonarr)["shows"]["trimmed"] == []
+    assert not any(path == "/api/v3/episode" for path in sonarr.gets)
+
+
+def test_a_dry_run_trims_nothing(library: sqlite3.Connection, make_catalog: MakeCatalog) -> None:
+    sonarr = FakeArr("series", existing=[SIMPSONS], episodes={1: SIMPSONS_EPS},
+                     lookups=SONARR_LOOKUPS)  # fmt: skip
+    out = _trim(library, make_catalog, sonarr, dry_run=True)
+    assert out["shows"]["trimmed"] == [{"id": "the-simpsons", "title": "The Simpsons",
+                                        "seasons": [23]}]  # fmt: skip
+    assert sonarr.put == [] and sonarr.deleted == []
+
+
+def test_trims_nothing_on_an_instance_with_other_root_folders(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    sonarr = FakeArr("series", roots=["/data/tv"], existing=[SIMPSONS],
+                     episodes={1: SIMPSONS_EPS})  # fmt: skip
+    out = _trim(library, make_catalog, sonarr)
+    assert out["shows"]["error"] and out["shows"]["trimmed"] == []
+    assert sonarr.put == [] and sonarr.deleted == []

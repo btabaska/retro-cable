@@ -158,6 +158,11 @@ class LibraryEntry(BaseModel):
         default=None, description="TMDB id from the lineup (tv:N or movie:N), for ingest acquire"
     )
     year: int | None = Field(default=None, description="First-aired year from the lineup")
+    shifted: bool = Field(
+        default=False,
+        description="Airs on moved dates somewhere: a pretend premiere on some channel or a US"
+        " debut (ingest acquire keeps all its seasons)",
+    )
 
 
 class LibraryList(BaseModel):
@@ -460,6 +465,9 @@ def router(
             )
         needle = q.strip().lower()
         lineup = {o.show: o for o in sched.catalog.overrides.shows}
+        shifted = {p.show for p in sched.catalog.synthetic.synthetic} | {
+            o.show for o in sched.catalog.overrides.shows if o.us_debut
+        }
         items = [
             LibraryEntry(
                 id=item.id,
@@ -472,6 +480,7 @@ def router(
                 channels=sorted(carriers.get(item.id, {}).values(), key=lambda c: c.number),
                 tmdb_id=lineup[item.id].tmdb_id if item.id in lineup else None,
                 year=lineup[item.id].year if item.id in lineup else None,
+                shifted=item.id in shifted,
             )
             for item in index.values()
             if needle in item.title.lower()
