@@ -536,8 +536,11 @@ def test_scan_reads_season_and_episode_numbers_from_a_whole_show_folder(
     # `101 - Title` outside a season folder is S01E01 when every numbered file in the folder
     # reads that way; a folder with low numbers too is absolute numbering and stays unparsed.
     root = tmp_path / "tv"
-    for name in ("Freakazoid - 101 - Dance Of Doom.avi", "Freakazoid - 102 - Candle Jack.avi",
-                 "Freakazoid - 201 - The Chip.avi"):
+    for name in (
+        "Freakazoid - 101 - Dance Of Doom.avi",
+        "Freakazoid - 102 - Candle Jack.avi",
+        "Freakazoid - 201 - The Chip.avi",
+    ):
         touch(root / "Freakazoid" / name)
     for name in ("101 Theres No Creature Like Snow Creature.avi", "102 3-D Struction.avi"):
         touch(root / "Whats New Scooby Doo" / name)
