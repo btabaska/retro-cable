@@ -368,3 +368,16 @@ def test_scan_matches_movies_on_the_minis_admin_channels(
             "--priority-url", "http://mini/api/admin/library"]  # fmt: skip
     assert cli.main(args) == 0
     assert json.loads(capsys.readouterr().out)["movies"]["movies"] == 1
+
+
+def test_arr_clients_wait_for_a_busy_instance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """sonarr-livetv answers slowly for hours while it imports season packs: its calls wait
+    two minutes (RC_ARR_TIMEOUT), not the default 30 s, before giving up."""
+    timeouts: list[float] = []
+    monkeypatch.setattr(cli, "json_request", lambda url, headers, timeout: timeouts.append(timeout))
+    monkeypatch.setenv("RC_SONARR_LIVETV_URL", "http://nas:8990")
+    monkeypatch.setenv("RC_SONARR_LIVETV_KEY", "k")
+    cli._arr("SONARR")
+    monkeypatch.setenv("RC_ARR_TIMEOUT", "45")
+    cli._arr("SONARR")
+    assert timeouts == [120, 45]

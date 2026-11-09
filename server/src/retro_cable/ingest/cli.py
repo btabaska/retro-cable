@@ -260,7 +260,9 @@ def _arr(name: str) -> Request | None:
     None when either is unset. The key goes only into the request header."""
     url = os.environ.get(f"RC_{name}_LIVETV_URL", "")
     key = os.environ.get(f"RC_{name}_LIVETV_KEY", "")
-    return json_request(url, {"X-Api-Key": key}) if url and key else None
+    # The twins answer slowly for hours while they import season packs (Nov 9 2026).
+    timeout = float(os.environ.get("RC_ARR_TIMEOUT", "120"))
+    return json_request(url, {"X-Api-Key": key}, timeout=timeout) if url and key else None
 
 
 def _mini_items(args: argparse.Namespace) -> list[dict[str, object]]:
