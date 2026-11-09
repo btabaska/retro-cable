@@ -107,6 +107,33 @@ services:
       retries: 3
       start_period: 60s
 
+  # Fills air dates, runtimes and titles the library lacks from TMDB (the app's only call
+  # outside the LAN), by the lineup's TMDB ids, every RC_TMDB_EVERY seconds as new encodes
+  # arrive. On when ops/.env has TMDB_TOKEN and COMPOSE_PROFILES includes tmdb (the mini).
+  tmdb:
+    image: ghcr.io/btabaska/retro-cable-api:${RC_VERSION:-edge}
+    profiles: ["tmdb"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["python", "-m", "retro_cable.ingest", "tmdb", "--watch", "${RC_TMDB_EVERY:-21600}"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RC_DATA_DIR: /data
+      RC_CATALOG_DIR: /catalog
+    volumes:
+      - ${RC_DATA_DIR:-./data}:/data
+      - ${RC_CATALOG_SRC:-../catalog}:/catalog:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys; p = '/data/retro-cable.db'; sys.exit(0 if os.access(p, os.W_OK) and os.access('/data', os.W_OK) else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
 networks:
   edge:
     external: true

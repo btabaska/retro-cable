@@ -158,10 +158,13 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
 
 - Reads `TMDB_TOKEN` (a v4 read access token, sent as a bearer header). This is the app's only runtime call outside the LAN, made by the worker.
 - **Interface:** `MetadataSource` (`seasons`, `season`), with `TmdbClient` as the implementation. Tests use recorded responses and a fake.
+- **Which id (Nov 9 2026):** the lineup's (`tmdb_id: tv:N` in the effective overrides, the admin overlay's ids included), else the one Plex gave the show. Shows that are seasons or episodes of another series (`part_of`, `episodes_of`) take no lineup id: their episodes live under that series. Before, only Plex's ids counted, so the shows known from the rig's encodes alone (the Live TV downloads) were never filled: 1,020 encoded episodes on the mini had no air date.
 - **For every show with a TMDB id:**
   - fills only empty air dates (source `tmdb`), runtimes and titles;
-  - adds episodes Plex doesn't have, with no file, which gives the inventory its expected-versus-on-disk counts.
+  - but only where the titles agree: an episode whose title differs from TMDB's under the same number (TMDB numbers some shows differently from TheTVDB, which the files follow: Dora the Explorer, Dragon Tales) keeps its empty date, and is listed under `mismatched_titles`. Titles agree when they are alike (punctuation and case aside, a 0.6 similarity), or one starts with the other (a file holding two segments, `Lucky Stone and The Mefirst Wizard`, is TMDB's `Lucky Stone`); an empty title can't tell and is filled;
+  - adds episodes Plex doesn't have, with no file, which gives the inventory its expected-versus-on-disk counts. Only under an id from Plex, whose numbering is TMDB's: a later file under a TMDB-only number would take that episode's date.
 - A show that fails is listed and skipped. Shows without a TMDB id are listed.
+- `--watch SECONDS` fills again every that many seconds (the mini's `tmdb` service, docs/specs/ops.md), reading the lineup again each time.
 
 ### Inventory (`make inventory`)
 

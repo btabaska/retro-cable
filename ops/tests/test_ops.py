@@ -55,7 +55,7 @@ def test_scripts_pass_shellcheck() -> None:
 
 def test_compose_runs_api_and_web_and_a_worker_on_demand() -> None:
     services = load("compose.yml")["services"]
-    assert set(services) == {"api", "web", "worker", "media-index"}
+    assert set(services) == {"api", "web", "worker", "media-index", "tmdb"}
     assert services["api"]["image"].startswith("ghcr.io/btabaska/retro-cable-api:")
     assert services["web"]["image"].startswith("ghcr.io/btabaska/retro-cable-web:")
     # The worker shares the api image (it has ffmpeg) and only runs when asked:
@@ -114,6 +114,21 @@ def test_media_index_is_unhealthy_until_it_can_write_the_database() -> None:
     check = " ".join(index["healthcheck"]["test"])
     assert "/data/retro-cable.db" in check and "W_OK" in check
     assert index["healthcheck"]["start_period"]
+
+
+def test_tmdb_fills_metadata_gaps_on_the_mini_only_when_turned_on() -> None:
+    """Off unless ops/.env turns it on (COMPOSE_PROFILES=media-index,tmdb with TMDB_TOKEN):
+    the app's only call outside the LAN. No media; the catalog for the lineup's ids."""
+    services = load("compose.yml")["services"]
+    tmdb = services["tmdb"]
+    assert tmdb["profiles"] == ["tmdb"]
+    assert tmdb["image"] == services["api"]["image"]
+    assert tmdb["restart"] == "unless-stopped"
+    assert "ports" not in tmdb
+    assert tmdb["command"][:5] == ["python", "-m", "retro_cable.ingest", "tmdb", "--watch"]
+    assert volumes(tmdb) == {"/data": "rw", "/catalog": "ro"}
+    assert tmdb["depends_on"]["api"]["condition"] == "service_healthy"
+    assert "W_OK" in " ".join(tmdb["healthcheck"]["test"])
 
 
 # --- the rig worker ----------------------------------------------------------

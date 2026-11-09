@@ -50,7 +50,7 @@ from retro_cable.ingest.plex import PlexClient, import_plex
 from retro_cable.ingest.plex import http_fetch as plex_http_fetch
 from retro_cable.ingest.progress import PROGRESS, ProgressFile
 from retro_cable.ingest.scan import scan_movies, scan_tv
-from retro_cable.ingest.tmdb import TmdbClient, fill_gaps
+from retro_cable.ingest.tmdb import TmdbClient, fill_gaps, lineup_ids
 from retro_cable.ingest.tmdb import http_fetch as tmdb_http_fetch
 
 
@@ -122,7 +122,8 @@ def _parser() -> argparse.ArgumentParser:
     idx.add_argument("--prune", action="store_true",
                      help="clear encodes the manifest no longer lists")  # fmt: skip
     idx.add_argument("--watch", type=float, default=None, metavar="SECONDS",
-                     help="keep running: re-index whenever the manifest changes")  # fmt: skip
+                     help="keep running: index-media re-indexes whenever the manifest"
+                          " changes; tmdb fills again every SECONDS")  # fmt: skip
     norm.add_argument("--limit", type=int, default=None, help="encode at most N items")
     norm.add_argument("--max-seconds", type=float, default=None,
                       help="trials only: keep the first N seconds of each item")  # fmt: skip
@@ -171,7 +172,7 @@ def main(argv: list[str]) -> int:
     elif args.job == "scan" and not (args.tv or args.movies):
         print("scan needs --tv DIR and/or --movies DIR", file=sys.stderr)
         return 2
-    needs_catalog = ("plex", "scan", "acquire", "assemble")
+    needs_catalog = ("plex", "tmdb", "scan", "acquire", "assemble")
     if args.job in needs_catalog or (args.job == "normalize" and not args.all):
         try:
             catalog = load_catalog(args.catalog)
@@ -194,7 +195,8 @@ def main(argv: list[str]) -> int:
         fetch = plex_http_fetch(os.environ["PLEX_URL"], token)
         stats = asdict(import_plex(db, PlexClient(fetch), catalog, now))
     elif args.job == "tmdb":
-        stats = asdict(fill_gaps(db, TmdbClient(tmdb_http_fetch(token)), now))
+        assert catalog is not None
+        return _tmdb(db, catalog, TmdbClient(tmdb_http_fetch(token)), args.watch)
     elif args.job == "scan":
         assert catalog is not None
         out: dict[str, object] = {}
@@ -232,6 +234,18 @@ def main(argv: list[str]) -> int:
         stats = _normalize(db, args, shows, catalog)
     print(json.dumps(stats, indent=2))
     return 0
+
+
+def _tmdb(db: sqlite3.Connection, catalog: Catalog, source: TmdbClient, every: float | None) -> int:
+    """Fill gaps from TMDB by the lineup's ids (the admin overlay's too, read again each
+    time); with `every`, again every that many seconds, as new encodes arrive."""
+    while True:
+        lineup = lineup_ids(apply_overlay(catalog, store.head(db).overlay))
+        stats = fill_gaps(db, source, datetime.now(UTC), lineup=lineup)
+        print(json.dumps(asdict(stats), indent=2), flush=True)
+        if every is None:
+            return 0
+        time.sleep(every)
 
 
 def _media_dir(args: argparse.Namespace) -> Path:

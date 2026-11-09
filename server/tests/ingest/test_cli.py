@@ -381,3 +381,58 @@ def test_arr_clients_wait_for_a_busy_instance(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("RC_ARR_TIMEOUT", "45")
     cli._arr("SONARR")
     assert timeouts == [120, 45]
+
+
+def test_tmdb_fills_by_the_lineups_ids_from_the_catalog(
+    tmp_path: Path,
+    make_catalog: MakeCatalog,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from retro_cable.ingest.tmdb import TmdbStats
+
+    monkeypatch.setenv("TMDB_TOKEN", "s3cret")
+    monkeypatch.setattr(cli, "tmdb_http_fetch", lambda token: None)
+    monkeypatch.setattr(cli, "lineup_ids", lambda catalog: {"arthur": 789})
+    seen: list[object] = []
+
+    def fake_fill(db: object, source: object, now: object, lineup: object = None) -> TmdbStats:
+        seen.append(lineup)
+        return TmdbStats(shows=1)
+
+    monkeypatch.setattr(cli, "fill_gaps", fake_fill)
+    code = cli.main(["tmdb", "--db", str(tmp_path / "db.sqlite"), "--catalog", str(make_catalog())])
+
+    assert code == 0
+    assert seen == [{"arthur": 789}]
+    out = capsys.readouterr().out
+    assert json.loads(out)["shows"] == 1
+    assert "s3cret" not in out
+
+
+def test_tmdb_watch_fills_every_interval(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from retro_cable.ingest.tmdb import TmdbStats
+
+    monkeypatch.setenv("TMDB_TOKEN", "s3cret")
+    monkeypatch.setattr(cli, "tmdb_http_fetch", lambda token: None)
+    runs: list[object] = []
+
+    def fake_fill(db: object, source: object, now: object, lineup: object = None) -> TmdbStats:
+        runs.append(lineup)
+        return TmdbStats()
+
+    monkeypatch.setattr(cli, "fill_gaps", fake_fill)
+    naps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        naps.append(seconds)
+        if len(naps) == 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("time.sleep", sleep)
+    with pytest.raises(KeyboardInterrupt):
+        cli.main(["tmdb", "--watch", "21600", "--db", str(tmp_path / "db.sqlite"),
+                  "--catalog", str(make_catalog())])  # fmt: skip
+    assert (len(runs), naps) == (2, [21600, 21600])
