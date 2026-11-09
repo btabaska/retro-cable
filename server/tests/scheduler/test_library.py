@@ -128,6 +128,27 @@ def test_an_encode_cut_short_of_its_source_is_never_scheduled(db: sqlite3.Connec
     assert "the-simpsons" not in load_library(db).episodes
 
 
+def test_a_clip_far_shorter_than_the_rest_of_its_show_is_never_scheduled(
+    db: sqlite3.Connection,
+) -> None:
+    """With no runtime to compare with, a truncated download measures whole against itself
+    (Leverage Redemption S01E13: 62 s). An episode under a quarter of its show's median
+    length stays off, once the show has five episodes to take a median from."""
+    db.execute("INSERT INTO shows (id, title) VALUES ('leverage', 'Leverage')")
+    for ep, seconds in [(1, 2600), (2, 2580), (3, 2610), (4, 650), (5, 62), (6, 2590)]:
+        db.execute(
+            "INSERT INTO episodes (show_id, season, episode, title, file_path, source_seconds,"
+            " media_path, media_seconds) VALUES ('leverage', 1, ?, '', '/s.mkv', ?, ?, ?)",
+            (ep, seconds, f"tv/{ep}.mp4", seconds),
+        )
+    # Just over a quarter of the median (2585 s) stays; the 62 s clip doesn't.
+    assert [p.episode for p in load_library(db).episodes["leverage"]] == [1, 2, 3, 4, 6]
+    assert len(load_library(db, allow_short=True).episodes["leverage"]) == 6
+    # Four episodes are too few to judge by: a short one stays.
+    db.execute("DELETE FROM episodes WHERE episode IN (1, 2)")
+    assert [p.episode for p in load_library(db).episodes["leverage"]] == [3, 4, 5, 6]
+
+
 def test_short_media_can_be_allowed_explicitly(db: sqlite3.Connection) -> None:
     # Trials (`normalize --max-seconds`) and demos may opt in: RC_ALLOW_SHORT_MEDIA=1.
     add_episode(db, 1, "/src/S01E01.mkv", media_path="tv/1.mp4", seconds=120)

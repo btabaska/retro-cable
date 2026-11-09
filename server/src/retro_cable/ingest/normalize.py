@@ -77,11 +77,33 @@ def _fraction(value: Any) -> Fraction:
         return Fraction(1)
 
 
+def _stream_seconds(stream: dict[str, Any]) -> float | None:
+    """A stream's own length: `duration` (MP4) or a `DURATION` tag (MKV, `HH:MM:SS.ns`)."""
+    tags = stream.get("tags") or {}
+    tagged = [v for k, v in tags.items() if k.upper().startswith("DURATION")]
+    for value in [stream.get("duration"), *tagged]:
+        try:
+            *hm, sec = str(value).split(":")
+            minutes = 0
+            for x in hm:
+                minutes = minutes * 60 + int(x)
+            seconds = minutes * 60 + float(sec)
+        except ValueError:
+            continue
+        if seconds > 0:
+            return seconds
+    return None
+
+
 def parse_probe(data: dict[str, Any]) -> Probe:
-    """The first real video stream (not cover art) and the audio to keep (English if tagged)."""
+    """The first real video stream (not cover art) and the audio to keep (English if tagged).
+    The length is the longer of those two streams, so a subtitle that runs past the end
+    doesn't count; the container's length when they don't say, and never more than it."""
     video = None
+    lengths: dict[int, float | None] = {}
     audio: list[tuple[int, str]] = []
     for s in data.get("streams", []):
+        lengths[int(s.get("index", -1))] = _stream_seconds(s)
         kind = s.get("codec_type")
         if kind == "video" and video is None and not s.get("disposition", {}).get("attached_pic"):
             video = Stream(
@@ -96,17 +118,59 @@ def parse_probe(data: dict[str, Any]) -> Probe:
     english = [i for i, lang in audio if lang.lower() in ("eng", "en")]
     pick = english[0] if english else (audio[0][0] if audio else None)
     duration = float(data.get("format", {}).get("duration") or 0)
+    kept = [lengths.get(i) for i in (video.index if video else None, pick) if i is not None]
+    if kept and all(kept):
+        longest = max(x for x in kept if x)
+        duration = min(duration, longest) if duration > 0 else longest
     return Probe(duration=duration, video=video, audio_index=pick)
 
 
+# How far before the container's end to look for the last picture and sound packets.
+PACKET_WINDOW = 600.0
+
+
 def probe(path: Path, ffprobe: str = "ffprobe") -> Probe:
+    """ffprobe's view of a file. When the kept streams don't say how long they are and another
+    stream (a subtitle) could have set the container's length, the length is where their last
+    packets end, read from the final ten minutes."""
     out = subprocess.run(
         [ffprobe, "-v", "error", "-of", "json", "-show_format", "-show_streams", str(path)],
         check=True,
         capture_output=True,
         text=True,
     ).stdout
-    return parse_probe(json.loads(out))
+    data = json.loads(out)
+    info = parse_probe(data)
+    streams = {int(s.get("index", -1)): s for s in data.get("streams", [])}
+    picture = info.video.index if info.video else None
+    kept = {i for i in (picture, info.audio_index) if i is not None}
+    if (
+        info.duration <= 0
+        or not kept
+        or all(_stream_seconds(streams[i]) for i in kept)
+        or set(streams) <= kept
+    ):
+        return info
+    start = max(info.duration - PACKET_WINDOW, 0.0)
+    out = subprocess.run(
+        [ffprobe, "-v", "error", "-read_intervals", f"{start:.3f}%",
+         "-show_entries", "packet=stream_index,pts_time,duration_time", "-of", "csv=p=0",
+         str(path)],
+        capture_output=True, text=True, check=False,
+    ).stdout  # fmt: skip
+    ends: dict[int, float] = {}
+    for line in out.splitlines():
+        try:
+            index, pts, length = line.split(",")[:3]
+            stream = int(index)
+            end = float(pts) + (float(length) if length not in ("", "N/A") else 0.0)
+        except ValueError:
+            continue
+        if stream in kept:
+            ends[stream] = max(end, ends.get(stream, 0.0))
+    if set(ends) != kept:
+        return info
+    return Probe(min(info.duration, max(ends.values())), info.video, info.audio_index)
 
 
 def source_seconds(path: Path) -> float | None:
