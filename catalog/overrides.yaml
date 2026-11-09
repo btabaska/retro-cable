@@ -64,7 +64,7 @@ shows:
   - { show: lilo-and-stitch-the-series, tmdb_id: "tv:2355", year: 2003 }
   - { show: lizzie-mcguire, tmdb_id: "tv:4575", year: 2001 }
   - { show: looney-tunes, year: 1929 }  # TheTVDB starts the shorts in 1929
-  - { show: lupin-the-3rd, year: 2003 }
+  - { show: lupin-the-3rd, year: 2003, part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [1] } }  # Part I
   - { show: malcolm-in-the-middle, tmdb_id: "tv:2004", year: 2000 }
   - { show: motocrossed, tmdb_id: "movie:71885", year: 2001 }
   - { show: nova, tmdb_id: "tv:3562", year: 1974 }
@@ -115,3 +115,12 @@ shows:
   # Lookup fixes for acquire (Nov 8 2026)
   - { show: back-home, tmdb_id: "movie:455330", year: 1989 }  # Disney Channel, 1990 in the US
   - { show: bluey, tmdb_id: "tv:82728", year: 2019, plex_title: "Bluey 2018" }  # NAS folder
+
+  # Seasons TheTVDB files under another series (part_of, Nov 8 2026). `show` is the series'
+  # id in the library: its folder title's slug (Sonarr names it `Lupin III (1971)`).
+  - { show: animaniacs-2020, year: 2020, part_of: { show: animaniacs, tvdb_id: 72879, seasons: [6, 7, 8] } }
+  - { show: justice-league-unlimited, year: 2004, part_of: { show: justice-league, tvdb_id: 76320, seasons: [3, 4, 5] } }
+  - { show: lupin-the-3rd-part-ii, year: 2003, part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [2] } }
+  - { show: lupin-the-3rd-part-iv-the-italian-adventure, year: 2017, part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [4] } }
+  - { show: pokemon-horizons-the-series, year: 2024, part_of: { show: pokemon, tvdb_id: 76703, seasons: [20] } }
+  - { show: the-new-scooby-and-scrappy-doo-show, year: 1983, part_of: { show: scooby-doo-and-scrappy-doo, tvdb_id: 78740, seasons: [5] } }

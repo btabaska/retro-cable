@@ -83,6 +83,8 @@ class Wanted:
     # League (Unlimited)` for `Justice League`): likely this show in a folder the scan
     # couldn't match, so it is not requested.
     on_nas_as: str | None = None
+    # overrides.yaml part_of: (the series' TheTVDB id, its seasons this show is)
+    part_of: tuple[int, tuple[int, ...]] | None = None
 
     def keys(self) -> set[str]:
         return {_key(t) for t in (self.title, *self.titles)}
@@ -105,6 +107,7 @@ def wanted(
     excluded_ids = {o.show for o in effective.overrides.shows if o.exclude}
     plex_titles = {o.show: o.plex_title for o in effective.overrides.shows if o.plex_title}
     lineup = {o.show: (o.tmdb_id, o.year) for o in effective.overrides.shows}
+    part_of = {o.show: o.part_of for o in effective.overrides.shows if o.part_of}
     carried: dict[str, tuple[str, Literal["show", "movie"]]] = {}
     for c in effective.carriage.carriage:
         carried.setdefault(c.show, (c.title, c.kind))
@@ -125,7 +128,11 @@ def wanted(
             mini_files.add(ident)
 
     has = "file_path IS NOT NULL OR media_path IS NOT NULL"
-    shows_with = {r[0] for r in db.execute(f"SELECT DISTINCT show_id FROM episodes WHERE {has}")}
+    seasons_with = {
+        (r[0], r[1])
+        for r in db.execute(f"SELECT DISTINCT show_id, season FROM episodes WHERE {has}")
+    }
+    shows_with = {show for show, _ in seasons_with}
     movies_with = {r[0] for r in db.execute(f"SELECT id FROM movies WHERE {has}")}
     shows = {r["id"]: r for r in db.execute("SELECT id, title, year, tmdb_id, tvdb_id FROM shows")}
     movies = {r["id"]: r for r in db.execute("SELECT id, year, tmdb_id FROM movies")}
@@ -143,8 +150,17 @@ def wanted(
         if ident in excluded_ids:
             excluded.append(ident)
             continue
-        if ident in mini_files or ident in (shows_with if kind == "show" else movies_with):
+        part = part_of.get(ident) if kind == "show" else None
+        on_disk = (
+            any((part.show, s) in seasons_with for s in part.seasons)
+            if part is not None
+            else ident in (shows_with if kind == "show" else movies_with)
+        )
+        if ident in mini_files or on_disk:
             with_files += 1
+            continue
+        if part is not None:  # asked for by season from the series, never by its own title
+            found.append(Wanted(ident, title, kind, part_of=(part.tvdb_id, tuple(part.seasons))))
             continue
         row = (shows if kind == "show" else movies).get(ident)
         plex_title = plex_titles.get(ident)
@@ -226,11 +242,13 @@ def resolve_series(request: Request, w: Wanted) -> Resolved:
         if not value:
             continue
         results = request("GET", "/api/v3/series/lookup", {"term": f"{name}:{value}"}, None)
+        # Only a result with the same id: Sonarr answers a `tmdb:N` it can't map with the
+        # series whose TheTVDB id is N (and TMDB id 0).
         own = "tvdbId" if name == "tvdb" else "tmdbId"
         hits = [
             r
             for r in results or []
-            if isinstance(r, dict) and r.get("tvdbId") and r.get(own) in (value, None, 0)
+            if isinstance(r, dict) and r.get("tvdbId") and r.get(own) == value
         ]
         if len(hits) == 1:
             return hits[0], name
@@ -322,11 +340,15 @@ def _add(
             return
         existing = request("GET", f"/api/v3/{api.resource}", None, None) or []
         have = {int(x.get(api.id_field) or 0) for x in existing} - {0}
+        records = {int(x.get(api.id_field) or 0): x for x in existing}
     except _ERRORS as err:
         report.error = f"{api.name}: {err}"
         return
 
     for w in items:
+        if w.part_of is not None:
+            _add_seasons(request, w, report, dry_run, profile, records)
+            continue
         if w.on_nas_as is not None:
             report.unresolved.append({"id": w.id, "title": w.title, "reason": (
                 f"may be on the NAS already as '{w.on_nas_as}': give it a plex_title in"
@@ -354,12 +376,88 @@ def _add(
         }
         if not dry_run:
             try:
-                request("POST", f"/api/v3/{api.resource}", None, api.body(record, profile))
+                made = request("POST", f"/api/v3/{api.resource}", None, api.body(record, profile))
             except _ERRORS as err:
                 report.failed.append({"id": w.id, "title": w.title, "reason": str(err)})
                 continue
+            if isinstance(made, dict):
+                records[ident] = made
         report.added.append(entry)
         have.add(ident)
+
+
+def _add_seasons(
+    request: Request,
+    w: Wanted,
+    report: InstanceReport,
+    dry_run: bool,
+    profile: int,
+    records: dict[int, Any],
+) -> None:
+    """A show that is seasons of another series (overrides.yaml part_of): add the series if
+    Sonarr hasn't got it, with nothing monitored and no search, then monitor and search just
+    the missing seasons. Already monitored: present."""
+    assert w.part_of is not None
+    tvdb, seasons = w.part_of
+    record = records.get(tvdb)
+    new = record is None
+    try:
+        if record is None:
+            hits = [
+                r
+                for r in request("GET", "/api/v3/series/lookup", {"term": f"tvdb:{tvdb}"}, None)
+                or []
+                if isinstance(r, dict) and r.get("tvdbId") == tvdb
+            ]
+            if len(hits) != 1:
+                report.unresolved.append({"id": w.id, "title": w.title,
+                                          "reason": f"no TheTVDB series {tvdb}"})  # fmt: skip
+                return
+            record = hits[0]
+    except _ERRORS as err:
+        report.unresolved.append({"id": w.id, "title": w.title, "reason": f"lookup: {err}"})
+        return
+    monitored = {s.get("seasonNumber") for s in record.get("seasons", []) if s.get("monitored")}
+    missing = [s for s in seasons if s not in monitored]
+    if not new and not missing and record.get("monitored"):
+        report.present.append(w.id)
+        return
+    entry = {
+        "id": w.id,
+        "title": w.title,
+        "found": f"{record.get('title')} ({record.get('year')}) seasons"
+        f" {', '.join(map(str, seasons))}",
+        "tvdb_id": tvdb,
+        "matched_on": "part_of",
+    }
+    if not dry_run:
+        try:
+            if new:
+                body = series_body(record, profile)
+                body["addOptions"] = body["addOptions"] | {
+                    "monitor": "none",
+                    "searchForMissingEpisodes": False,
+                }
+                record = request("POST", "/api/v3/series", None, body)
+            assert isinstance(record, dict)
+            listed = {s.get("seasonNumber") for s in record.get("seasons", [])}
+            record = record | {
+                "monitored": True,
+                "seasons": [
+                    s | {"monitored": bool(s.get("monitored")) or s.get("seasonNumber") in seasons}
+                    for s in record.get("seasons", [])
+                ]
+                + [{"seasonNumber": s, "monitored": True} for s in seasons if s not in listed],
+            }
+            record = request("PUT", f"/api/v3/series/{record['id']}", None, record) or record
+            for season in missing:
+                search = {"name": "SeasonSearch", "seriesId": record["id"], "seasonNumber": season}
+                request("POST", "/api/v3/command", None, search)
+        except (*_ERRORS, AssertionError) as err:
+            report.failed.append({"id": w.id, "title": w.title, "reason": str(err)})
+            return
+        records[tvdb] = record
+    report.added.append(entry)
 
 
 def acquire(

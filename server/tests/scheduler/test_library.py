@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from retro_cable.catalog import Catalog
+from retro_cable.catalog import Catalog, load_catalog
 from retro_cable.db import connect, migrate
 from retro_cable.scheduler import Scheduler, load_library
+from tests.conftest import MakeCatalog
 
 
 @pytest.fixture
@@ -146,3 +147,28 @@ def test_a_file_under_the_media_root_plays_at_its_measured_length(
     db.execute("UPDATE episodes SET source_seconds = 1379 WHERE episode = 3")
     eps = load_library(db).episodes["the-simpsons"]
     assert [(p.episode, p.seconds) for p in eps] == [(1, 1402), (2, 1320), (3, 1377)]
+
+
+def test_seasons_another_show_claims_air_as_that_show(
+    db: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """overrides.yaml `part_of`: TheTVDB files Justice League Unlimited as Justice League
+    seasons 3-5, so its files sit under the series' id. The scheduler reads them as the other
+    show, with its title and year; the series keeps its other seasons."""
+    for season in (1, 2):
+        db.execute(
+            "INSERT INTO episodes (show_id, season, episode, title, runtime_seconds, media_path,"
+            " media_seconds) VALUES ('the-simpsons', ?, 1, '', 1320, ?, 1320)",
+            (season, f"tv/s{season}.mp4"),
+        )
+    overrides = (
+        "shows:\n"
+        "  - { show: x-men, year: 1992, part_of: { show: the-simpsons, tvdb_id: 71663,"
+        " seasons: [2] } }\n"
+    )
+    lib = Scheduler(load_catalog(make_catalog(overrides=overrides)), load_library(db)).library
+    assert [(p.season, p.path) for p in lib.episodes["the-simpsons"]] == [(1, "tv/s1.mp4")]
+    assert [(p.show, p.title, p.season, p.path) for p in lib.episodes["x-men"]] == [
+        ("x-men", "X-Men", 2, "tv/s2.mp4")
+    ]
+    assert lib.show_years["x-men"] == 1992

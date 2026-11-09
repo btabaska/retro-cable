@@ -42,12 +42,20 @@ class FakeArr:
         self.fail_post = fail_post
         self.calls: list[tuple[str, str, dict[str, str]]] = []
         self.posted: list[dict[str, Any]] = []
+        self.put: list[dict[str, Any]] = []
+        self.commands: list[dict[str, Any]] = []
 
     def __call__(
         self, method: str, path: str, params: Mapping[str, str] | None = None, body: Any = None
     ) -> Any:
         q = dict(params or {})
         self.calls.append((method, path, q))
+        if method == "POST" and path == "/api/v3/command":
+            self.commands.append(body)
+            return {**body, "id": 1}
+        if method == "PUT":
+            self.put.append(body)
+            return body
         if method == "POST":
             if self.fail_post:
                 raise OSError("HTTP Error 400: Bad Request")
@@ -75,9 +83,12 @@ class FakeArr:
         return [path for method, path, _ in self.calls if method == "GET"]
 
 
-def series(title: str, year: int, tvdb: int, tmdb: int = 0) -> dict[str, Any]:
+def series(
+    title: str, year: int, tvdb: int, tmdb: int = 0, seasons: dict[int, bool] | None = None
+) -> dict[str, Any]:
     return {"title": title, "year": year, "tvdbId": tvdb, "tmdbId": tmdb,
-            "titleSlug": title.lower().replace(" ", "-"), "seasons": [], "images": []}  # fmt: skip
+            "titleSlug": title.lower().replace(" ", "-"), "images": [],
+            "seasons": [{"seasonNumber": n, "monitored": m} for n, m in (seasons or {}).items()]}  # fmt: skip
 
 
 def movie(title: str, year: int, tmdb: int) -> dict[str, Any]:
@@ -567,3 +578,101 @@ def test_json_request_sends_the_key_in_a_header_and_json_bodies(
     assert post.get_header("Content-type") == "application/json"
     assert all(r.get_header("X-api-key") == "k3y" for r in sent)
     assert "k3y" not in repr(request) and all("k3y" not in r.full_url for r in sent)
+
+
+def test_a_tmdb_lookup_answered_by_a_tvdb_id_is_not_a_match(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Sonarr answers `tmdb:125211` it can't map with the series whose TheTVDB id is 125211
+    (Hello Kitty and Friends for Lupin the 3rd Part II, Nov 8 2026). Only a result that
+    carries the same TMDB id counts."""
+    collision = {"tmdb:40075": [series("Hello Kitty and Friends", 1989, 40075, 0)]}
+    sonarr = FakeArr("series", lookups={**SONARR_LOOKUPS, **collision})
+    out = _run(library, make_catalog, sonarr, None)
+    assert 40075 not in [b["tvdbId"] for b in sonarr.posted]
+    assert {
+        "id": "gravity-falls",
+        "title": "Gravity Falls",
+        "reason": "no first-aired year known",
+    } in out["shows"]["unresolved"]
+
+
+JLU = (
+    "shows:\n  - { show: x-men, year: 2004,"
+    " part_of: { show: justice-league, tvdb_id: 76320, seasons: [3, 4] } }\n"
+)
+JL = series("Justice League", 2001, 76320, 1618, {1: False, 2: False, 3: False, 4: False})
+
+
+def _part(
+    library: sqlite3.Connection, make_catalog: MakeCatalog, sonarr: FakeArr, **kw: Any
+) -> dict[str, Any]:
+    catalog = load_catalog(make_catalog(overrides=JLU))
+    out: dict[str, Any] = asdict(acquire(library, catalog, sonarr=sonarr, radarr=None, **kw))
+    return out
+
+
+def test_seasons_of_a_series_are_asked_for_by_season(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """overrides.yaml `part_of`: X-Men here stands for Justice League Unlimited, which
+    TheTVDB files as Justice League seasons 3-4. The series is added with nothing monitored
+    and no search, then just those seasons are monitored and searched."""
+    sonarr = FakeArr("series", lookups={**SONARR_LOOKUPS, "tvdb:76320": [JL]})
+    out = _part(library, make_catalog, sonarr, dry_run=False)
+    added = next(a for a in out["shows"]["added"] if a["id"] == "x-men")
+    assert (added["tvdb_id"], added["matched_on"]) == (76320, "part_of")
+    assert added["found"] == "Justice League (2001) seasons 3, 4"
+    body = next(b for b in sonarr.posted if b["tvdbId"] == 76320)
+    assert body["addOptions"]["monitor"] == "none"
+    assert body["addOptions"]["searchForMissingEpisodes"] is False
+    assert body["rootFolderPath"] == "/tv" and body["qualityProfileId"] == 9
+    (put,) = sonarr.put
+    assert put["monitored"] is True
+    assert {s["seasonNumber"]: s["monitored"] for s in put["seasons"]} == {
+        1: False, 2: False, 3: True, 4: True,
+    }  # fmt: skip
+    assert sonarr.commands == [
+        {"name": "SeasonSearch", "seriesId": put["id"], "seasonNumber": n} for n in (3, 4)
+    ]
+    assert ("GET", "/api/v3/series/lookup", {"term": "X-Men"}) not in sonarr.calls
+
+
+def test_a_series_already_there_gets_only_the_missing_seasons(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    there = dict(JL, id=7, monitored=True,
+                 seasons=[{"seasonNumber": n, "monitored": n == 3} for n in (1, 2, 3, 4)])  # fmt: skip
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS, existing=[there])
+    _part(library, make_catalog, sonarr, dry_run=False)
+    assert not [b for b in sonarr.posted if b.get("tvdbId") == 76320]
+    assert [s["seasonNumber"] for s in sonarr.put[0]["seasons"] if s["monitored"]] == [3, 4]
+    assert sonarr.commands == [{"name": "SeasonSearch", "seriesId": 7, "seasonNumber": 4}]
+
+    done = dict(there, seasons=[{"seasonNumber": n, "monitored": n >= 3} for n in (1, 2, 3, 4)])
+    again = FakeArr("series", lookups=SONARR_LOOKUPS, existing=[done])
+    out = _part(library, make_catalog, again, dry_run=False)
+    assert "x-men" in out["shows"]["present"]
+    assert again.put == [] and again.commands == []
+
+
+def test_seasons_on_disk_under_the_series_count_as_files(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    library.execute("INSERT INTO shows (id, title) VALUES ('justice-league', 'Justice League')")
+    library.execute(
+        "INSERT INTO episodes (show_id, season, episode, file_path)"
+        " VALUES ('justice-league', 4, 1, '/sources/tv/Justice League/S04E01.mkv')"
+    )
+    found, with_files, _ = wanted(library, load_catalog(make_catalog(overrides=JLU)))
+    assert "x-men" not in [w.id for w in found]
+    assert with_files == 3
+
+
+def test_a_dry_run_asks_for_no_seasons(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    sonarr = FakeArr("series", lookups={**SONARR_LOOKUPS, "tvdb:76320": [JL]})
+    out = _part(library, make_catalog, sonarr, dry_run=True)
+    assert "x-men" in [a["id"] for a in out["shows"]["added"]]
+    assert sonarr.posted == [] and sonarr.put == [] and sonarr.commands == []

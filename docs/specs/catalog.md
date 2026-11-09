@@ -113,7 +113,7 @@ The scheduler's inputs are six YAML files in `catalog/`. Each starts with a `yam
 | `holidays.yaml` | yes | Holidays: fixed or nth-weekday rule (n = -1 for the last), window, strength, default mode, per-channel modes, tagged items |
 | `carriage.yaml` | no | Which show or movie airs on which channel from when until when, optionally in a block, with a weight and tags |
 | `synthetic.yaml` | no | Transplants: a synthetic ("pretend") premiere inside 1990–2010 for one show on one channel |
-| `overrides.yaml` | no | Per show: Plex title, US debut, per-episode air dates, holiday tags, exclude, seasonal, and (M4) the lineup's TMDB id (`tv:N` / `movie:N`) and first-aired year |
+| `overrides.yaml` | no | Per show: Plex title, US debut, per-episode air dates, holiday tags, exclude, seasonal, and (M4) the lineup's TMDB id (`tv:N` / `movie:N`), first-aired year and `part_of` (the seasons of another series it is; see `scheduler.md`) |
 | `templates.yaml` | no | Day-part templates per channel with era versions: parts per weekday at clock times, weighted pools of shows or carriage tags, block restriction, primetime flag |
 
 - Show ids are slugs (`the-simpsons`). Carriage pairs each id with the Plex title used for matching; `overrides.yaml` can set a different `plex_title`.

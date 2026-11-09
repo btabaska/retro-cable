@@ -259,6 +259,28 @@ def test_priority_years_merge_the_catalog_and_the_minis_channels(
     assert "warning" in capsys.readouterr().err
 
 
+def test_a_series_converts_with_the_show_its_seasons_air_as(
+    tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """overrides.yaml part_of: Lupin III's files convert when a carried show is some of its
+    seasons, ranked by that show's earliest year (here only on the mini's /admin)."""
+    from retro_cable.catalog import load_catalog
+    from retro_cable.db import connect, migrate
+
+    db = connect(tmp_path / "rig.db")
+    migrate(db)
+    overrides = (
+        "shows:\n  - { show: lupin-the-3rd-part-ii,"
+        " part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [2] } }\n"
+    )
+    catalog = load_catalog(make_catalog(overrides=overrides))
+    library = {"items": [{"id": "lupin-the-3rd-part-ii", "first_year": 2003,
+                          "channels": [{"id": "adult-swim"}]}]}  # fmt: skip
+    years = cli.priority_years(db, catalog, "http://mini/api/admin/library", lambda u: library)
+    assert years["lupin-iii"] == 2003
+    assert "lupin-iii" not in cli.priority_years(db, catalog)  # nothing carries part II
+
+
 def test_normalize_rig_flags_pass_a_chooser_an_order_and_a_manifest_hook(
     tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
 ) -> None:

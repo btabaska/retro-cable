@@ -89,6 +89,10 @@ def _check_carriage(catalog: Catalog, channel_ids: set[str]) -> list[str]:
     return errors
 
 
+# Override fields that only help find a show's files and downloads.
+_FINDING = {"show", "tmdb_id", "year", "plex_title", "part_of"}
+
+
 def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
     errors: list[str] = []
     carried = {c.show for c in catalog.carriage.carriage}
@@ -103,14 +107,25 @@ def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
         if not FIRST_DAY <= s.premiere <= LAST_DAY:
             errors.append(f"{s.show} on {s.channel}: premiere must be within 1990-2010")
     seen: set[str] = set()
+    claimed: dict[tuple[str, int], str] = {}
     for o in catalog.overrides.shows:
         if o.show in seen:
             errors.append(f"overrides: '{o.show}' is listed twice")
         seen.add(o.show)
-        # Only finding a title (tmdb_id, year, plex_title) may name a show the YAML doesn't
-        # carry: the channel builder's shows are carried by /admin channels.
-        if o.show not in carried and o.model_fields_set - {"show", "tmdb_id", "year", "plex_title"}:
+        # Only finding a title (_FINDING) may name a show the YAML doesn't carry: the
+        # channel builder's shows are carried by /admin channels.
+        if o.show not in carried and o.model_fields_set - _FINDING:
             errors.append(f"overrides: '{o.show}' has no carriage on any channel")
+        if o.part_of is not None:
+            if o.part_of.show == o.show:
+                errors.append(f"overrides: '{o.show}' can't be part of itself")
+            for season in o.part_of.seasons:
+                other = claimed.setdefault((o.part_of.show, season), o.show)
+                if other != o.show:
+                    errors.append(
+                        f"overrides: {o.part_of.show} season {season} airs as both"
+                        f" {other} and {o.show}"
+                    )
         for ep, tags in o.holiday_tags.items():
             errors.extend(
                 f"{o.show} {ep}: unknown holiday '{t}'" for t in tags if t not in holiday_ids

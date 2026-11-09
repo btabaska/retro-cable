@@ -176,3 +176,25 @@ def test_a_synthetic_premiere_names_a_channel_that_carries_the_show(
         "synthetic: 'gravity-falls' is not carried on ktvu" in e
         for e in errors(make_catalog, synthetic=synthetic)
     )
+
+
+def test_a_season_of_a_series_airs_as_one_show_only(make_catalog: MakeCatalog) -> None:
+    part = "part_of: {{ show: {series}, tvdb_id: 1, seasons: [{seasons}] }}"
+    ok = OVERRIDES + (
+        f"  - {{ show: x-men, {part.format(series='the-simpsons', seasons='2')} }}\n"
+        f"  - {{ show: bluey, {part.format(series='bluey-1976', seasons='1')} }}\n"
+    )
+    assert errors(make_catalog, overrides=ok) == []  # bluey: carried in /admin
+    twice = OVERRIDES + (
+        f"  - {{ show: x-men, {part.format(series='the-simpsons', seasons='2, 3')} }}\n"
+        f"  - {{ show: gravity-falls, {part.format(series='the-simpsons', seasons='3')} }}\n"
+    )
+    assert any(
+        "overrides: the-simpsons season 3 airs as both x-men and gravity-falls" in e
+        for e in errors(make_catalog, overrides=twice)
+    )
+    itself = OVERRIDES + f"  - {{ show: x-men, {part.format(series='x-men', seasons='2')} }}\n"
+    assert any(
+        "overrides: 'x-men' can't be part of itself" in e
+        for e in errors(make_catalog, overrides=itself)
+    )

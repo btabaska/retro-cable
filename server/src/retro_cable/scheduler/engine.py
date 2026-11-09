@@ -30,6 +30,7 @@ from retro_cable.catalog.models import (
     PowerHour,
     Template,
 )
+from retro_cable.catalog.parts import season_parts
 from retro_cable.scheduler.clock import broadcast_day, broadcast_day_bounds
 from retro_cable.scheduler.library import Bumper, Library, Program
 
@@ -113,6 +114,7 @@ class Scheduler:
 
     def __init__(self, catalog: Catalog, library: Library, seed: int = 0) -> None:
         self.catalog = catalog
+        library = library.split(season_parts(catalog))  # overrides.yaml part_of
         self.library = library
         self.seed = seed
         self.tz = ZoneInfo(catalog.channels.timezone)

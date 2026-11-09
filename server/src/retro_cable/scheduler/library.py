@@ -3,10 +3,13 @@
 import sqlite3
 from collections import defaultdict
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from types import MappingProxyType
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from retro_cable.catalog.parts import Part
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,24 @@ class Library:
             bumpers=MappingProxyType(dict(bumpers)),
             show_years=MappingProxyType(dict(show_years or {})),
         )
+
+    def split(self, parts: Mapping[tuple[str, int], "Part"]) -> "Library":
+        """Seasons another show claims (catalog.parts) as that show, with its title and year;
+        the series keeps the rest."""
+        if not parts:
+            return self
+        episodes: dict[str, list[Program]] = defaultdict(list)
+        years = dict(self.show_years)
+        for show, eps in self.episodes.items():
+            for p in eps:
+                part = parts.get((show, p.season)) if p.season is not None else None
+                if part is None:
+                    episodes[show].append(p)
+                    continue
+                episodes[part.show].append(replace(p, show=part.show, title=part.title))
+                if part.year is not None:
+                    years[part.show] = part.year
+        return Library.build(episodes, self.movies, self.bumpers, years)
 
 
 def _date(value: str | None) -> date | None:

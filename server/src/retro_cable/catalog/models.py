@@ -154,6 +154,16 @@ TmdbRef = Annotated[str, Field(pattern=TMDB_REF, description="A TMDB id: tv:N or
 FirstYear = Annotated[int, Field(ge=1900, le=2100)]
 
 
+class PartOf(Model):
+    """A show TheTVDB files as seasons of another series (Justice League Unlimited is
+    Justice League seasons 3-5). The library keeps the series' files under its own id; the
+    scheduler reads these seasons as this show, and acquire asks Sonarr for just them."""
+
+    show: Slug = Field(description="The series' id in the library (its folder title's slug)")
+    tvdb_id: int = Field(ge=1, description="The series' TheTVDB id, for Sonarr")
+    seasons: list[Annotated[int, Field(ge=0)]] = Field(min_length=1)
+
+
 class ShowOverride(Model):
     show: Slug
     plex_title: str | None = Field(default=None, description="Plex title if not the carriage title")
@@ -173,6 +183,9 @@ class ShowOverride(Model):
     year: FirstYear | None = Field(
         default=None,
         description="Year it first aired (a movie: released), for acquire's title+year lookup",
+    )
+    part_of: PartOf | None = Field(
+        default=None, description="Seasons of another series (TheTVDB files them as one)"
     )
 
 
