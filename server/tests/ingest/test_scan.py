@@ -38,6 +38,16 @@ from tests.conftest import CARRIAGE, MakeCatalog
         ("Season 1.AAC", "01 Independence Day (HD).m4v", (1, 1, "Independence Day (HD)")),
         ("Season 2 ", "203 - My Case Study.avi", (2, 3, "My Case Study")),
         ("Season 2 [DVDRip]", "05 - Pilot.avi", (2, 5, "Pilot")),
+        # `S.EE` and spelled-out numbers, in any folder (Buffy, Scooby-Doo, Always Sunny)
+        ("Buffy the Vampire Slayer", "1.01 Welcome to the Hellmouth.avi",
+         (1, 1, "Welcome to the Hellmouth")),
+        ("Scooby Doo Where Are You Season 1", "S1Episode 1 What a Night for a Knight.avi",
+         (1, 1, "What a Night for a Knight")),
+        ("Season 8", "Its Always Sunny in Philadelphia Season 08 Episode 01 - Pop-Pop.mkv",
+         (8, 1, "Pop-Pop")),
+        ("Season 1", "Community Season 1 Episode 12 \u2013 Comparative Religion.mp4",
+         (1, 12, "Comparative Religion")),
+        ("Extras", "00.00 - Adventure Time Pilot.mp4", None),  # no episode 0
         ("Season 1 - 2", "01 Pilot.mkv", None),  # two seasons: the number isn't the season
         ("Season 3", "Episode 4.mkv", None),  # no number we can trust
         ("Specials", "Show - S00E01 - Pilot Promo.mkv", (0, 1, "Pilot Promo")),
@@ -518,3 +528,32 @@ def test_scan_movies_matches_the_minis_admin_movies(
     stats = scan_movies(db, root, load_catalog(make_catalog()), extra=mini)
     assert rows(db, "SELECT id, title FROM movies") == [("the-rugrats-movie", "The Rugrats Movie")]
     assert stats.unmatched_folders == ["Nobody Carries Me (1999)"]
+
+
+def test_scan_reads_season_and_episode_numbers_from_a_whole_show_folder(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    # `101 - Title` outside a season folder is S01E01 when every numbered file in the folder
+    # reads that way; a folder with low numbers too is absolute numbering and stays unparsed.
+    root = tmp_path / "tv"
+    for name in ("Freakazoid - 101 - Dance Of Doom.avi", "Freakazoid - 102 - Candle Jack.avi",
+                 "Freakazoid - 201 - The Chip.avi"):
+        touch(root / "Freakazoid" / name)
+    for name in ("101 Theres No Creature Like Snow Creature.avi", "102 3-D Struction.avi"):
+        touch(root / "Whats New Scooby Doo" / name)
+    for name in ("Anime - 099 - A.mkv", "Anime - 100 - B.mkv", "Anime - 101 - C.mkv"):
+        touch(root / "Anime" / name)
+    touch(root / "Lone" / "Lone - 101 - Only One.avi")
+    stats = scan_tv(db, root, load_catalog(make_catalog()))
+    assert rows(db, "SELECT show_id, season, episode, title FROM episodes"
+                    " ORDER BY show_id, season, episode") == [
+        ("freakazoid", 1, 1, "Dance Of Doom"),
+        ("freakazoid", 1, 2, "Candle Jack"),
+        ("freakazoid", 2, 1, "The Chip"),
+        ("whats-new-scooby-doo", 1, 1, "Theres No Creature Like Snow Creature"),
+        ("whats-new-scooby-doo", 1, 2, "3-D Struction"),
+    ]  # fmt: skip
+    assert sorted(stats.unparsed) == [
+        "Anime/Anime - 099 - A.mkv", "Anime/Anime - 100 - B.mkv", "Anime/Anime - 101 - C.mkv",
+        "Lone/Lone - 101 - Only One.avi",
+    ]  # fmt: skip

@@ -43,6 +43,11 @@ _NXM = re.compile(r"(?<![0-9A-Za-z])(\d{1,2})x(\d{2,3})(?![0-9])")
 _SEASON_DIR = re.compile(r"^(?:season|series)[ ._-]*(\d{1,4})(.*)$", re.I)
 _LEADING_SE = re.compile(r"^(\d{1,2})(\d{2})(?=[ ._-])")
 _LEADING_E = re.compile(r"^(\d{1,3})(?:\.|\s*-|\s)\s*(?=\D)")
+_LEADING_DOT = re.compile(r"^(\d{1,2})\.(\d{2})(?=[ ._-])")  # `1.01 Welcome to the Hellmouth`
+_WORDS = re.compile(  # `Season 1 Episode 12`, `S1Episode 1`
+    r"(?<![A-Za-z0-9])(?:season|s)[ ._-]*(\d{1,2})[ ._-]*episode[ ._-]*(\d{1,3})(?!\d)", re.I
+)
+_SHOW_NUMBER = re.compile(r"^(?:.*? - )?(\d{1,3})(?: - |[ ._])\s*(.*)$")  # `Show - 101 - Title`
 _JUNK = re.compile(
     r"\b(?:480p|576p|720p|1080p|2160p|WEB[- ]?DL|WEBRip|WEB|DVDRip|DVD|BDRip|BluRay|HDTV|"
     r"x264|x265|h\.?264|h\.?265|HEVC|XviD|DivX|AAC2?\.?0?|AC3|DDP?5\.1|EAC3)\b.*$",
@@ -101,7 +106,7 @@ def _clean_title(rest: str) -> str:
     if " " not in rest.strip(" ._-"):
         rest = rest.replace(".", " ").replace("_", " ")
     rest = _JUNK.sub("", rest)
-    return rest.strip(" ._-")
+    return rest.strip(" ._-\u2013\u2014")  # en and em dashes too
 
 
 def parse_episode(folder: str, name: str) -> tuple[int, int, str] | None:
@@ -109,10 +114,13 @@ def parse_episode(folder: str, name: str) -> tuple[int, int, str] | None:
     stem = Path(name).stem
     if EXTRA.search(stem):
         return None
-    tokens = [m for m in (_SXE.search(stem), _NXM.search(stem)) if m]
+    tokens = [m for m in (_SXE.search(stem), _NXM.search(stem), _WORDS.search(stem)) if m]
     if tokens:
         first = min(tokens, key=lambda m: m.start())
         return int(first[1]), int(first[2]), _clean_title(stem[first.end() :])
+    m = _LEADING_DOT.match(stem)
+    if m and int(m[2]) > 0:
+        return int(m[1]), int(m[2]), _clean_title(stem[m.end() :])
     season = _season_of(folder)
     if season is None:
         return None
@@ -281,13 +289,32 @@ def _excluded(catalog: Catalog) -> set[str]:
     return keys | {k.replace(" ", "") for k in keys}
 
 
+def _numbered(files: list[Path]) -> dict[Path, tuple[int, int, str]]:
+    """`101 - Title` files in a folder that isn't a season folder, as S01E01, when every
+    numbered file there has a season digit and an episode from 01 to 49. A folder with lower
+    numbers too (`099`, `100`) is absolute numbering, and one file alone proves nothing."""
+    hits = {f: m for f in files if not EXTRA.search(f.stem) and (m := _SHOW_NUMBER.match(f.stem))}
+    if len(hits) < 2 or not all(
+        len(m[1]) == 3 and m[1][0] != "0" and 1 <= int(m[1][1:]) <= 49 for m in hits.values()
+    ):
+        return {}
+    return {f: (int(m[1][0]), int(m[1][1:]), _clean_title(m[2])) for f, m in hits.items()}
+
+
 def _collect(
     folder: Path, root: Path, stats: ScanStats, rank: int = 0
 ) -> tuple[list[Path], list[_Found]]:
     files = _video_files(folder)
+    episodes = {f: parse_episode(f.parent.name, f.name) for f in files}
+    loose: dict[Path, list[Path]] = {}
+    for f, parsed in episodes.items():
+        if parsed is None and _season_of(f.parent.name) is None:
+            loose.setdefault(f.parent, []).append(f)
+    for group in loose.values():
+        episodes.update(_numbered(group))
     found = []
     for f in files:
-        parsed = parse_episode(f.parent.name, f.name)
+        parsed = episodes[f]
         if parsed is None:
             stats.unparsed.append(f.relative_to(root).as_posix())
             continue
