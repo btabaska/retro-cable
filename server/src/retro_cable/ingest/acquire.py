@@ -418,7 +418,7 @@ def _add_seasons(
         report.unresolved.append({"id": w.id, "title": w.title, "reason": f"lookup: {err}"})
         return
     monitored = {s.get("seasonNumber") for s in record.get("seasons", []) if s.get("monitored")}
-    missing = [s for s in seasons if s not in monitored]
+    missing = list(seasons) if new else [s for s in seasons if s not in monitored]
     if not new and not missing and record.get("monitored"):
         report.present.append(w.id)
         return
@@ -444,7 +444,12 @@ def _add_seasons(
             record = record | {
                 "monitored": True,
                 "seasons": [
-                    s | {"monitored": bool(s.get("monitored")) or s.get("seasonNumber") in seasons}
+                    # A new series starts from nothing: Sonarr's own add marks every season.
+                    s
+                    | {
+                        "monitored": (not new and bool(s.get("monitored")))
+                        or s.get("seasonNumber") in seasons
+                    }
                     for s in record.get("seasons", [])
                 ]
                 + [{"seasonNumber": s, "monitored": True} for s in seasons if s not in listed],

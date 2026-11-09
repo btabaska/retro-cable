@@ -601,7 +601,8 @@ JLU = (
     "shows:\n  - { show: x-men, year: 2004,"
     " part_of: { show: justice-league, tvdb_id: 76320, seasons: [3, 4] } }\n"
 )
-JL = series("Justice League", 2001, 76320, 1618, {1: False, 2: False, 3: False, 4: False})
+# A lookup marks every season monitored; a new series must keep only the asked-for ones.
+JL = series("Justice League", 2001, 76320, 1618, {1: True, 2: True, 3: True, 4: True})
 
 
 def _part(
