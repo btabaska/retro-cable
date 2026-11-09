@@ -59,6 +59,7 @@ class Stream:
     width: int
     height: int
     sar: Fraction
+    codec: str = ""  # ffprobe's codec_name: h264, hevc
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,7 @@ def parse_probe(data: dict[str, Any]) -> Probe:
                 int(s["width"]),
                 int(s["height"]),
                 _fraction(s.get("sample_aspect_ratio")),
+                str(s.get("codec_name", "")),
             )
         elif kind == "audio":
             audio.append((int(s["index"]), str(s.get("tags", {}).get("language", ""))))
@@ -196,6 +198,35 @@ def no_crop(src: Path, info: Probe, max_seconds: float | None) -> Crop | None:
     return None
 
 
+def codec_args(codec: Codec, encoder: Encoder, *, audio: bool) -> list[str]:
+    """The video and audio encoder settings every encode shares (normalize, assemble)."""
+    args: list[str] = []
+    if codec == "hevc" and encoder == "nvenc":
+        args += ["-c:v", "hevc_nvenc", "-preset", "p7", "-tune", "hq", "-rc", "vbr", "-cq", "26",
+                "-b:v", "0", "-spatial-aq", "1", "-temporal-aq", "1", "-forced-idr", "1",
+                "-profile:v", "main"]  # fmt: skip
+    elif codec == "hevc":
+        args += ["-c:v", "libx265", "-preset", "fast", "-crf", "22",
+                "-x265-params", "log-level=error:forced-idr=1"]  # fmt: skip
+    elif encoder == "nvenc":
+        args += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0",
+                "-forced-idr", "1"]  # fmt: skip
+    else:
+        args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+    if codec == "hevc":
+        args += ["-maxrate", HEVC_MAXRATE, "-bufsize", HEVC_BUFSIZE, "-tag:v", "hvc1"]
+    else:
+        args += ["-maxrate", VIDEO_MAXRATE, "-bufsize", VIDEO_BUFSIZE, "-profile:v", "high"]
+    args += ["-pix_fmt", "yuv420p",
+            "-force_key_frames", f"expr:gte(t,n_forced*{KEYFRAME_SECONDS})"]  # fmt: skip
+    if audio:
+        audio_rate = "96k" if codec == "hevc" else "128k"
+        args += ["-c:a", "aac", "-b:a", audio_rate, "-ac", "2", "-ar", "48000"]
+    else:
+        args += ["-an"]
+    return args
+
+
 def build_command(
     src: Path,
     dst: Path,
@@ -224,29 +255,7 @@ def build_command(
     if info.audio_index is not None:
         cmd += ["-map", f"0:{info.audio_index}"]
     cmd += ["-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn", "-vf", vf]
-    if codec == "hevc" and encoder == "nvenc":
-        cmd += ["-c:v", "hevc_nvenc", "-preset", "p7", "-tune", "hq", "-rc", "vbr", "-cq", "26",
-                "-b:v", "0", "-spatial-aq", "1", "-temporal-aq", "1", "-forced-idr", "1",
-                "-profile:v", "main"]  # fmt: skip
-    elif codec == "hevc":
-        cmd += ["-c:v", "libx265", "-preset", "fast", "-crf", "22",
-                "-x265-params", "log-level=error:forced-idr=1"]  # fmt: skip
-    elif encoder == "nvenc":
-        cmd += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0",
-                "-forced-idr", "1"]  # fmt: skip
-    else:
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
-    if codec == "hevc":
-        cmd += ["-maxrate", HEVC_MAXRATE, "-bufsize", HEVC_BUFSIZE, "-tag:v", "hvc1"]
-    else:
-        cmd += ["-maxrate", VIDEO_MAXRATE, "-bufsize", VIDEO_BUFSIZE, "-profile:v", "high"]
-    cmd += ["-pix_fmt", "yuv420p",
-            "-force_key_frames", f"expr:gte(t,n_forced*{KEYFRAME_SECONDS})"]  # fmt: skip
-    if info.audio_index is not None:
-        audio_rate = "96k" if codec == "hevc" else "128k"
-        cmd += ["-c:a", "aac", "-b:a", audio_rate, "-ac", "2", "-ar", "48000"]
-    else:
-        cmd += ["-an"]
+    cmd += codec_args(codec, encoder, audio=info.audio_index is not None)
     cmd += ["-max_muxing_queue_size", "1024", "-movflags", "+faststart", "-f", "mp4", str(dst)]
     return cmd
 

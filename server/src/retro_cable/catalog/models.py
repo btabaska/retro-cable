@@ -164,6 +164,17 @@ class PartOf(Model):
     seasons: list[Annotated[int, Field(ge=0)]] = Field(min_length=1)
 
 
+class EpisodesOf(Model):
+    """A TV movie TheTVDB files as episodes of a series (Drake & Josh: Really Big Shrimp is
+    Drake & Josh S04E17-E18). It comes down with the series, never from Radarr, and the rig
+    joins those episodes' encodes into the movie (`ingest assemble`)."""
+
+    show: Slug = Field(description="The series' id in the library (its folder title's slug)")
+    episodes: list[EpisodeKey] = Field(
+        min_length=1, description="In airing order; a file holding several is listed once"
+    )
+
+
 class ShowOverride(Model):
     show: Slug
     plex_title: str | None = Field(default=None, description="Plex title if not the carriage title")
@@ -186,6 +197,9 @@ class ShowOverride(Model):
     )
     part_of: PartOf | None = Field(
         default=None, description="Seasons of another series (TheTVDB files them as one)"
+    )
+    episodes_of: EpisodesOf | None = Field(
+        default=None, description="A TV movie made of a series' episodes (TheTVDB's filing)"
     )
 
 

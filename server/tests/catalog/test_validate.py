@@ -198,3 +198,25 @@ def test_a_season_of_a_series_airs_as_one_show_only(make_catalog: MakeCatalog) -
         "overrides: 'x-men' can't be part of itself" in e
         for e in errors(make_catalog, overrides=itself)
     )
+
+
+def test_a_tv_movie_made_of_episodes(make_catalog: MakeCatalog) -> None:
+    """overrides.yaml `episodes_of`: lookup-only, so a movie on an /admin channel may have
+    it; not its own series, each episode once, and not also seasons of a series."""
+    of = "episodes_of: {{ show: {series}, episodes: [{episodes}] }}"
+    ok = OVERRIDES + (
+        f"  - {{ show: really-big-shrimp, year: 2007,"
+        f" {of.format(series='drake-and-josh', episodes='S04E17, S04E18')} }}\n"
+    )
+    assert errors(make_catalog, overrides=ok) == []
+    bad = OVERRIDES + (
+        f"  - {{ show: halloweentown, {of.format(series='halloweentown', episodes='S01E01')} }}\n"
+        f"  - {{ show: really-big-shrimp,"
+        f" {of.format(series='drake-and-josh', episodes='S04E17, S4E17')} }}\n"
+        f"  - {{ show: sozins-comet, part_of: {{ show: avatar, tvdb_id: 1, seasons: [3] }},"
+        f" {of.format(series='avatar', episodes='S03E18')} }}\n"
+    )
+    found = errors(make_catalog, overrides=bad)
+    assert "overrides: 'halloweentown' can't be made of its own episodes" in found
+    assert "overrides: 'really-big-shrimp' lists S04E17 twice" in found
+    assert "overrides: 'sozins-comet' is part_of a series or episodes_of one, not both" in found

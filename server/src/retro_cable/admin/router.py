@@ -210,11 +210,19 @@ def library_index(db: sqlite3.Connection, sched: Scheduler) -> dict[str, Library
             r["id"],
             LibraryItem(r["id"], r["title"], "movie", premiere, premiere, on_disk, 1),
         )
-    # Carried titles the database doesn't know yet (nothing on disk anywhere, such as shows
-    # the channel builder placed): listed with nothing to play, so the rig's `ingest acquire`
-    # sees them and /admin can carry them too.
+    # Carried titles the database doesn't know yet: seasons of another series (overrides.yaml
+    # `part_of`, kept under the series' id), or nothing on disk anywhere, such as shows the
+    # channel builder placed. Listed so the rig's `ingest acquire` sees them and /admin can
+    # carry them too.
     for c in sched.catalog.carriage.carriage:
-        items.setdefault(c.show, LibraryItem(c.show, c.title, c.kind, None, None, 0, 0))
+        if c.show in items:
+            continue
+        playable = sched.programs(c.show) if c.kind == "show" else ()
+        dated = [p.air_date for p in playable if p.air_date]
+        first, last = (min(dated), max(dated)) if dated else (None, None)
+        items[c.show] = LibraryItem(
+            c.show, c.title, c.kind, first, last, len(playable), len(playable)
+        )
     return items
 
 

@@ -21,6 +21,8 @@ Rules:
   League (Unlimited)` or `Justice League 2001` for `Justice League`), is probably on the NAS
   in a folder the scan couldn't match: it is reported, not requested. More words make another
   show (`House Of The Dragon` is not `House`).
+- A TV movie made of a series' episodes (overrides.yaml `episodes_of`) is never asked of
+  Radarr: it comes down with the series, and `ingest assemble` joins it.
 - Titles already in the instance (by tvdbId or tmdbId) are skipped, so a rerun adds nothing.
 - An instance whose root folders are not exactly `/tv` (Sonarr) or `/movies` (Radarr) is
   refused before anything is looked up: that is how a Plex instance would look.
@@ -108,6 +110,7 @@ def wanted(
     plex_titles = {o.show: o.plex_title for o in effective.overrides.shows if o.plex_title}
     lineup = {o.show: (o.tmdb_id, o.year) for o in effective.overrides.shows}
     part_of = {o.show: o.part_of for o in effective.overrides.shows if o.part_of}
+    from_episodes = {o.show for o in effective.overrides.shows if o.episodes_of}
     carried: dict[str, tuple[str, Literal["show", "movie"]]] = {}
     for c in effective.carriage.carriage:
         carried.setdefault(c.show, (c.title, c.kind))
@@ -158,6 +161,8 @@ def wanted(
         )
         if ident in mini_files or on_disk:
             with_files += 1
+            continue
+        if kind == "movie" and ident in from_episodes:  # comes with its series (assemble)
             continue
         if part is not None:  # asked for by season from the series, never by its own title
             found.append(Wanted(ident, title, kind, part_of=(part.tvdb_id, tuple(part.seasons))))

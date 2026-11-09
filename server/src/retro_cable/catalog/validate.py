@@ -90,7 +90,13 @@ def _check_carriage(catalog: Catalog, channel_ids: set[str]) -> list[str]:
 
 
 # Override fields that only help find a show's files and downloads.
-_FINDING = {"show", "tmdb_id", "year", "plex_title", "part_of"}
+_FINDING = {"show", "tmdb_id", "year", "plex_title", "part_of", "episodes_of"}
+
+
+def _episode(key: str) -> str:
+    """S4E7 and S04E07 are the same episode."""
+    season, episode = (int(n) for n in key[1:].split("E"))
+    return f"S{season:02d}E{episode:02d}"
 
 
 def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
@@ -126,6 +132,18 @@ def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
                         f"overrides: {o.part_of.show} season {season} airs as both"
                         f" {other} and {o.show}"
                     )
+        if o.episodes_of is not None:
+            if o.episodes_of.show == o.show:
+                errors.append(f"overrides: '{o.show}' can't be made of its own episodes")
+            keys = [_episode(e) for e in o.episodes_of.episodes]
+            errors.extend(
+                f"overrides: '{o.show}' lists {k} twice"
+                for k in sorted({k for k in keys if keys.count(k) > 1})
+            )
+            if o.part_of is not None:
+                errors.append(
+                    f"overrides: '{o.show}' is part_of a series or episodes_of one, not both"
+                )
         for ep, tags in o.holiday_tags.items():
             errors.extend(
                 f"{o.show} {ep}: unknown holiday '{t}'" for t in tags if t not in holiday_ids

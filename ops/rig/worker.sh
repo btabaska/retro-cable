@@ -11,7 +11,9 @@ set -euo pipefail
 #      NVENC while the GPU is idle and x264 otherwise, writing a JSON sidecar per encode
 #      and manifest.json for the mini (ingest/manifest.py). Originals under
 #      RC_DELETE_SOURCES_UNDER (the downloads) are deleted once their encode is whole;
-#   4. sleep, then look again for new files.
+#   4. join TV movies TheTVDB files as episodes of a series from those episodes' encodes
+#      (ingest/assemble.py), once all of them are converted;
+#   5. sleep, then look again for new files.
 # Everything runs at nice 19 and in the idle I/O class. Resumable: a stopped run picks up
 # where it left off (finished items are recorded one by one).
 
@@ -68,13 +70,23 @@ cycle() {
     fi
   fi
   log "normalize started (encoder $encoder)"
+  local status=0
   if ingest normalize --order priority --encoder "$encoder" --manifest \
     >"$data/last-normalize.json"; then
     log "normalize done ($data/last-normalize.json)"
   else
     log "normalize failed"
-    return 1
+    status=1
   fi
+  # TV movies TheTVDB files as episodes (overrides.yaml episodes_of): joined from their
+  # episodes' encodes once all are converted (ingest/assemble.py).
+  log "assemble started"
+  if ingest assemble --manifest >"$data/last-assemble.json"; then
+    log "assemble done ($data/last-assemble.json)"
+  else
+    log "assemble failed ($data/last-assemble.json)"
+  fi
+  return "$status"
 }
 
 while true; do

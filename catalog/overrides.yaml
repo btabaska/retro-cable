@@ -124,3 +124,9 @@ shows:
   - { show: lupin-the-3rd-part-iv-the-italian-adventure, year: 2017, part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [4] } }
   - { show: pokemon-horizons-the-series, year: 2024, part_of: { show: pokemon, tvdb_id: 76703, seasons: [20] } }
   - { show: the-new-scooby-and-scrappy-doo-show, year: 1983, part_of: { show: scooby-doo-and-scrappy-doo, tvdb_id: 78740, seasons: [5] } }
+
+  # TV movies TheTVDB files as episodes of their series (episodes_of, Nov 8 2026): they come
+  # down with the series and the rig joins those episodes' encodes (ingest assemble).
+  - { show: avatar-sozins-comet, year: 2008, episodes_of: { show: avatar-the-last-airbender, episodes: [S03E18] } }  # the NAS file is S03E18-E21
+  - { show: drake-and-josh-really-big-shrimp, year: 2007, episodes_of: { show: drake-and-josh, episodes: [S04E17, S04E18] } }
+  - { show: rocket-power-reggies-big-beach-break, year: 2003, episodes_of: { show: rocket-power, episodes: [S04E01, S04E02, S04E03] } }

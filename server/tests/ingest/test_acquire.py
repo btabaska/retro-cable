@@ -677,3 +677,17 @@ def test_a_dry_run_asks_for_no_seasons(
     out = _part(library, make_catalog, sonarr, dry_run=True)
     assert "x-men" in [a["id"] for a in out["shows"]["added"]]
     assert sonarr.posted == [] and sonarr.put == [] and sonarr.commands == []
+
+
+def test_a_tv_movie_made_of_episodes_is_never_asked_of_radarr(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """overrides.yaml `episodes_of`: it comes down with its series and `ingest assemble`
+    joins it, so it is neither wanted nor counted until then."""
+    overrides = (
+        "shows:\n  - { show: halloweentown, year: 1998,"
+        " episodes_of: { show: the-simpsons, episodes: [S10E04] } }\n"
+    )
+    found, with_files, _ = wanted(library, load_catalog(make_catalog(overrides=overrides)))
+    assert "halloweentown" not in [w.id for w in found]
+    assert with_files == 2  # the-simpsons and dexters-laboratory, as before

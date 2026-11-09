@@ -8,6 +8,8 @@
              (RC_SONARR_LIVETV_URL/_KEY, RC_RADARR_LIVETV_URL/_KEY); see ingest/acquire.py
   normalize  encode playable MP4s into the media root (RC_MEDIA_DIR); see ingest/normalize.py
              (RC_DELETE_SOURCES_UNDER: delete originals there once their encode is whole)
+  assemble   join the episodes of TV movies TheTVDB files as episodes (overrides.yaml
+             `episodes_of`) into those movies; see ingest/assemble.py
   manifest   write manifest.json at the media root from this database (ingest/manifest.py)
   index-media  record a manifest's encodes in this database, without probing (the mini)
 
@@ -32,6 +34,7 @@ from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.db import connect, migrate
 from retro_cable.ingest import manifest
 from retro_cable.ingest.acquire import acquire
+from retro_cable.ingest.assemble import AssembleStats, assemble
 from retro_cable.ingest.gpu import choose_encoder, comfy_busy
 from retro_cable.ingest.http import Request, json_request
 from retro_cable.ingest.normalize import (
@@ -72,7 +75,16 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m retro_cable.ingest")
     parser.add_argument(
         "job",
-        choices=["plex", "tmdb", "scan", "acquire", "normalize", "manifest", "index-media"],
+        choices=[
+            "plex",
+            "tmdb",
+            "scan",
+            "acquire",
+            "normalize",
+            "assemble",
+            "manifest",
+            "index-media",
+        ],
     )
     parser.add_argument("--db", type=Path, default=None)
     parser.add_argument(
@@ -159,7 +171,8 @@ def main(argv: list[str]) -> int:
     elif args.job == "scan" and not (args.tv or args.movies):
         print("scan needs --tv DIR and/or --movies DIR", file=sys.stderr)
         return 2
-    if args.job in ("plex", "scan", "acquire") or (args.job == "normalize" and not args.all):
+    needs_catalog = ("plex", "scan", "acquire", "assemble")
+    if args.job in needs_catalog or (args.job == "normalize" and not args.all):
         try:
             catalog = load_catalog(args.catalog)
         except CatalogError as err:
@@ -196,6 +209,9 @@ def main(argv: list[str]) -> int:
     elif args.job == "acquire":
         assert catalog is not None
         return _acquire(db, catalog, args)
+    elif args.job == "assemble":
+        assert catalog is not None
+        stats = _assemble(db, catalog, args)
     elif args.job == "manifest":
         path = manifest.write_manifest(db, _media_dir(args), now)
         stats = {"manifest": str(path)}
@@ -243,19 +259,48 @@ def _arr(name: str) -> Request | None:
     return json_request(url, {"X-Api-Key": key}) if url and key else None
 
 
+def _mini_items(args: argparse.Namespace) -> list[dict[str, object]]:
+    """The mini's /api/admin/library items (--priority-url), or none if it can't be read."""
+    if not args.priority_url:
+        return []
+    try:
+        data = _get_json(args.priority_url)
+    except (OSError, ValueError) as err:
+        print(f"warning: can't read {args.priority_url}: {err}", file=sys.stderr)
+        return []
+    found = data.get("items", []) if isinstance(data, dict) else []
+    return [i for i in found if isinstance(i, dict)]
+
+
 def _acquire(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace) -> int:
-    items: list[dict[str, object]] = []
-    if args.priority_url:  # the mini's /admin channels count as carried
-        try:
-            data = _get_json(args.priority_url)
-            found = data.get("items", []) if isinstance(data, dict) else []
-            items = [i for i in found if isinstance(i, dict)]
-        except (OSError, ValueError) as err:
-            print(f"warning: can't read {args.priority_url}: {err}", file=sys.stderr)
+    # The mini's /admin channels count as carried.
     report = acquire(db, catalog, sonarr=_arr("SONARR"), radarr=_arr("RADARR"),
-                     dry_run=args.dry_run, extra=items)  # fmt: skip
+                     dry_run=args.dry_run, extra=_mini_items(args))  # fmt: skip
     print(json.dumps(asdict(report), indent=2))
     return 0 if report.ok else 1
+
+
+def _assemble(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace) -> object:
+    media = _media_dir(args)
+    rig = args.manifest and not args.dry_run
+
+    def written(movie: str, target: str) -> None:
+        try:
+            manifest.write_sidecar(db, media, "movies", movie, target)
+        except OSError as err:  # the manifest below still lists it
+            print(f"warning: sidecar write failed: {err}", file=sys.stderr)
+
+    result: AssembleStats = assemble(
+        db, catalog, media, extra=_mini_items(args), dry_run=args.dry_run,
+        on_assembled=written if rig else None,
+    )  # fmt: skip
+    if rig and result.assembled:
+        manifest.write_manifest(db, media, datetime.now(UTC))
+    for cmd in result.commands:
+        print(" ".join(cmd), file=sys.stderr)
+    stats = asdict(result)
+    stats.pop("commands")
+    return stats
 
 
 def _get_json(url: str) -> object:

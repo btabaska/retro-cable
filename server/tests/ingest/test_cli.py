@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from retro_cable.ingest import cli
+from retro_cable.ingest.assemble import AssembleStats
 from tests.conftest import MakeCatalog
 from tests.ingest.conftest import RecordedFetch
 
@@ -299,3 +300,32 @@ def test_normalize_rig_flags_pass_a_chooser_an_order_and_a_manifest_hook(
     assert watch.path == tmp_path / "media/progress.json" and watch.auto
     assert CAPTURED["shows"] is None
     assert (tmp_path / "media/manifest.json").is_file(), "the final manifest is written"
+
+
+def test_assemble_reads_the_minis_titles_and_writes_the_manifest(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    library = {"items": [{"id": "rbs", "title": "Really Big Shrimp", "channels": [{"id": "c"}]}]}
+    monkeypatch.setattr(cli, "_get_json", lambda url: library)
+    seen: dict[str, object] = {}
+
+    def fake(db, catalog, media, **kw):  # type: ignore[no-untyped-def]
+        seen.update(kw)
+        db.execute(
+            "INSERT INTO movies (id, title, media_path) VALUES ('rbs', 'RBS', 'movies/rbs.mp4')"
+        )
+        kw["on_assembled"]("rbs", "movies/rbs.mp4")
+        return AssembleStats(assembled=["rbs"])
+
+    monkeypatch.setattr(cli, "assemble", fake)
+    media = tmp_path / "media"
+    args = ["assemble", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog()),
+            "--media-dir", str(media), "--manifest",
+            "--priority-url", "http://mini/api/admin/library"]  # fmt: skip
+    assert cli.main(args) == 0
+    assert seen["extra"] == library["items"] and seen["dry_run"] is False
+    assert json.loads(capsys.readouterr().out)["assembled"] == ["rbs"]
+    assert (media / "movies/rbs.json").is_file()
+    movies = json.loads((media / "manifest.json").read_text())["movies"]
+    assert [m["id"] for m in movies] == ["rbs"]

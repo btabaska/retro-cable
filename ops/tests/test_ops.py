@@ -190,9 +190,11 @@ def test_rig_worker_scans_then_normalizes_in_priority_order(tmp_path: Path) -> N
     assert pythons[1] == (
         "python -m retro_cable.ingest normalize --order priority --encoder auto --manifest"
     ), "only what a channel carries is converted, never the whole library (--all)"
+    # Then TV movies made of episodes are joined from the new encodes.
+    assert pythons[2] == "python -m retro_cable.ingest assemble --manifest"
     lines = log.splitlines()
-    assert sum(line.startswith("nice -n 19 ionice -c 3 python") for line in lines) == 2
-    assert sum(line.startswith("ionice -c 3 python") for line in lines) == 2
+    assert sum(line.startswith("nice -n 19 ionice -c 3 python") for line in lines) == 3
+    assert sum(line.startswith("ionice -c 3 python") for line in lines) == 3
 
 
 def test_rig_worker_writes_nothing_without_the_nas_share(tmp_path: Path) -> None:
@@ -261,7 +263,7 @@ def test_rig_worker_acquires_only_when_asked(tmp_path: Path) -> None:
     code, log, _ = _run_worker(tmp_path, media, tv, RC_ACQUIRE="1")
     assert code == 0
     jobs = [p.split()[3] for p in _pythons(log)]
-    assert jobs == ["scan", "acquire", "normalize"], "after the scan, before normalize"
+    assert jobs == ["scan", "acquire", "normalize", "assemble"], "after the scan, before normalize"
     assert (tmp_path / "data/last-acquire.json").is_file()
 
 
