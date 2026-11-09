@@ -43,7 +43,8 @@ _NXM = re.compile(r"(?<![0-9A-Za-z])(\d{1,2})x(\d{2,3})(?![0-9])")
 _SEASON_DIR = re.compile(r"^(?:season|series)[ ._-]*(\d{1,4})(.*)$", re.I)
 _LEADING_SE = re.compile(r"^(\d{1,2})(\d{2})(?=[ ._-])")
 _LEADING_E = re.compile(r"^(\d{1,3})(?:\.|\s*-|\s)\s*(?=\D)")
-_LEADING_DOT = re.compile(r"^(\d{1,2})\.(\d{2})(?=[ ._-])")  # `1.01 Welcome to the Hellmouth`
+# `1.01 Welcome to the Hellmouth`, `5.1 Buffy vs. Dracula` (one digit only before a space)
+_LEADING_DOT = re.compile(r"^(\d{1,2})\.(\d{2}(?=[ ._-])|\d(?= ))")
 _WORDS = re.compile(  # `Season 1 Episode 12`, `S1Episode 1`
     r"(?<![A-Za-z0-9])(?:season|s)[ ._-]*(\d{1,2})[ ._-]*episode[ ._-]*(\d{1,3})(?!\d)", re.I
 )
@@ -53,6 +54,9 @@ _JUNK = re.compile(
     r"x264|x265|h\.?264|h\.?265|HEVC|XviD|DivX|AAC2?\.?0?|AC3|DDP?5\.1|EAC3)\b.*$",
     re.I,
 )
+_BRACKETS = re.compile(r"\[[^\]]*\]|\([^)]*\)")
+_DIGITS = re.compile(r"(\d+)")
+_NAMES_SEASON = re.compile(r"(?:season|series)[ ._-]*\d|(?<![A-Za-z0-9])s\d{1,2}(?!\d)", re.I)
 _YEAR = re.compile(r"\((19\d{2}|20\d{2})\)")
 
 # Measures a source file: its length in seconds from ffprobe, or None when it can't be read.
@@ -301,6 +305,28 @@ def _numbered(files: list[Path]) -> dict[Path, tuple[int, int, str]]:
     return {f: (int(m[1][0]), int(m[1][1:]), _clean_title(m[2])) for f, m in hits.items()}
 
 
+def _absolute(files: list[Path]) -> dict[Path, tuple[int, int, str]]:
+    """Files whose names are one name with a different number in each (`[a-s] Samurai
+    Champloo 01`, `Princess.Jellyfish.-.02.-.1080p`) as season 1, episode N: absolute
+    numbering. Tags in brackets don't count; it takes three such files, none of them extras,
+    in a folder that doesn't name a season (`Series 5 + Bonus/Episode 01`, `Dog.S01/cd101`)."""
+    groups: dict[tuple[str, ...], list[tuple[Path, list[str]]]] = {}
+    for f in files:
+        if not EXTRA.search(f.stem):
+            parts = _DIGITS.split(_BRACKETS.sub("", f.stem).strip())
+            groups.setdefault(tuple(parts[0::2]), []).append((f, parts[1::2]))
+    found = {}
+    for members in groups.values():
+        columns = list(zip(*(numbers for _, numbers in members), strict=True))
+        varying = [i for i, column in enumerate(columns) if len(set(column)) > 1]
+        if len(members) < 3 or len(varying) != 1:
+            continue
+        column = columns[varying[0]]
+        if len(set(column)) == len(column) and all(len(n) <= 3 and int(n) > 0 for n in column):
+            found.update({f: (1, int(numbers[varying[0]]), "") for f, numbers in members})
+    return found
+
+
 def _collect(
     folder: Path, root: Path, stats: ScanStats, rank: int = 0
 ) -> tuple[list[Path], list[_Found]]:
@@ -308,10 +334,19 @@ def _collect(
     episodes = {f: parse_episode(f.parent.name, f.name) for f in files}
     loose: dict[Path, list[Path]] = {}
     for f, parsed in episodes.items():
-        if parsed is None and _season_of(f.parent.name) is None:
-            loose.setdefault(f.parent, []).append(f)
-    for group in loose.values():
+        if parsed is not None or _season_of(f.parent.name) is not None:
+            continue
+        # `Season 1/Gravity Falls 720p/01 Tourist Trapped.mp4`: a release folder in a season
+        if f.parent != folder and not EXTRA.search(f.parent.name):
+            season_dir = f.parent.parent.name
+            if _season_of(season_dir) is not None:
+                episodes[f] = parse_episode(season_dir, f.name)
+                continue
+        loose.setdefault(f.parent, []).append(f)
+    for parent, group in loose.items():
         episodes.update(_numbered(group))
+        if not EXTRA.search(parent.name) and not _NAMES_SEASON.search(parent.name):
+            episodes.update(_absolute([f for f in group if episodes[f] is None]))
     found = []
     for f in files:
         parsed = episodes[f]

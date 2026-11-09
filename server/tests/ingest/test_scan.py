@@ -41,6 +41,8 @@ from tests.conftest import CARRIAGE, MakeCatalog
         # `S.EE` and spelled-out numbers, in any folder (Buffy, Scooby-Doo, Always Sunny)
         ("Buffy the Vampire Slayer", "1.01 Welcome to the Hellmouth.avi",
          (1, 1, "Welcome to the Hellmouth")),
+        ("BtVS Season 5", "5.1 Buffy vs. Dracula.avi", (5, 1, "Buffy vs. Dracula")),
+        ("Season 1", "14.5. Heart of Ice Commentary.xvid", None),  # not 14x5
         ("Scooby Doo Where Are You Season 1", "S1Episode 1 What a Night for a Knight.avi",
          (1, 1, "What a Night for a Knight")),
         ("Season 8", "Its Always Sunny in Philadelphia Season 08 Episode 01 - Pop-Pop.mkv",
@@ -559,4 +561,44 @@ def test_scan_reads_season_and_episode_numbers_from_a_whole_show_folder(
     assert sorted(stats.unparsed) == [
         "Anime/Anime - 099 - A.mkv", "Anime/Anime - 100 - B.mkv", "Anime/Anime - 101 - C.mkv",
         "Lone/Lone - 101 - Only One.avi",
+    ]  # fmt: skip
+
+
+def test_scan_reads_absolute_numbers_and_release_folders_in_a_season(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    # Names that differ only by one number are absolute numbering: season 1, episode N.
+    # Files in a release folder inside a season folder take that season.
+    root = tmp_path / "tv"
+    for n in ("01", "02", "26"):
+        touch(root / "Samurai Champloo" / f"[a-s] Samurai Champloo {n}.mkv")
+        touch(root / "Princess Jellyfish" / f"Princess.Jellyfish.-.{n}.-.1080p.BluRay.x264.DHD.mkv")
+        touch(root / "Show" / "Extras" / f"Making Of {n}.mkv")
+        touch(root / "Midwife" / "Midwife Series 5 + Bonus" / f"Episode {n}.mp4")
+        touch(root / "Dog" / "Dog.S01" / f"cd1{n}-wpi.avi")
+    touch(root / "Pair" / "Pair 01.mkv")
+    touch(root / "Pair" / "Pair 02.mkv")
+    for name in ("01 Tourist Trapped.mp4", "02 The Legend of the Gobblewonker.mp4"):
+        touch(root / "Gravity Falls" / "Season 1" / "Gravity Falls 720p" / name)
+    stats = scan_tv(db, root, load_catalog(make_catalog()))
+    assert rows(db, "SELECT show_id, season, episode, title FROM episodes"
+                    " ORDER BY show_id, season, episode") == [
+        ("gravity-falls", 1, 1, "Tourist Trapped"),
+        ("gravity-falls", 1, 2, "The Legend of the Gobblewonker"),
+        ("princess-jellyfish", 1, 1, ""),
+        ("princess-jellyfish", 1, 2, ""),
+        ("princess-jellyfish", 1, 26, ""),
+        ("samurai-champloo", 1, 1, ""),
+        ("samurai-champloo", 1, 2, ""),
+        ("samurai-champloo", 1, 26, ""),
+    ]  # fmt: skip
+    # A folder that names a season isn't absolute numbering; two files prove nothing.
+    assert sorted(stats.unparsed) == [
+        "Dog/Dog.S01/cd101-wpi.avi", "Dog/Dog.S01/cd102-wpi.avi", "Dog/Dog.S01/cd126-wpi.avi",
+        "Midwife/Midwife Series 5 + Bonus/Episode 01.mp4",
+        "Midwife/Midwife Series 5 + Bonus/Episode 02.mp4",
+        "Midwife/Midwife Series 5 + Bonus/Episode 26.mp4",
+        "Pair/Pair 01.mkv", "Pair/Pair 02.mkv",
+        "Show/Extras/Making Of 01.mkv", "Show/Extras/Making Of 02.mkv",
+        "Show/Extras/Making Of 26.mkv",
     ]  # fmt: skip
