@@ -123,14 +123,27 @@ def _fill_show(
     stats: TmdbStats,
     add_missing: bool = True,
 ) -> None:
+    rows = {
+        (r["season"], r["episode"]): r
+        for r in db.execute(
+            "SELECT season, episode, title, air_date, runtime_seconds FROM episodes"
+            " WHERE show_id = ?",
+            (show_id,),
+        )
+    }
+    # A season where a titled episode sits under another number on TMDB is numbered
+    # differently (Firefly's DVD order): its untitled episodes can't be matched either.
+    off = {
+        f.season
+        for f in facts
+        if (row := rows.get((f.season, f.episode))) is not None
+        and row["title"]
+        and not same_episode(row["title"], f.title)
+    }
     with transaction(db):
         for f in facts:
             air = f.air_date.isoformat() if f.air_date else None
-            row = db.execute(
-                "SELECT title, air_date, runtime_seconds FROM episodes"
-                " WHERE show_id = ? AND season = ? AND episode = ?",
-                (show_id, f.season, f.episode),
-            ).fetchone()
+            row = rows.get((f.season, f.episode))
             if row is None:
                 if not add_missing:
                     continue
@@ -142,7 +155,8 @@ def _fill_show(
                 )  # fmt: skip
                 stats.added_episodes += 1
                 continue
-            if not same_episode(row["title"] or "", f.title):
+            untitled_off = not row["title"] and f.season in off
+            if untitled_off or not same_episode(row["title"] or "", f.title):
                 if row["air_date"] is None or row["runtime_seconds"] is None:
                     stats.mismatched_titles.append(f"{show_id} S{f.season:02d}E{f.episode:02d}")
                 continue

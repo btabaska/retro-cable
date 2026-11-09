@@ -172,9 +172,9 @@ def test_the_lineups_id_fills_a_show_with_no_id_of_its_own(db: sqlite3.Connectio
         5: "1997-10-22",  # a double-length file holds TMDB's first half: same episode
         6: "1997-10-23",  # punctuation aside, the same title
         7: None,  # another episode under this number on TMDB: left for a better source
-        8: "1997-10-27",  # no title to check
+        8: None,  # no title to check, in a season where one number is off
     }
-    assert stats.mismatched_titles == ["arthur S02E07"]
+    assert stats.mismatched_titles == ["arthur S02E07", "arthur S02E08"]
     assert stats.shows_without_tmdb_id == []
     # Its numbering may not be TMDB's, so TMDB adds no file-less episodes to it: a later
     # file under one of those numbers would take that episode's date.
@@ -217,3 +217,37 @@ def test_lineup_ids_come_from_the_effective_overrides(make_catalog: MakeCatalog)
     ]
     catalog = replace(catalog, overrides=catalog.overrides.model_copy(update={"shows": shows}))
     assert lineup_ids(catalog) == {"arthur": 789}
+
+
+def test_untitled_episodes_are_left_alone_in_a_season_numbered_differently(
+    db: sqlite3.Connection,
+) -> None:
+    """Firefly on the NAS is in DVD order, TMDB in broadcast order, and some files have no
+    title. One titled episode out of place marks the season, so the untitled ones beside it
+    get neither TMDB's title nor its date: file 1 is the pilot, not TMDB's The Train Job."""
+    db.execute("INSERT INTO shows (id, title) VALUES ('firefly', 'Firefly')")
+    db.execute(
+        "INSERT INTO episodes (show_id, season, episode, title, media_path) VALUES"
+        " ('firefly', 1, 1, '', 'f1.mp4'), ('firefly', 1, 2, 'The Train Job', 'f2.mp4'),"
+        " ('firefly', 2, 1, '', 'g1.mp4')"
+    )
+    firefly = {
+        5: {
+            1: [
+                EpisodeFacts(1, 1, "The Train Job", date(2002, 9, 20), 2580),
+                EpisodeFacts(1, 2, "Bushwhacked", date(2002, 9, 27), 2580),
+            ],
+            2: [EpisodeFacts(2, 1, "Another Season", date(2003, 9, 1), 2580)],
+        }
+    }
+    stats = fill_gaps(db, FakeSource(firefly), now=NOW, lineup={"firefly": 5})
+    got = db.execute(
+        "SELECT season, episode, title, air_date, runtime_seconds FROM episodes"
+        " ORDER BY season, episode"
+    ).fetchall()
+    assert [tuple(r) for r in got] == [
+        (1, 1, "", None, None),
+        (1, 2, "The Train Job", None, None),
+        (2, 1, "Another Season", "2003-09-01", 2580),  # nothing out of place in season 2
+    ]
+    assert stats.mismatched_titles == ["firefly S01E01", "firefly S01E02"]
