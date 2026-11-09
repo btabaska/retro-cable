@@ -871,3 +871,22 @@ def test_trims_nothing_on_an_instance_with_other_root_folders(
     out = _trim(library, make_catalog, sonarr)
     assert out["shows"]["error"] and out["shows"]["trimmed"] == []
     assert sonarr.put == [] and sonarr.deleted == []
+
+
+def test_a_remake_with_the_same_title_is_told_apart_by_year(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """DuckTales (1987) and DuckTales (2017) share a title: a series matches the carried
+    show with its first-aired year (within a year), and none when no year fits."""
+    reboot = live("The Simpsons", 5, 999, 2021, [1, 2])
+    eps = {5: aired(5, (1, "2021-05-01"), (2, "2022-05-01"))}
+    mini = [{"id": "the-simpsons-2021", "title": "The Simpsons (2021)", "kind": "show",
+             "year": 2021, "channels": [{"id": "custom-x"}], "shifted": True}]  # fmt: skip
+    years = "shows:\n  - { show: the-simpsons, year: 1989 }\n"
+    sonarr = FakeArr("series", existing=[reboot], episodes=eps, lookups=SONARR_LOOKUPS)
+    out = _trim(library, make_catalog, sonarr, extra=mini, files={"overrides": years})
+    assert out["shows"]["trimmed"] == [], "the 2021 show is shifted"
+    alone = FakeArr("series", existing=[reboot], episodes=eps, lookups=SONARR_LOOKUPS)
+    out = _trim(library, make_catalog, alone, files={"overrides": years})
+    assert out["shows"]["trimmed"] == [], "only the 1989 show is carried: not this series"
+    assert not any(path == "/api/v3/episode" for path in alone.gets)

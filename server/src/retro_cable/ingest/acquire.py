@@ -493,32 +493,55 @@ class Airable:
     """What decides which seasons of a sonarr-livetv series can ever air (`trim_seasons`)."""
 
     last_day: date  # the last simulated day (channels.yaml year_range)
-    shows: Mapping[str, str]  # title key -> carried show id (carriage, plex_title, the mini)
+    # Title key -> carried show ids and first-aired years (carriage, plex_title, the mini):
+    # a remake shares its title (DuckTales 1987 and 2017), so the year tells them apart.
+    shows: Mapping[str, tuple[tuple[str, int | None], ...]]
     shifted: frozenset[str]  # show ids on moved dates somewhere: a pretend premiere, a US debut
     claimed: Mapping[str, frozenset[int]]  # series id -> seasons part_of/episodes_of need
     claimed_tvdb: Mapping[int, frozenset[int]]  # the same, by the series' TheTVDB id
+
+    def show(self, keys: Iterable[str], year: int | None) -> str | None:
+        """The carried show a series is: by title, then by year (within one). A lone show
+        with no known year matches by title alone; otherwise none, never a guess."""
+        for key in keys:
+            found = self.shows.get(key, ())
+            for slack in (0, 1):
+                near = [i for i, y in found if y is not None and year and abs(y - year) <= slack]
+                if near:
+                    return near[0]
+            if len(found) == 1 and (found[0][1] is None or not year):
+                return found[0][0]
+        return None
 
 
 def airable(
     db: sqlite3.Connection, catalog: Catalog, extra: Iterable[Mapping[str, Any]] = ()
 ) -> Airable:
     effective = apply_overlay(catalog, store.head(db).overlay)
-    shows: dict[str, str] = {}
+    years = {o.show: o.year for o in effective.overrides.shows if o.year}
+    shows: dict[str, list[tuple[str, int | None]]] = {}
+
+    def carried(title: str, ident: str, year: int | None) -> None:
+        found = shows.setdefault(_key(title), [])
+        if all(i != ident for i, _ in found):
+            found.append((ident, years.get(ident) or _year_in(title) or year))
+
     shifted = {p.show for p in effective.synthetic.synthetic}
     for c in effective.carriage.carriage:
         if c.kind == "show":
-            shows.setdefault(_key(c.title), c.show)
+            carried(c.title, c.show, None)
     for item in extra:  # the mini's /admin channels and its pretend premieres
         ident = str(item.get("id") or "")
         if ident and item.get("channels") and item.get("kind", "show") == "show":
-            shows.setdefault(_key(str(item.get("title") or ident)), ident)
+            year = item.get("year") or item.get("first_year")
+            carried(str(item.get("title") or ident), ident, year if isinstance(year, int) else None)
             if item.get("shifted"):
                 shifted.add(ident)
     claimed: dict[str, set[int]] = {}
     claimed_tvdb: dict[int, set[int]] = {}
     for o in effective.overrides.shows:
         if o.plex_title:
-            shows.setdefault(_key(o.plex_title), o.show)
+            carried(o.plex_title, o.show, None)
         if o.us_debut:
             shifted.add(o.show)
         if o.part_of is not None:
@@ -531,7 +554,7 @@ def airable(
                 claimed_tvdb.setdefault(o.episodes_of.tvdb_id, set()).update(seasons)
     return Airable(
         date(effective.channels.year_range[1], 12, 31),
-        shows,
+        {k: tuple(v) for k, v in shows.items()},
         frozenset(shifted),
         {k: frozenset(v) for k, v in claimed.items()},
         {k: frozenset(v) for k, v in claimed_tvdb.items()},
@@ -598,7 +621,8 @@ def trim_seasons(request: Request, rules: Airable, report: InstanceReport, dry_r
             if folder
             else [_key(str(record.get("title") or ""))]
         )
-        ident = next((rules.shows[k] for k in keys if k in rules.shows), None)
+        year = record.get("year")
+        ident = rules.show(keys, year if isinstance(year, int) else None)
         if ident is None or ident in rules.shifted:
             continue
         keep = rules.claimed.get(ident, frozenset()) | rules.claimed_tvdb.get(
