@@ -34,6 +34,11 @@ from tests.conftest import CARRIAGE, MakeCatalog
          (1, 3, "#03 - Divide and Conquer")),
         ("Season 2", "203 - My Case Study.avi", (2, 3, "My Case Study")),
         ("Season 1", "01. On Leather Wings.xvid", (1, 1, "On Leather Wings")),
+        # A release tag or a stray space after the season number (Young Justice, Adventure Time)
+        ("Season 1.AAC", "01 Independence Day (HD).m4v", (1, 1, "Independence Day (HD)")),
+        ("Season 2 ", "203 - My Case Study.avi", (2, 3, "My Case Study")),
+        ("Season 2 [DVDRip]", "05 - Pilot.avi", (2, 5, "Pilot")),
+        ("Season 1 - 2", "01 Pilot.mkv", None),  # two seasons: the number isn't the season
         ("Season 3", "Episode 4.mkv", None),  # no number we can trust
         ("Specials", "Show - S00E01 - Pilot Promo.mkv", (0, 1, "Pilot Promo")),
         ("Season 1", "1920x1080 sample.mkv", None),

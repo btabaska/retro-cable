@@ -40,7 +40,7 @@ EXTRA = re.compile(r"(?:^|[-_. ])(?:sample|trailer|featurette|behindthescenes|ex
 
 _SXE = re.compile(r"(?<![A-Za-z0-9])[Ss](\d{1,2})[ ._-]?[Ee](\d{1,3})(?:-?[Ee]\d{1,3})*")
 _NXM = re.compile(r"(?<![0-9A-Za-z])(\d{1,2})x(\d{2,3})(?![0-9])")
-_SEASON_DIR = re.compile(r"^(?:season|series)[ ._-]*(\d{1,4})$", re.I)
+_SEASON_DIR = re.compile(r"^(?:season|series)[ ._-]*(\d{1,4})(.*)$", re.I)
 _LEADING_SE = re.compile(r"^(\d{1,2})(\d{2})(?=[ ._-])")
 _LEADING_E = re.compile(r"^(\d{1,3})(?:\.|\s*-|\s)\s*(?=\D)")
 _JUNK = re.compile(
@@ -88,7 +88,11 @@ def _season_of(folder: str) -> int | None:
     if folder.casefold() in ("specials", "season 0", "season 00"):
         return 0
     m = _SEASON_DIR.match(folder)
-    return int(m[1]) if m else None
+    if m is None:
+        return None
+    # `Season 1.AAC`, `Season 2 [DVDRip]`: a release tag may follow, but not another number
+    tail = m[2].strip(" ._-")
+    return int(m[1]) if not tail or tail[0] in "[(" or _JUNK.match(tail) else None
 
 
 def _clean_title(rest: str) -> str:
