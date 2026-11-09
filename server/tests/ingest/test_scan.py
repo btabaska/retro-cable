@@ -3,11 +3,19 @@
 import shutil
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from retro_cable.catalog import load_catalog
-from retro_cable.ingest.scan import parse_episode, scan_movies, scan_tv, show_title, show_year
+from retro_cable.ingest.scan import (
+    movie_title,
+    parse_episode,
+    scan_movies,
+    scan_tv,
+    show_title,
+    show_year,
+)
 from tests.conftest import CARRIAGE, MakeCatalog
 
 
@@ -451,3 +459,57 @@ def test_scan_movies_reads_several_roots_and_prefers_the_first(
     assert rows(db, "SELECT file_path FROM movies") == [
         (str(plex / "Halloweentown (1998)" / "Halloweentown (1998).mkv"),)
     ]
+
+
+def test_scan_movies_reads_release_named_folders(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """Plex's movie tree has folders named like releases: the title ends at a year or a
+    release tag. A year inside a title doesn't cut it unless a tag follows."""
+    root = tmp_path / "movies"
+    touch(root / "Halloweentown.1998.1080p.WEB-DL.DD5.1.H264" / "h.mkv")
+    stats = scan_movies(db, root, load_catalog(make_catalog()))
+    assert stats.movies == 1 and rows(db, "SELECT id FROM movies") == [("halloweentown",)]
+
+
+@pytest.mark.parametrize(
+    ("folder", "title"),
+    [
+        ("Psych.The.Movie.2017.HDRip.XviD.AC3-EVO", "Psych The Movie"),
+        (
+            "Hey Arnold The Jungle Movie (2017) 720p Webrip X264 Solar",
+            "Hey Arnold The Jungle Movie",
+        ),
+        (
+            "Rugrats in Paris The Movie 2000 1080p WEB-DL DD5 1 H264-SA89",
+            "Rugrats in Paris The Movie",
+        ),
+        ("Addams_Family_Reunion_DVDRip_XviD-KIDSROCK", "Addams Family Reunion"),
+        ("Beauty.Shop[2005]DvDRip-Rdgrnnr", "Beauty Shop"),
+        ("Aloha Scooby Doo (2005) [1080p]", "Aloha Scooby Doo"),
+        ("Blade Runner 2049 (2017)", "Blade Runner 2049"),
+        ("2001 A Space Odyssey (1968)", "2001 A Space Odyssey"),
+        ("Amelie (2001)", "Amelie"),
+    ],
+)
+def test_movie_title_from_a_release_name(folder: str, title: str) -> None:
+    assert movie_title(folder) == title
+
+
+def test_scan_movies_matches_the_minis_admin_movies(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """Movies the channel builder placed are carried on the mini's /admin channels, not in
+    the YAML: with the mini's library items they match too, under the mini's id."""
+    root = tmp_path / "movies"
+    touch(root / "The Rugrats Movie (1998)" / "The Rugrats Movie (1998).mkv")
+    touch(root / "Nobody Carries Me (1999)" / "n.mkv")
+    mini: list[dict[str, Any]] = [
+        {"id": "the-rugrats-movie", "title": "The Rugrats Movie", "kind": "movie",
+         "channels": [{"id": "custom-nick-flicks"}]},
+        {"id": "nobody-carries-me", "title": "Nobody Carries Me", "kind": "movie",
+         "channels": []},
+    ]  # fmt: skip
+    stats = scan_movies(db, root, load_catalog(make_catalog()), extra=mini)
+    assert rows(db, "SELECT id, title FROM movies") == [("the-rugrats-movie", "The Rugrats Movie")]
+    assert stats.unmatched_folders == ["Nobody Carries Me (1999)"]

@@ -22,10 +22,11 @@ import re
 import sqlite3
 import unicodedata
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from retro_cable.catalog import Catalog
 from retro_cable.db import transaction
@@ -142,8 +143,9 @@ def _keys(folder: str) -> list[str]:
 
 
 class _Index:
-    def __init__(self, catalog: Catalog, kind: str) -> None:
-        self.exact = _title_index(catalog, kind)
+    def __init__(self, catalog: Catalog, kind: str, more: Mapping[str, str] = {}) -> None:
+        # `more`: id -> title of others carried (the mini's /admin channels); the YAML wins.
+        self.exact = {normalize_title(t): i for i, t in more.items()} | _title_index(catalog, kind)
         self.compact = {k.replace(" ", ""): v for k, v in self.exact.items()}
 
     def match(self, folder: str) -> str | None:
@@ -231,6 +233,35 @@ def show_title(folder: str) -> str:
     name = re.sub(r"\s*\((?:19|20)\d{2}\)\s*$", "", name).strip(" -._")
     m = re.match(r"^(.*),\s*(the|a|an)$", name, re.I)
     return (f"{m[2]} {m[1]}" if m else name) or folder
+
+
+_MOVIE_TAG = (
+    r"\d{3,4}p|WEB(?:-?DL|Rip)?|HDRip|HDTV|DVDRip|DVD|BluRay|BrRip|BDRip|REMUX|x26[45]|"
+    r"H\.?26[45]|HEVC|XviD|AC3|AAC|DTS|YTS(?:\.\w+)?|HD-?TS|Directors?\.?\s?Cut"
+)
+# Where a release-named movie folder's title ends: a bracketed year, a bare year (to 2029,
+# so `Blade Runner 2049` stays whole) before a tag or the end, or the first release tag.
+_MOVIE_END = re.compile(
+    r"\s*[(\[](?:19|20)\d{2}[)\]]"
+    rf"|\s(?:19\d{{2}}|20[0-2]\d)(?=\s+(?:{_MOVIE_TAG})\b|\s*$)"
+    rf"|[\s\[(-](?:{_MOVIE_TAG})(?=$|[\s\])._-])",
+    re.I,
+)
+
+
+def movie_title(folder: str) -> str:
+    """A movie's title from its folder name: `Psych.The.Movie.2017.HDRip.XviD.AC3-EVO` ->
+    `Psych The Movie`, `Beauty.Shop[2005]DvDRip-Rdgrnnr` -> `Beauty Shop`, `Amelie (2001)`
+    -> `Amelie`. A trailing article moves to the front, as for shows."""
+    name = "".join(ch for ch in folder if unicodedata.category(ch) != "Co").strip()
+    if " " not in name:
+        name = name.replace(".", " ").replace("_", " ")
+    m = _MOVIE_END.search(name, 1)
+    if m:
+        name = name[: m.start()]
+    name = name.strip(" -._")
+    m2 = re.match(r"^(.*),\s*(the|a|an)$", name, re.I)
+    return (f"{m2[2]} {m2[1]}" if m2 else name) or folder
 
 
 def _slug(title: str) -> str:
@@ -481,16 +512,24 @@ def scan_movies(
     now: datetime | None = None,
     *,
     probe: SourceProbe | None = None,
+    extra: Iterable[Mapping[str, Any]] = (),
 ) -> MovieScanStats:
-    """Attach carried movies from `<root>/<Title (Year)>/`: the biggest video file that isn't
-    a trailer or extra, from the earliest root that has one. The premiere date is left alone
-    (the year bounds it, see load_library)."""
+    """Attach carried movies from `<root>/<Title (Year)>/` (or a release-named folder, see
+    `movie_title`): the biggest video file that isn't a trailer or extra, from the earliest
+    root that has one. `extra` is the mini's /api/admin/library items: movies on its /admin
+    channels are carried too, under its ids. The premiere date is left alone (the year
+    bounds it, see load_library)."""
     stats = MovieScanStats()
-    index, titles = _Index(catalog, "movie"), _titles(catalog)
+    more = {
+        str(i["id"]): str(i.get("title") or i["id"])
+        for i in extra
+        if i.get("id") and i.get("channels") and i.get("kind") == "movie"
+    }
+    index, titles = _Index(catalog, "movie", more), more | _titles(catalog)
     picks: dict[str, tuple[tuple[int, int, str], Path, Path]] = {}
     for rank, top in enumerate(_present(root, stats.missing_roots)):
         for folder in _folders(top):
-            slug = index.match(folder.name)
+            slug = index.match(folder.name) or index.match(movie_title(folder.name))
             if slug is None:
                 stats.unmatched_folders.append(folder.name)
                 continue

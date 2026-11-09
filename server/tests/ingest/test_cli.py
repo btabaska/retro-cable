@@ -351,3 +351,20 @@ def test_assemble_reads_the_minis_titles_and_writes_the_manifest(
     assert (media / "movies/rbs.json").is_file()
     movies = json.loads((media / "manifest.json").read_text())["movies"]
     assert [m["id"] for m in movies] == ["rbs"]
+
+
+def test_scan_matches_movies_on_the_minis_admin_channels(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    library = {"items": [{"id": "the-rugrats-movie", "title": "The Rugrats Movie",
+                          "kind": "movie", "channels": [{"id": "custom-nick"}]}]}  # fmt: skip
+    monkeypatch.setattr(cli, "_get_json", lambda url: library)
+    movies = tmp_path / "movies" / "The.Rugrats.Movie.1998.DVDRip.XviD"
+    movies.mkdir(parents=True)
+    (movies / "rugrats.avi").write_bytes(b"x")
+    args = ["scan", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog()),
+            "--movies", str(tmp_path / "movies"), "--no-probe",
+            "--priority-url", "http://mini/api/admin/library"]  # fmt: skip
+    assert cli.main(args) == 0
+    assert json.loads(capsys.readouterr().out)["movies"]["movies"] == 1

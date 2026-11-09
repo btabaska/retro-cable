@@ -204,7 +204,10 @@ def main(argv: list[str]) -> int:
                 scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only, probe=measure)
             )
         if args.movies:
-            out["movies"] = asdict(scan_movies(db, args.movies, catalog, now, probe=measure))
+            # The mini's /admin channels carry movies too (the channel builder's).
+            found = scan_movies(db, args.movies, catalog, now, probe=measure,
+                                extra=_mini_items(args))  # fmt: skip
+            out["movies"] = asdict(found)
         stats = out
     elif args.job == "acquire":
         assert catalog is not None
