@@ -671,6 +671,8 @@ def trim_seasons(request: Request, rules: Airable, report: InstanceReport, dry_r
 
 SEARCH_EVERY = timedelta(hours=23)  # about daily, with the worker's 6-hour passes
 _SEARCHED = "acquire-search-movies"  # import_runs source
+_NO_INDEXERS = re.compile(r"^(All indexers are unavailable|No indexers available)", re.I)
+_FAILING = re.compile(r"^Indexers unavailable due to failures(?: for more than \d+ hours)?: (.+)$")
 
 
 def search_missing_movies(
@@ -690,6 +692,18 @@ def search_missing_movies(
         if roots != [RADARR_ROOT]:
             report.error = report.error or f"{RADARR}'s root folders are {roots}: not searching"
             return
+        # Radarr backs off from failing indexers; with none left a search finds nothing.
+        health = [
+            str(h.get("message", "")) for h in request("GET", "/api/v3/health", None, None) or []
+        ]
+        if any(_NO_INDEXERS.search(m) for m in health):
+            return
+        down = {n.strip() for m in health if (f := _FAILING.match(m)) for n in f[1].split(",")}
+        if down:
+            indexers = request("GET", "/api/v3/indexer", None, None) or []
+            searching = {str(i.get("name")) for i in indexers if i.get("enableAutomaticSearch")}
+            if searching <= down:
+                return
         search = {"name": "MissingMoviesSearch", "filterKey": "monitored", "filterValue": "true"}
         request("POST", "/api/v3/command", None, search)
     except _ERRORS as err:

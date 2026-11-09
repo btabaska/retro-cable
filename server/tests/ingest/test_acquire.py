@@ -49,6 +49,7 @@ class FakeArr:
         self.episodes = dict(episodes or {})  # series id -> its episodes
         self.queue = list(queue or [])
         self.deleted: list[tuple[str, dict[str, str]]] = []
+        self.health: list[dict[str, Any]] = []
 
     def __call__(
         self, method: str, path: str, params: Mapping[str, str] | None = None, body: Any = None
@@ -75,6 +76,10 @@ class FakeArr:
             return self.profiles
         if path == f"/api/v3/{self.kind}":
             return self.existing
+        if path == "/api/v3/health":
+            return self.health
+        if path == "/api/v3/indexer":
+            return [{"name": n, "enableAutomaticSearch": True} for n in ("Bitmagnet", "IPT")]
         if path == "/api/v3/episode":
             return self.episodes.get(int(q["seriesId"]), [])
         if path == "/api/v3/queue":
@@ -921,3 +926,25 @@ def test_missing_movies_are_searched_again_once_a_day(
     assert radarr.commands == [], "a dry run searches nothing"
     radarr, _ = run(first + timedelta(days=1, minutes=1), dry_run=False)
     assert [c["name"] for c in radarr.commands] == ["MissingMoviesSearch"]
+
+
+def test_no_search_while_every_indexer_is_down(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Radarr backs off from failing indexers; a search then finds nothing (Nov 9: "0 active
+    indexers"). It is skipped, not recorded, so the next pass tries again."""
+    from datetime import UTC, datetime
+
+    catalog = load_catalog(make_catalog())
+    radarr = FakeArr("movie", lookups=RADARR_LOOKUPS)
+    radarr.health = [{"type": "error", "source": "IndexerStatusCheck",
+                      "message": "All indexers are unavailable due to failures"}]  # fmt: skip
+    now = datetime(2026, 11, 9, 6, 0, tzinfo=UTC)
+    out = asdict(acquire(library, catalog, sonarr=None, radarr=radarr, dry_run=False, now=now))
+    assert out["movies"]["searched_missing"] is False and radarr.commands == []
+    radarr.health = [{"message": "Indexers unavailable due to failures: Bitmagnet, IPT"}]
+    out = asdict(acquire(library, catalog, sonarr=None, radarr=radarr, dry_run=False, now=now))
+    assert out["movies"]["searched_missing"] is False, "every search indexer is named"
+    radarr.health = [{"message": "Indexers unavailable due to failures: IPT"}]
+    out = asdict(acquire(library, catalog, sonarr=None, radarr=radarr, dry_run=False, now=now))
+    assert out["movies"]["searched_missing"] is True, "Bitmagnet still searches"
