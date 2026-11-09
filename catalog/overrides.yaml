@@ -130,3 +130,6 @@ shows:
   - { show: avatar-sozins-comet, year: 2008, episodes_of: { show: avatar-the-last-airbender, episodes: [S03E18] } }  # the NAS file is S03E18-E21
   - { show: drake-and-josh-really-big-shrimp, year: 2007, episodes_of: { show: drake-and-josh, episodes: [S04E17, S04E18] } }
   - { show: rocket-power-reggies-big-beach-break, year: 2003, episodes_of: { show: rocket-power, episodes: [S04E01, S04E02, S04E03] } }
+  # Not a movie anywhere: a two-part Disney Channel miniseries on TheTVDB that no channel
+  # carries, so acquire asks Sonarr for it by id (the scan names its folder `heidi`).
+  - { show: heidi-1993, year: 1993, episodes_of: { show: heidi, tvdb_id: 338932, episodes: [S01E01, S01E02] } }

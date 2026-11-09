@@ -22,7 +22,9 @@ Rules:
   in a folder the scan couldn't match: it is reported, not requested. More words make another
   show (`House Of The Dragon` is not `House`).
 - A TV movie made of a series' episodes (overrides.yaml `episodes_of`) is never asked of
-  Radarr: it comes down with the series, and `ingest assemble` joins it.
+  Radarr: it comes down with the series, and `ingest assemble` joins it. With the series'
+  `tvdb_id` (no channel carries it), the seasons holding those episodes are asked of Sonarr
+  as for `part_of`, until any of them has files.
 - Titles already in the instance (by tvdbId or tmdbId) are skipped, so a rerun adds nothing.
 - An instance whose root folders are not exactly `/tv` (Sonarr) or `/movies` (Radarr) is
   refused before anything is looked up: that is how a Plex instance would look.
@@ -110,7 +112,7 @@ def wanted(
     plex_titles = {o.show: o.plex_title for o in effective.overrides.shows if o.plex_title}
     lineup = {o.show: (o.tmdb_id, o.year) for o in effective.overrides.shows}
     part_of = {o.show: o.part_of for o in effective.overrides.shows if o.part_of}
-    from_episodes = {o.show for o in effective.overrides.shows if o.episodes_of}
+    from_episodes = {o.show: o.episodes_of for o in effective.overrides.shows if o.episodes_of}
     carried: dict[str, tuple[str, Literal["show", "movie"]]] = {}
     for c in effective.carriage.carriage:
         carried.setdefault(c.show, (c.title, c.kind))
@@ -163,6 +165,11 @@ def wanted(
             with_files += 1
             continue
         if kind == "movie" and ident in from_episodes:  # comes with its series (assemble)
+            of = from_episodes[ident]
+            seasons = tuple(sorted({int(e[1:].split("E")[0]) for e in of.episodes}))
+            if of.tvdb_id is not None and not any((of.show, s) in seasons_with for s in seasons):
+                # A series no channel carries: its seasons are asked of Sonarr, like part_of.
+                found.append(Wanted(ident, title, "show", part_of=(of.tvdb_id, seasons)))
             continue
         if part is not None:  # asked for by season from the series, never by its own title
             found.append(Wanted(ident, title, kind, part_of=(part.tvdb_id, tuple(part.seasons))))

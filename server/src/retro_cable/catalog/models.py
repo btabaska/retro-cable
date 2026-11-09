@@ -166,10 +166,17 @@ class PartOf(Model):
 
 class EpisodesOf(Model):
     """A TV movie TheTVDB files as episodes of a series (Drake & Josh: Really Big Shrimp is
-    Drake & Josh S04E17-E18). It comes down with the series, never from Radarr, and the rig
-    joins those episodes' encodes into the movie (`ingest assemble`)."""
+    Drake & Josh S04E17-E18). It comes down with the series, never from Radarr (with
+    `tvdb_id`, acquire asks Sonarr for those seasons), and the rig joins those episodes'
+    encodes into the movie (`ingest assemble`)."""
 
     show: Slug = Field(description="The series' id in the library (its folder title's slug)")
+    tvdb_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="The series' TheTVDB id, when no channel carries it: acquire asks Sonarr"
+        " for the seasons holding these episodes",
+    )
     episodes: list[EpisodeKey] = Field(
         min_length=1, description="In airing order; a file holding several is listed once"
     )

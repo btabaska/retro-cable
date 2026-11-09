@@ -691,3 +691,32 @@ def test_a_tv_movie_made_of_episodes_is_never_asked_of_radarr(
     found, with_files, _ = wanted(library, load_catalog(make_catalog(overrides=overrides)))
     assert "halloweentown" not in [w.id for w in found]
     assert with_files == 2  # the-simpsons and dexters-laboratory, as before
+
+
+def test_a_tv_movie_whose_series_nobody_carries_is_asked_for_by_season(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """`episodes_of` with a `tvdb_id` (Heidi (1993) is a two-part Disney Channel miniseries
+    on TheTVDB): the series' seasons holding those episodes are asked of Sonarr, like
+    `part_of`, until any of them is on disk."""
+    overrides = (
+        "shows:\n  - { show: halloweentown, year: 1998, episodes_of:"
+        " { show: justice-league, tvdb_id: 76320, episodes: [S03E01, S04E02] } }\n"
+    )
+    catalog = load_catalog(make_catalog(overrides=overrides))
+    found, _, _ = wanted(library, catalog)
+    w = next(w for w in found if w.id == "halloweentown")
+    assert (w.kind, w.part_of) == ("show", (76320, (3, 4)))  # Sonarr's, not Radarr's
+    sonarr = FakeArr("series", lookups={**SONARR_LOOKUPS, "tvdb:76320": [JL]})
+    radarr = FakeArr("movie", lookups=RADARR_LOOKUPS)
+    out = asdict(acquire(library, catalog, sonarr=sonarr, radarr=radarr, dry_run=False))
+    assert "halloweentown" in [a["id"] for a in out["shows"]["added"]]
+    assert not [b for b in radarr.posted if b.get("title") == "Halloweentown"]
+
+    library.execute("INSERT INTO shows (id, title) VALUES ('justice-league', 'Justice League')")
+    library.execute(
+        "INSERT INTO episodes (show_id, season, episode, file_path)"
+        " VALUES ('justice-league', 3, 1, '/media/sources/tv/Justice League/S03E01.mkv')"
+    )
+    found, _, _ = wanted(library, catalog)
+    assert "halloweentown" not in [w.id for w in found]

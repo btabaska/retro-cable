@@ -221,7 +221,8 @@ def main(argv: list[str]) -> int:
         shows = None
         if not args.all and catalog is not None:
             # What a channel carries here, plus the shows on channels made in the mini's /admin,
-            # plus the series whose seasons they are (overrides.yaml part_of).
+            # plus the series whose seasons they are or whose episodes make their movies
+            # (overrides.yaml part_of, episodes_of).
             shows = carried_shows(db, catalog) | frozenset(
                 priority_years(db, catalog, args.priority_url)
             )
@@ -317,7 +318,8 @@ def priority_years(
     """Show and movie id -> the earliest year a channel carries it: the YAML catalog plus
     this database's /admin overlay, plus (with `url`, the mini's /api/admin/library) the
     shows on channels made in the mini's /admin. A series some of whose seasons a carried
-    show is (overrides.yaml part_of) ranks with that show. A failed fetch is a warning."""
+    show is (overrides.yaml part_of), or whose episodes a carried movie is made of
+    (episodes_of), ranks with it. A failed fetch is a warning."""
     years: dict[str, int] = {}
     effective = None
     if catalog is not None:
@@ -336,9 +338,9 @@ def priority_years(
                 years.setdefault(str(item["id"]), int(item.get("first_year") or 9999))
     if effective is not None:
         for o in effective.overrides.shows:
-            if o.part_of is not None and o.show in years:
-                series = o.part_of.show
-                years[series] = min(years.get(series, 9999), years[o.show])
+            of = o.part_of or o.episodes_of
+            if of is not None and o.show in years:
+                years[of.show] = min(years.get(of.show, 9999), years[o.show])
     return years
 
 

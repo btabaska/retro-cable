@@ -282,6 +282,28 @@ def test_a_series_converts_with_the_show_its_seasons_air_as(
     assert "lupin-iii" not in cli.priority_years(db, catalog)  # nothing carries part II
 
 
+def test_a_series_converts_with_the_tv_movie_made_of_its_episodes(
+    tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """overrides.yaml episodes_of: Heidi (1993) is a miniseries no channel carries; its
+    episodes convert because the movie made of them is carried (here on the mini's /admin)."""
+    from retro_cable.catalog import load_catalog
+    from retro_cable.db import connect, migrate
+
+    db = connect(tmp_path / "rig.db")
+    migrate(db)
+    overrides = (
+        "shows:\n  - { show: heidi-1993, episodes_of:"
+        " { show: heidi, tvdb_id: 338932, episodes: [S01E01, S01E02] } }\n"
+    )
+    catalog = load_catalog(make_catalog(overrides=overrides))
+    library = {"items": [{"id": "heidi-1993", "first_year": None, "kind": "movie",
+                          "channels": [{"id": "disney-movies"}]}]}  # fmt: skip
+    years = cli.priority_years(db, catalog, "http://mini/api/admin/library", lambda u: library)
+    assert years["heidi"] == years["heidi-1993"]
+    assert "heidi" not in cli.priority_years(db, catalog)  # nothing carries the movie
+
+
 def test_normalize_rig_flags_pass_a_chooser_an_order_and_a_manifest_hook(
     tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
 ) -> None:

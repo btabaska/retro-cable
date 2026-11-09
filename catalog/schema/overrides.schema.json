@@ -2,7 +2,7 @@
   "$defs": {
     "EpisodesOf": {
       "additionalProperties": false,
-      "description": "A TV movie TheTVDB files as episodes of a series (Drake & Josh: Really Big Shrimp is\nDrake & Josh S04E17-E18). It comes down with the series, never from Radarr, and the rig\njoins those episodes' encodes into the movie (`ingest assemble`).",
+      "description": "A TV movie TheTVDB files as episodes of a series (Drake & Josh: Really Big Shrimp is\nDrake & Josh S04E17-E18). It comes down with the series, never from Radarr (with\n`tvdb_id`, acquire asks Sonarr for those seasons), and the rig joins those episodes'\nencodes into the movie (`ingest assemble`).",
       "properties": {
         "episodes": {
           "description": "In airing order; a file holding several is listed once",
@@ -19,6 +19,20 @@
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
           "title": "Show",
           "type": "string"
+        },
+        "tvdb_id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The series' TheTVDB id, when no channel carries it: acquire asks Sonarr for the seasons holding these episodes",
+          "title": "Tvdb Id"
         }
       },
       "required": [
