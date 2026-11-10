@@ -76,13 +76,17 @@ cycle() {
   log "normalize started (encoder $encoder, up to $minutes min)"
   local status=0
   unfinished=0
+  # The report goes in place only once the run is over: the previous one stays readable for
+  # the hours this one takes.
   if ingest normalize --order priority --encoder "$encoder" --manifest --for-minutes "$minutes" \
-    >"$data/last-normalize.json"; then
+    >"$data/last-normalize.json.part"; then
+    mv "$data/last-normalize.json.part" "$data/last-normalize.json"
     log "normalize done ($data/last-normalize.json)"
     if grep -q '"unfinished": true' "$data/last-normalize.json"; then
       unfinished=1
     fi
   else
+    mv "$data/last-normalize.json.part" "$data/last-normalize.json"
     log "normalize failed"
     status=1
   fi

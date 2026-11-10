@@ -168,7 +168,11 @@ def _fake_bin(tmp_path: Path) -> tuple[Path, Path]:
     for name, body in (
         ("nice", 'echo "nice $*" >>"$CALLS"; shift 2; exec "$@"'),
         ("ionice", 'echo "ionice $*" >>"$CALLS"; shift 2; exec "$@"'),
-        ("python", 'echo "python $*" >>"$CALLS"; echo "{}"'),
+        # PEEK: a file whose contents are logged after each call, as the worker sees them.
+        (
+            "python",
+            'echo "python $*" >>"$CALLS"; [[ -n ${PEEK:-} ]] && cat "$PEEK" >>"$CALLS"; echo "{}"',
+        ),
     ):
         path = bin_dir / name
         path.write_text(f"#!/usr/bin/env bash\n{body}\n")
@@ -226,6 +230,27 @@ def test_rig_worker_comes_back_soon_when_a_run_left_work(tmp_path: Path) -> None
     (tv / "Show (1990)").mkdir(parents=True)
     _, log, _ = _run_worker(tmp_path, media, tv, RC_NORMALIZE_MINUTES="90")
     assert _pythons(log)[1].endswith("--manifest --for-minutes 90")
+
+
+def test_rig_worker_keeps_the_last_normalize_report_until_the_next_one_is_whole(
+    tmp_path: Path,
+) -> None:
+    """A run takes hours; last-normalize.json keeps the previous run's report (its failures
+    and short encodes) until the new one is finished, instead of sitting empty (Nov 10 2026)."""
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    (tv / "Show (1990)").mkdir(parents=True)
+    report = tmp_path / "data/last-normalize.json"
+    report.parent.mkdir()
+    report.write_text('{"previous": true}\n')
+    code, log, _ = _run_worker(tmp_path, media, tv, PEEK=str(report))
+    assert code == 0
+    lines = log.splitlines()
+    during = lines[lines.index(_pythons(log)[1]) + 1]
+    assert during == '{"previous": true}', "the old report is readable while a run is going"
+    assert report.read_text() == "{}\n"
+    assert not list(report.parent.glob("*.part"))
 
 
 def test_rig_worker_writes_nothing_without_the_nas_share(tmp_path: Path) -> None:
