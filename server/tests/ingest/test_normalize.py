@@ -12,6 +12,7 @@ import sqlite3
 import struct
 import subprocess
 from collections.abc import Callable
+from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 
@@ -684,6 +685,25 @@ def test_limit_and_dry_run(db: sqlite3.Connection, fake_library: Path, tmp_path:
     some = Recorder()
     stats = normalize(db, media, run=some, probe=fake_probe, crop=no_crop, limit=2)
     assert stats.encoded == 2
+    assert stats.unfinished, "an item is left for the next run"
+    rest = normalize(db, media, run=Recorder(), probe=fake_probe, crop=no_crop, limit=2)
+    assert (rest.encoded, rest.unfinished) == (1, False)
+
+
+def test_a_deadline_stops_new_encodes_and_says_so(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    """The rig's worker gives each run a few hours, so new downloads are scanned in between
+    instead of waiting days for the whole backlog (Nov 10 2026)."""
+    clock = iter([datetime(2026, 11, 10, 12, m, tzinfo=UTC) for m in range(0, 60, 10)])
+    stats = normalize(
+        db, tmp_path / "media", run=Recorder(), probe=fake_probe, crop=no_crop,
+        now=lambda: next(clock), until=datetime(2026, 11, 10, 12, 15, tzinfo=UTC),
+    )  # fmt: skip
+    assert stats.encoded == 2, "the encode running at the deadline finishes; none starts after"
+    assert stats.unfinished
+    whole = normalize(db, tmp_path / "media", run=Recorder(), probe=fake_probe, crop=no_crop)
+    assert (whole.encoded, whole.unfinished) == (1, False)
 
 
 def test_nvenc_is_selectable(db: sqlite3.Connection, fake_library: Path, tmp_path: Path) -> None:

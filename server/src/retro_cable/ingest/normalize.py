@@ -517,6 +517,9 @@ class NormalizeStats:
     # Originals deleted after a whole, checked encode (`delete_sources_under`), relative to
     # that root, so the stats and the log name no host or share.
     deleted: list[str] = field(default_factory=list)
+    # Stopped at `limit` or `until` with items still to look at: the rig's worker scans again
+    # soon instead of sleeping (ops/rig/worker.sh).
+    unfinished: bool = False
     commands: list[list[str]] = field(default_factory=list)  # dry run only
 
 
@@ -645,6 +648,7 @@ def normalize(
     codec: Codec = "h264",
     max_seconds: float | None = None,
     limit: int | None = None,
+    until: datetime | None = None,
     force: bool = False,
     dry_run: bool = False,
     run: Runner = run_ffmpeg,
@@ -659,7 +663,8 @@ def normalize(
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     log: Callable[[str], None] | None = None,
 ) -> NormalizeStats:
-    """Encode every item that has no up-to-date output. `limit` caps the encodes in this run.
+    """Encode every item that has no up-to-date output. `limit` caps the encodes in this run,
+    and no item starts once `now()` reaches `until` (the one running then finishes).
 
     `encoder` is fixed, or asked once per item (the rig's GPU check, see ingest/gpu.py).
     `order` reorders the plan (see `prioritize`); `on_encoded` runs after each item is
@@ -693,7 +698,10 @@ def normalize(
 
     try:
         for item in items:
-            if limit is not None and stats.encoded >= limit:
+            if (limit is not None and stats.encoded >= limit) or (
+                until is not None and now() >= until
+            ):
+                stats.unfinished = True
                 break
             if item.source_deleted:  # the encode is all there is: never encoded again
                 if item.up_to_date_in_db() and (media_dir / item.target).is_file():

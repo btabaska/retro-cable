@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -321,7 +322,21 @@ def test_normalize_rig_flags_pass_a_chooser_an_order_and_a_manifest_hook(
     assert isinstance(watch, ProgressFile), "the rig reports progress for the Media tab"
     assert watch.path == tmp_path / "media/progress.json" and watch.auto
     assert CAPTURED["shows"] is None
+    assert CAPTURED["until"] is None, "no deadline unless asked"
     assert (tmp_path / "media/manifest.json").is_file(), "the final manifest is written"
+
+
+def test_normalize_for_minutes_sets_a_deadline(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "normalize", lambda db, media, **kw: _capture(kw))
+    before = datetime.now(UTC)
+    args = ["normalize", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog()),
+            "--media-dir", str(tmp_path / "media"), "--all", "--for-minutes", "90"]  # fmt: skip
+    assert cli.main(args) == 0
+    until = CAPTURED["until"]
+    assert isinstance(until, datetime)
+    assert before + timedelta(minutes=90) <= until <= datetime.now(UTC) + timedelta(minutes=90)
 
 
 def test_assemble_reads_the_minis_titles_and_writes_the_manifest(

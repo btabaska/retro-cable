@@ -25,7 +25,7 @@ import time
 import urllib.request
 from collections.abc import Callable
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from retro_cable.admin import store
@@ -125,6 +125,8 @@ def _parser() -> argparse.ArgumentParser:
                      help="keep running: index-media re-indexes whenever the manifest"
                           " changes; tmdb fills again every SECONDS")  # fmt: skip
     norm.add_argument("--limit", type=int, default=None, help="encode at most N items")
+    norm.add_argument("--for-minutes", type=float, default=None, metavar="N",
+                      help="start no item after N minutes (the rig rescans then)")  # fmt: skip
     norm.add_argument("--max-seconds", type=float, default=None,
                       help="trials only: keep the first N seconds of each item")  # fmt: skip
     norm.add_argument("--force", action="store_true", help="re-encode up-to-date items")
@@ -424,6 +426,11 @@ def _normalize(
         codec=args.codec,
         max_seconds=args.max_seconds,
         limit=args.limit,
+        until=(
+            datetime.now(UTC) + timedelta(minutes=args.for_minutes)
+            if args.for_minutes is not None
+            else None
+        ),
         force=args.force,
         dry_run=args.dry_run,
         crop=detect_crop if args.crop == "auto" else no_crop,

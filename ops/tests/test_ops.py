@@ -204,12 +204,28 @@ def test_rig_worker_scans_then_normalizes_in_priority_order(tmp_path: Path) -> N
     assert pythons[0] == f"python -m retro_cable.ingest scan --tv {tv} --no-probe"
     assert pythons[1] == (
         "python -m retro_cable.ingest normalize --order priority --encoder auto --manifest"
+        " --for-minutes 360"
     ), "only what a channel carries is converted, never the whole library (--all)"
     # Then TV movies made of episodes are joined from the new encodes.
     assert pythons[2] == "python -m retro_cable.ingest assemble --manifest"
     lines = log.splitlines()
     assert sum(line.startswith("nice -n 19 ionice -c 3 python") for line in lines) == 3
     assert sum(line.startswith("ionice -c 3 python") for line in lines) == 3
+
+
+def test_rig_worker_comes_back_soon_when_a_run_left_work(tmp_path: Path) -> None:
+    """Each normalize run gets RC_NORMALIZE_MINUTES (default 6 h). One that stopped with
+    items left is followed by a fresh scan a minute later, not the usual 6 h wait, so new
+    downloads reach the TV within hours of the backlog instead of after it (Nov 10 2026)."""
+    script = (OPS / "rig/worker.sh").read_text()
+    assert "RC_NORMALIZE_MINUTES:-360" in script
+    assert '"unfinished": true' in script
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    (tv / "Show (1990)").mkdir(parents=True)
+    _, log, _ = _run_worker(tmp_path, media, tv, RC_NORMALIZE_MINUTES="90")
+    assert _pythons(log)[1].endswith("--manifest --for-minutes 90")
 
 
 def test_rig_worker_writes_nothing_without_the_nas_share(tmp_path: Path) -> None:
