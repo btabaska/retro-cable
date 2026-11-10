@@ -1268,7 +1268,7 @@ export interface components {
             session: string;
             /**
              * Year
-             * @description Simulated year
+             * @description Simulated year 1990-2010, or 0 for All Years
              */
             year: number;
         };
@@ -1743,7 +1743,7 @@ export interface operations {
     getChannels: {
         parameters: {
             query: {
-                /** @description Simulated year */
+                /** @description Simulated year 1990-2010, or 0 for All Years (every channel and episode) */
                 year: number;
                 /** @description MM-DD; defaults to today's date */
                 date?: string | null;
@@ -1777,7 +1777,7 @@ export interface operations {
     getGuide: {
         parameters: {
             query: {
-                /** @description Simulated year */
+                /** @description Simulated year 1990-2010, or 0 for All Years (every channel and episode) */
                 year: number;
                 /** @description MM-DD; defaults to today's date */
                 date?: string | null;
@@ -1843,7 +1843,7 @@ export interface operations {
     tune: {
         parameters: {
             query: {
-                /** @description Simulated year */
+                /** @description Simulated year 1990-2010, or 0 for All Years (every channel and episode) */
                 year: number;
                 count?: number;
             };

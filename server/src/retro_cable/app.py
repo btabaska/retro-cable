@@ -87,6 +87,7 @@ class _Schedules:
         self.settings = settings
         self._stamp: tuple[object, ...] | None = None
         self._scheduler: Scheduler | None = None
+        self._all_years: Scheduler | None = None  # built on first use, from the same inputs
         self._base: Catalog | None = None
         self._library = Library()
         self._lock = threading.RLock()
@@ -123,7 +124,7 @@ class _Schedules:
 
     def invalidate(self) -> None:
         with self._lock:
-            self._scheduler = None
+            self._scheduler = self._all_years = None
 
     def write(self, fn: Callable[[sqlite3.Connection], None]) -> None:
         """Run a small write that no schedule depends on (a viewing report) on the watched
@@ -148,7 +149,19 @@ class _Schedules:
         self()
         return self._library
 
-    def __call__(self) -> Scheduler:
+    def __call__(self, all_years: bool = False) -> Scheduler:
+        """The scheduler for the current inputs; with `all_years`, its All Years twin."""
+        with self._lock:
+            dated = self._dated()
+            if not all_years:
+                return dated
+            if self._all_years is None:
+                self._all_years = Scheduler(
+                    dated.catalog, self._library, seed=self.settings.seed, all_years=True
+                )
+            return self._all_years
+
+    def _dated(self) -> Scheduler:
         with self._lock:
             stamp = self._stamp_now()
             if self._scheduler is not None and stamp == self._stamp:
@@ -160,6 +173,7 @@ class _Schedules:
                 library = load_library(self._watch, allow_short=self.settings.allow_short_media)
                 overlay = store.head(self._watch).overlay
             self._base, self._library = catalog, library
+            self._all_years = None
             self._scheduler = Scheduler(
                 apply_overlay(catalog, overlay), library, seed=self.settings.seed
             )

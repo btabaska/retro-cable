@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 
+from retro_cable.scheduler import FIRST_YEAR, LAST_YEAR
+
 MIN_SECONDS = 10  # shorter is flipping past a channel
 EARLY_SECONDS = 180  # a tune-away under 3 minutes is an early tune-away (a skip)
 MIN_TOTAL_SECONDS = 2 * 3600  # under 2 hours in the window: not enough viewing to act on
@@ -106,7 +108,8 @@ def compute(sessions: list[Session], tz: ZoneInfo) -> Signals:
     years: Counter[int] = Counter()
     for s in kept:
         per_show[(s.channel, s.item)].append(s)
-        years[s.sim_date.year] += s.seconds
+        if FIRST_YEAR <= s.sim_date.year <= LAST_YEAR:  # All Years sessions carry the real date
+            years[s.sim_date.year] += s.seconds
         _spread(s.started_at, s.seconds, tz, heat)
     shows = []
     for (channel, show), group in per_show.items():

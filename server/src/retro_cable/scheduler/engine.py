@@ -8,6 +8,11 @@ fit are picked, and whatever time is left becomes filler ("Paid Programming"), s
 closes exactly at 5 a.m. and the next one starts clean. That keeps each day a pure function of
 (channel, date, catalog, seed) with no dependence on the day before.
 
+All Years (`all_years`, Nov 10 2026) lifts the gates the date sets: every channel is on the
+dial under its latest identity, airing everything it ever carried as one all-day rotation (no
+templates or blocks), every episode on disk whatever its air date, and nothing is NEW. The
+date still sets the rerun rotation, holiday windows and seasons, and the weekday.
+
 All instants are UTC internally, so arithmetic is real elapsed time across DST changes; local
 time is used only to find the active day-part and the simulated date.
 """
@@ -112,8 +117,11 @@ class _Holidays:
 class Scheduler:
     """Schedules for one (catalog, library, seed). Days are memoized; nothing is stored."""
 
-    def __init__(self, catalog: Catalog, library: Library, seed: int = 0) -> None:
+    def __init__(
+        self, catalog: Catalog, library: Library, seed: int = 0, *, all_years: bool = False
+    ) -> None:
         self.catalog = catalog
+        self.all_years = all_years
         library = library.split(season_parts(catalog))  # overrides.yaml part_of
         self.library = library
         self.seed = seed
@@ -181,7 +189,7 @@ class Scheduler:
         return synthetic.premiere if synthetic else None
 
     def on_air(self, channel: Channel, day: date) -> bool:
-        return channel.library or channel.launch is None or channel.launch <= day
+        return self.all_years or channel.library or channel.launch is None or channel.launch <= day
 
     def channels_on(self, day: date) -> list[Channel]:
         return [c for c in self.catalog.channels.channels if self.on_air(c, day)]
@@ -190,11 +198,13 @@ class Scheduler:
         channel = self.catalog.channel(channel_id)
         current = channel.identity[0]
         for ident in sorted(channel.identity, key=lambda i: i.from_):
-            if ident.from_ <= day:
+            if self.all_years or ident.from_ <= day:
                 current = ident
         return current
 
     def _template(self, channel_id: str, day: date) -> Template | None:
+        if self.all_years:
+            return None
         for t in self.catalog.templates.templates:
             if t.channel == channel_id and t.from_ <= day and (t.until is None or day <= t.until):
                 return t
@@ -257,7 +267,7 @@ class Scheduler:
         return part, end.astimezone(UTC)
 
     def _pool(self, channel_id: str, part: DayPart | None, day: date) -> list[_Source]:
-        active = [c for c in self._carriage.get(channel_id, []) if _carried(c, day)]
+        active = self._carried_on(channel_id, day)
         weights: dict[tuple[str, str], float] = {}
 
         def add(c: Carriage, weight: float) -> None:
@@ -266,7 +276,7 @@ class Scheduler:
 
         if part is None:
             for c in active:
-                if c.block is None:
+                if c.block is None or self.all_years:
                     add(c, c.weight)
         else:
             base = [c for c in active if c.block == part.block] if part.block else active
@@ -287,6 +297,17 @@ class Scheduler:
             for (show, kind), w in weights.items()
             if show not in self._excluded
         ]
+
+    def _carried_on(self, channel_id: str, day: date) -> list[Carriage]:
+        """The channel's carriage on `day`; in All Years every show it ever carried, each by
+        its latest entry, so a show carried in two eras isn't weighted twice."""
+        rows = self._carriage.get(channel_id, [])
+        if not self.all_years:
+            return [c for c in rows if _carried(c, day)]
+        latest: dict[tuple[str, str], Carriage] = {}
+        for c in sorted(rows, key=lambda c: c.from_):
+            latest[(c.show, c.kind)] = c
+        return list(latest.values())
 
     def _candidates(
         self, channel: Channel, part: DayPart | None, day: date
@@ -311,7 +332,7 @@ class Scheduler:
             movie = self.movie(source.show, channel.id)
             if (
                 movie
-                and (movie.air_date is None or movie.air_date <= day)
+                and (self.all_years or movie.air_date is None or movie.air_date <= day)
                 and self._in_season(movie, day)
             ):
                 return [movie]
@@ -320,7 +341,10 @@ class Scheduler:
         # keeps a channel on the dial before its launch (Brandon, M2). To air a show early on
         # purpose, give it a synthetic premiere on that channel.
         programs = self.programs(source.show, channel.id)
-        found = [p for p in programs if p.air_date is not None and p.air_date <= day]
+        if self.all_years:
+            found = list(programs)
+        else:
+            found = [p for p in programs if p.air_date is not None and p.air_date <= day]
         if self._seasonal:
             found = [p for p in found if self._in_season(p, day)]
         return found
@@ -489,6 +513,7 @@ class Scheduler:
             if holiday_date(h, day.year) == day and mode_for(h, channel.id) != "off"
         ]
         found: dict[str, tuple[Program, str]] = {}
+        carried = self._carried_on(channel.id, day)
         for c in self._carriage.get(channel.id, []):
             movie = self.movie(c.show, channel.id)
             if (
@@ -496,8 +521,8 @@ class Scheduler:
                 or movie is None
                 or c.show in found
                 or c.show in self._excluded
-                or not _carried(c, day)
-                or (movie.air_date is not None and movie.air_date > day)
+                or c not in carried
+                or (not self.all_years and movie.air_date is not None and movie.air_date > day)
             ):
                 continue
             label = next((h.id for h in today if h.id in self.tags(movie)), None)
@@ -636,7 +661,7 @@ class Scheduler:
         if not fitting:
             return None
 
-        if part is not None and part.primetime:
+        if part is not None and part.primetime and not self.all_years:
             done = {(s.show, s.season, s.episode) for s in slots if s.new}
             for _, progs in fitting:
                 for p in progs:

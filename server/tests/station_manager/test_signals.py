@@ -57,6 +57,13 @@ def test_per_show_watch_time_completion_and_early_tune_aways() -> None:
     assert sig.year == 1995
 
 
+def test_all_years_viewing_counts_but_names_no_year() -> None:
+    """All Years sessions carry the real date (2026); only 1990-2010 can be the year watched."""
+    sig = compute([session(year=1995), session(year=2026), session(year=2026)], NY)
+    assert sig.year == 1995 and sig.sessions == 3
+    assert compute([session(year=2026)], NY).year is None
+
+
 def test_heatmap_is_hour_of_week_in_the_configured_zone_and_splits_across_hours() -> None:
     # 7:50 PM to 8:12 PM on a Sunday in New York.
     sig = compute([session(seconds=1320, start=EVENING - timedelta(minutes=10))], NY)

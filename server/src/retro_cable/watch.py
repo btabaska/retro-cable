@@ -17,10 +17,11 @@ from typing import Annotated, Literal, Protocol
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from retro_cable.db import transaction
 from retro_cable.scheduler import Scheduler, simulated_now
+from retro_cable.tv import check_year
 
 MAX_SECONDS = 6 * 3600  # longer than any program on the dial
 SLACK = 60  # seconds a report may run ahead of the real time since it started
@@ -45,7 +46,9 @@ class WatchReport(BaseModel):
     kind: Literal["episode", "movie"]
     season: int | None = Field(default=None, ge=0, le=999)
     episode: int | None = Field(default=None, ge=0, le=9999)
-    year: int = Field(ge=1990, le=2010, description="Simulated year")
+    year: Annotated[int, AfterValidator(check_year)] = Field(
+        description="Simulated year 1990-2010, or 0 for All Years"
+    )
     offset: int = Field(default=0, ge=0, le=MAX_SECONDS, description="Seconds in when tuned in")
     seconds: int = Field(ge=0, le=MAX_SECONDS, description="Seconds watched so far")
     runtime: int = Field(ge=1, le=MAX_SECONDS, description="The program's full length")

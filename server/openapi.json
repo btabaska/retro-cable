@@ -2227,9 +2227,7 @@
             "type": "string"
           },
           "year": {
-            "description": "Simulated year",
-            "maximum": 2010.0,
-            "minimum": 1990.0,
+            "description": "Simulated year 1990-2010, or 0 for All Years",
             "title": "Year",
             "type": "integer"
           }
@@ -2814,14 +2812,12 @@
         "operationId": "getChannels",
         "parameters": [
           {
-            "description": "Simulated year",
+            "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
             "in": "query",
             "name": "year",
             "required": true,
             "schema": {
-              "description": "Simulated year",
-              "maximum": 2010,
-              "minimum": 1990,
+              "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
               "title": "Year",
               "type": "integer"
             }
@@ -2877,14 +2873,12 @@
         "operationId": "getGuide",
         "parameters": [
           {
-            "description": "Simulated year",
+            "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
             "in": "query",
             "name": "year",
             "required": true,
             "schema": {
-              "description": "Simulated year",
-              "maximum": 2010,
-              "minimum": 1990,
+              "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
               "title": "Year",
               "type": "integer"
             }
@@ -3002,14 +2996,12 @@
             }
           },
           {
-            "description": "Simulated year",
+            "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
             "in": "query",
             "name": "year",
             "required": true,
             "schema": {
-              "description": "Simulated year",
-              "maximum": 2010,
-              "minimum": 1990,
+              "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
               "title": "Year",
               "type": "integer"
             }

@@ -7,10 +7,11 @@ import { useWatchReporter } from "./hooks/useWatchReporter";
 import { stepChannel } from "./lib/channels";
 import { load, save } from "./lib/storage";
 import { simulatedNow } from "./lib/time";
+import { parseYear } from "./lib/years";
 import { Guide } from "./screens/Guide";
 import { BANNER_MS, LiveTV } from "./screens/LiveTV";
 import { PowerOn } from "./screens/PowerOn";
-import { FIRST_YEAR, LAST_YEAR, YearPicker } from "./screens/YearPicker";
+import { YearPicker } from "./screens/YearPicker";
 import { Stage } from "./Stage";
 
 type Screen = "live" | "guide" | "year";
@@ -18,8 +19,7 @@ const DEFAULT_YEAR = 1998;
 const RETRY_MS = 5000;
 
 function storedYear(): number {
-  const year = Number(load("rc.year"));
-  return year >= FIRST_YEAR && year <= LAST_YEAR ? year : DEFAULT_YEAR;
+  return parseYear(load("rc.year")) ?? DEFAULT_YEAR;
 }
 
 interface AppProps {

@@ -118,6 +118,7 @@ def test_seconds_are_capped_by_runtime_and_real_time(
         {"item": "../etc/passwd"},
         {"kind": "bumper"},
         {"year": 1989},
+        {"year": 1},
         {"seconds": -1},
         {"seconds": 6 * 3600 + 1},
         {"runtime": 0},
@@ -128,6 +129,11 @@ def test_seconds_are_capped_by_runtime_and_real_time(
 def test_bad_reports_are_refused(client: TestClient, db_path: Path, bad: dict[str, Any]) -> None:
     assert client.post("/watch", json=report(**bad)).status_code == 422
     assert rows(db_path) == []
+
+
+def test_an_all_years_report_dates_the_session_today(client: TestClient, db_path: Path) -> None:
+    assert client.post("/watch", json=report(year=0)).status_code == 204
+    assert rows(db_path)[0]["sim_date"] == "2026-10-31"
 
 
 def test_a_session_id_cannot_move_to_another_program(client: TestClient, db_path: Path) -> None:

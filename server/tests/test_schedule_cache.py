@@ -99,6 +99,19 @@ def test_an_admin_write_rebuilds_once_and_shows_up(client: TestClient, builds: B
     assert builds.count == before + 1
 
 
+def test_all_years_is_built_once_and_follows_writes(client: TestClient, builds: Builds) -> None:
+    client.get("/channels", params={"year": 2000})
+    before = builds.count
+    for _ in range(2):
+        client.get("/channels", params={"year": 0})
+    assert builds.count == before + 1  # the All Years twin, built on first use
+    saved = client.post("/admin/channels", json={"draft": toons(), "year": 2000})
+    assert saved.status_code == 200, saved.text
+    ids = [c["id"] for c in client.get("/channels", params={"year": 0}).json()["channels"]]
+    assert saved.json()["channel_id"] in ids
+    assert builds.count == before + 3  # one rebuild of each
+
+
 def test_a_write_from_another_process_is_picked_up(
     client: TestClient, db_path: Path, builds: Builds
 ) -> None:

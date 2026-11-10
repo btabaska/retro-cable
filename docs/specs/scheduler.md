@@ -60,7 +60,7 @@ The `/tune` endpoint is specified in `api.md` (Tuning in).
 
 ## Invariants (never break)
 
-These extend the list in `CLAUDE.md` and are each covered by a Hypothesis property in `server/tests/scheduler/test_properties.py`.
+These extend the list in `CLAUDE.md` and are each covered by a Hypothesis property in `server/tests/scheduler/test_properties.py`. The debut and launch rules hold in every simulated year; All Years (below) is not a simulated year, and lifts them on purpose.
 
 - A schedule is a pure function of (channel, simulated date, catalog version, seed). The scheduler never reads the wall clock.
 - No episode airs before its US debut or synthetic premiere date.
@@ -138,3 +138,11 @@ The weekly station manager (`catalog.md`, M5) changes only inputs: weight factor
 - `overrides.yaml` `part_of: { show, tvdb_id, seasons }` says a show is some seasons of another series, the way TheTVDB files it: Justice League Unlimited is Justice League seasons 3-5, Animaniacs (2020) is Animaniacs 6-8, Pokémon Horizons is Pokémon 20, The New Scooby and Scrappy-Doo Show is Scooby-Doo and Scrappy-Doo 5, and the Lupin the 3rd parts are seasons of Lupin III. The files stay under the series' id in the library (that's the folder Sonarr and Plex use).
 - The `Scheduler` reads those seasons as the other show (`Library.split`, `catalog/parts.py`), with its carriage title and its `year` for undated episodes; the series keeps its other seasons. Like overrides, this happens when the schedule is built, so nothing in the database moves and encodes made under the series (Animaniacs 6-8) air as the new show without a re-encode. A season airs as one show only (validation).
 
+
+## Implemented (Nov 10 2026: All Years)
+
+Brandon asked for an "All Years" choice in the year picker that ignores time and plays every season of every show. It is not a simulated year, so the debut and launch rules don't apply to it; every simulated year keeps them.
+
+- **Scheduler.** `Scheduler(..., all_years=True)` lifts every gate a date sets: every channel is on the dial (`on_air`), under its latest identity (number, call sign, network); a channel airs everything it ever carried, whatever the carriage years, each show by its latest carriage entry (so a show carried in two eras isn't weighted twice); templates and blocks don't apply, so the whole lineup is one all-day rotation by carriage weight (block shows like X-Men join it); every episode and movie on disk is eligible whatever its air date (undated ones too); and nothing is NEW. Still in force: power hours, holiday windows, seasons and marathons (on the real calendar), back-to-back programs, programs in full, the rerun rotation and determinism, now a function of (channel, date, catalog version, seed, mode).
+- **Clock.** Year 0 (`ALL_YEARS`) is All Years. Its simulated time is the real local time (`simulated_now`), so the weekday and holidays are today's.
+- **Cache.** The app's schedule cache builds the All Years scheduler on its first request, from the same catalog and library, and drops it whenever it rebuilds the dated one.
