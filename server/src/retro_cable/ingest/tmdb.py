@@ -83,6 +83,8 @@ class TmdbStats:
     # Episodes TMDB has another title for under the same number (`show SxxEyy`): its
     # numbering differs there, so their empty date and runtime are left alone.
     mismatched_titles: list[str] = field(default_factory=list)
+    # Episodes dated from the TMDB episode with their exact title under another number.
+    matched_by_title: int = 0
 
 
 _WORDS = re.compile(r"[^a-z0-9]+")
@@ -100,6 +102,27 @@ def same_episode(ours: str, theirs: str) -> bool:
     if not a or not b:
         return True
     return a.startswith(b) or b.startswith(a) or SequenceMatcher(None, a, b).ratio() >= 0.6
+
+
+_GENERIC = re.compile(r"(episode|ep|chapter|part) ?\d+|\d+")
+
+
+def _title_key(title: str) -> str | None:
+    """A title's exact identity (`3-D Struction` is `3D Struction`), or None for one that
+    names no particular episode (`Episode 29`)."""
+    words = _words(title)
+    if not words or _GENERIC.fullmatch(words):
+        return None
+    return words.replace(" ", "")
+
+
+def _by_title(facts: list[EpisodeFacts]) -> dict[str, EpisodeFacts]:
+    """TMDB's episodes by exact title, for the titles TMDB uses once."""
+    seen: dict[str, list[EpisodeFacts]] = {}
+    for f in facts:
+        if (key := _title_key(f.title)) is not None:
+            seen.setdefault(key, []).append(f)
+    return {key: found[0] for key, found in seen.items() if len(found) == 1}
 
 
 def lineup_ids(catalog: "Catalog") -> dict[str, int]:
@@ -140,7 +163,10 @@ def _fill_show(
         and row["title"]
         and not same_episode(row["title"], f.title)
     }
+    numbered = {(f.season, f.episode): f for f in facts}
+    titles = _by_title(facts)
     with transaction(db):
+        moved = _fill_by_title(db, show_id, rows, numbered, titles, stats)
         for f in facts:
             air = f.air_date.isoformat() if f.air_date else None
             row = rows.get((f.season, f.episode))
@@ -157,6 +183,8 @@ def _fill_show(
                 continue
             untitled_off = not row["title"] and f.season in off
             if untitled_off or not same_episode(row["title"] or "", f.title):
+                if (f.season, f.episode) in moved:
+                    continue
                 if row["air_date"] is None or row["runtime_seconds"] is None:
                     stats.mismatched_titles.append(f"{show_id} S{f.season:02d}E{f.episode:02d}")
                 continue
@@ -174,6 +202,51 @@ def _fill_show(
                    WHERE show_id = ? AND season = ? AND episode = ?""",
                 (f.title, air, air, f.runtime_seconds, show_id, f.season, f.episode),
             )
+
+
+def _fill_by_title(
+    db: sqlite3.Connection,
+    show_id: str,
+    rows: Mapping[tuple[int, int], sqlite3.Row],
+    numbered: Mapping[tuple[int, int], EpisodeFacts],
+    titles: Mapping[str, EpisodeFacts],
+    stats: TmdbStats,
+) -> set[tuple[int, int]]:
+    """Date the titled episodes whose number holds another title on TMDB (or none) from
+    the one TMDB episode with exactly their title: the files of some shows run in another
+    order (The Muppet Show, What's New, Scooby-Doo?). Not where that TMDB episode's own
+    number holds it too (a second file of one episode). Returns the episodes dated so."""
+    moved: set[tuple[int, int]] = set()
+    for key, row in rows.items():
+        if row["air_date"] is not None and row["runtime_seconds"] is not None:
+            continue
+        here = numbered.get(key)
+        if not row["title"] or (here is not None and same_episode(row["title"], here.title)):
+            continue
+        title = _title_key(row["title"])
+        found = titles.get(title) if title is not None else None
+        if found is None:
+            continue
+        there = rows.get((found.season, found.episode))
+        if there is not None and there["title"] and _title_key(there["title"]) == title:
+            continue
+        air = found.air_date.isoformat() if found.air_date else None
+        if row["air_date"] is None and air:
+            stats.filled_air_dates += 1
+        if row["runtime_seconds"] is None and found.runtime_seconds:
+            stats.filled_runtimes += 1
+        db.execute(
+            """UPDATE episodes SET
+                 air_date_source = CASE WHEN air_date IS NULL AND ? IS NOT NULL
+                   THEN 'tmdb' ELSE air_date_source END,
+                 air_date = COALESCE(air_date, ?),
+                 runtime_seconds = COALESCE(runtime_seconds, ?)
+               WHERE show_id = ? AND season = ? AND episode = ?""",
+            (air, air, found.runtime_seconds, show_id, *key),
+        )
+        stats.matched_by_title += 1
+        moved.add(key)
+    return moved
 
 
 def fill_gaps(

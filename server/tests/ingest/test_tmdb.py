@@ -247,7 +247,51 @@ def test_untitled_episodes_are_left_alone_in_a_season_numbered_differently(
     ).fetchall()
     assert [tuple(r) for r in got] == [
         (1, 1, "", None, None),
-        (1, 2, "The Train Job", None, None),
+        (1, 2, "The Train Job", "2002-09-20", 2580),  # its title finds TMDB's E1
         (2, 1, "Another Season", "2003-09-01", 2580),  # nothing out of place in season 2
     ]
-    assert stats.mismatched_titles == ["firefly S01E01", "firefly S01E02"]
+    assert stats.mismatched_titles == ["firefly S01E01"]
+
+
+def test_a_title_under_another_number_takes_that_episodes_date(db: sqlite3.Connection) -> None:
+    """The Muppet Show's files run in another order than TMDB's: the guest named in the
+    title finds its episode wherever TMDB numbers it. Only an exact title, found once; a
+    generic `Episode 29` or a title TMDB has twice tells nothing."""
+    db.execute("INSERT INTO shows (id, title) VALUES ('muppets', 'The Muppet Show')")
+    db.execute(
+        "INSERT INTO episodes (show_id, season, episode, title, media_path) VALUES"
+        " ('muppets', 1, 1, 'Sandy Duncan', 'm1.mp4'),"
+        " ('muppets', 1, 2, 'Joel Grey', 'm2.mp4'),"
+        " ('muppets', 1, 3, '3D Struction', 'm3.mp4'),"  # punctuation aside
+        " ('muppets', 1, 4, 'Twice Told', 'm4.mp4'),"
+        " ('muppets', 2, 29, 'Episode 29', 'm5.mp4'),"
+        " ('muppets', 2, 30, 'Not on TMDB', 'm6.mp4')"
+    )
+    muppets = {
+        7: {
+            1: [
+                EpisodeFacts(1, 1, "Joel Grey", date(1976, 9, 13), 1500),
+                EpisodeFacts(1, 2, "3-D Struction", date(1976, 9, 20), 1500),
+                EpisodeFacts(1, 3, "Twice Told", date(1976, 9, 27), 1500),
+                EpisodeFacts(1, 4, "Sandy Duncan", date(1976, 10, 4), None),
+                EpisodeFacts(1, 5, "Twice Told", date(1976, 10, 11), 1500),
+            ],
+            2: [EpisodeFacts(2, 1, "Episode 29", date(1977, 9, 1), 1500)],
+        }
+    }
+    stats = fill_gaps(db, FakeSource(muppets), now=NOW, lineup={"muppets": 7})
+    got = db.execute(
+        "SELECT episode, air_date, air_date_source, runtime_seconds FROM episodes"
+        " ORDER BY season, episode"
+    ).fetchall()
+    assert [tuple(r) for r in got] == [
+        (1, "1976-10-04", "tmdb", None),  # Sandy Duncan is TMDB's E4
+        (2, "1976-09-13", "tmdb", 1500),  # Joel Grey is TMDB's E1
+        (3, "1976-09-20", "tmdb", 1500),
+        (4, None, None, None),  # TMDB has two Twice Told: can't tell which
+        (29, None, None, None),  # a generic title names no episode
+        (30, None, None, None),
+    ]
+    assert stats.matched_by_title == 3
+    assert stats.filled_air_dates == 3
+    assert stats.mismatched_titles == ["muppets S01E04"]  # no TMDB S02E29 to disagree with
