@@ -65,8 +65,9 @@ SHORT_DESCRIPTION = 200  # characters: two lines on the info banner
 
 def short_description(text: str, limit: int = SHORT_DESCRIPTION) -> str:
     """The first sentences of a description that fit in `limit` characters, or, when the first
-    sentence alone is longer, its words up to the limit and an ellipsis."""
-    text = " ".join(text.split())
+    sentence alone is longer, its words up to the limit and an ellipsis. A comma or semicolon
+    missing its space (`door,to`, common in Plex's text) gets one."""
+    text = re.sub(r"(?<=[a-z])([,;])(?=[A-Za-z])", r"\1 ", " ".join(text.split()))
     if len(text) <= limit:
         return text
     kept = ""

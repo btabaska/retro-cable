@@ -323,6 +323,9 @@ LONG = (
     [
         ("", ""),
         ("  A short one.\n", "A short one."),
+        # Plex's text sometimes drops the space after a comma; numbers keep theirs.
+        ("Ruth moves in next door,to the annoyance of Homer,who sulks. It costs $1,000.",
+         "Ruth moves in next door, to the annoyance of Homer, who sulks. It costs $1,000."),
         (LONG, "Bart starts a band with his friends in the garage. It is loud, and the neighbors"
                " are not amused at all by any of it."),
         ("word " * 80, ("word " * 80)[:199].rsplit(" ", 1)[0] + "…"),
