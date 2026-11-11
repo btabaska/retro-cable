@@ -73,6 +73,7 @@ class Slot:
     transplant: bool = False
     path: str | None = None  # relative to the media root; None for filler
     holiday: str | None = None  # id of the in-season holiday this program is tagged for
+    summary: str = ""  # the program's description; empty when unknown or not a program
 
     @property
     def seconds(self) -> int:
@@ -147,7 +148,9 @@ class Scheduler:
         self._seasonal: set[ProgramKey] = set()
         everything = [p for eps in self._programs.values() for p in eps]
         for p in [*everything, *library.movies.values()]:
-            tags = self.tagger.tags(p.show, p.kind, p.title, p.episode_title, p.season, p.episode)
+            tags = self.tagger.tags(
+                p.show, p.kind, p.title, p.episode_title, p.season, p.episode, p.summary
+            )
             if tags:
                 self._tags[_key(p)] = tags
             if self.tagger.is_seasonal(p.show, p.kind, p.title, tags):
@@ -496,6 +499,7 @@ class Scheduler:
                     transplant=self._is_transplant(channel, program.show),
                     path=program.path,
                     holiday=self._holiday_label(program, sim_date),
+                    summary=program.summary,
                 )
             )
             t = slot_end
@@ -573,6 +577,7 @@ class Scheduler:
                 transplant=self._is_transplant(channel, movie.show),
                 path=movie.path,
                 holiday=holiday,
+                summary=movie.summary,
             )
         )
         return slot_end

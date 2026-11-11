@@ -12,7 +12,11 @@ so A Charlie Brown Christmas never turns up in July.
 Tags come from, in order of precedence:
 1. `overrides.yaml` `holiday_tags` for that episode (replaces everything below, so `[]` untags);
 2. `holidays.yaml` `tagged` items, matched by title;
-3. a keyword pass over the episode title (or the movie title), per holiday.
+3. a keyword pass over the episode title (or the movie title), per holiday;
+4. for episodes, the same pass over the description (Plex's or TMDB's), with stricter words
+   where a name could be mistaken for the holiday (`DESCRIPTION_KEYWORDS`). Movies never take
+   tags from their description: a tagged movie airs only in season, so a passing mention
+   ("on the first day of Christmas break") would take it off the air most of the year.
 Everything here is a pure function of the catalog and the program's titles.
 """
 
@@ -71,6 +75,13 @@ KEYWORDS: dict[str, tuple[str, ...]] = {
     "independence-day": ("fourth of july", "4th of july", "independence day"),
 }
 
+# In descriptions, where a word is more often a name or a character than the holiday:
+# "Vicki Valentine", a leprechaun in Imaginationland. Every holiday's own name still counts.
+DESCRIPTION_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "valentines": ("valentine card", "valentine's card", "valentines day"),
+    "st-patricks": ("st. patrick's day", "saint patrick's day", "st patrick's day"),
+}
+
 STRENGTH_BOOST = {"low": 1.5, "medium": 2.0, "strong": 3.0}
 
 
@@ -78,6 +89,11 @@ def normalize(text: str) -> str:
     curly = text.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
     folded = unicodedata.normalize("NFKD", curly).encode("ascii", "ignore").decode()
     return re.sub(r"\s+", " ", folded.lower()).strip()
+
+
+def _pattern(words: Iterable[str]) -> re.Pattern[str]:
+    alternatives = "|".join(re.escape(normalize(w)) for w in sorted(words))
+    return re.compile(rf"(?<![a-z0-9])(?:{alternatives})")
 
 
 def holiday_date(holiday: Holiday, year: int) -> date:
@@ -136,10 +152,13 @@ class Tagger:
     def __init__(self, catalog: Catalog) -> None:
         self.holidays = {h.id: h for h in catalog.holidays.holidays}
         self._patterns: list[tuple[str, re.Pattern[str]]] = []
+        self._described: list[tuple[str, re.Pattern[str]]] = []
         for h in catalog.holidays.holidays:
             words = {normalize(h.name), *KEYWORDS.get(h.id, ())}
-            alternatives = "|".join(re.escape(normalize(w)) for w in sorted(words))
-            self._patterns.append((h.id, re.compile(rf"(?<![a-z0-9])(?:{alternatives})")))
+            self._patterns.append((h.id, _pattern(words)))
+            strict = DESCRIPTION_KEYWORDS.get(h.id)
+            described = {normalize(h.name), *strict} if strict is not None else words
+            self._described.append((h.id, _pattern(described)))
         self._tagged: dict[tuple[str, str], set[str]] = {}
         for h in catalog.holidays.holidays:
             for item in h.tagged:
@@ -165,6 +184,10 @@ class Tagger:
         folded = normalize(text)
         return frozenset(hid for hid, rx in self._patterns if rx.search(folded))
 
+    def description_tags(self, text: str) -> frozenset[str]:
+        folded = normalize(text)
+        return frozenset(hid for hid, rx in self._described if rx.search(folded))
+
     def tags(
         self,
         show: str,
@@ -173,6 +196,7 @@ class Tagger:
         episode_title: str = "",
         season: int | None = None,
         episode: int | None = None,
+        summary: str = "",
     ) -> frozenset[str]:
         if kind != "movie" and season is not None and episode is not None:
             fixed = self._overrides.get((show, season, episode))
@@ -181,7 +205,10 @@ class Tagger:
         text = title if kind == "movie" else episode_title
         lookup = "movie" if kind == "movie" else "episode"
         listed = self._tagged.get((lookup, normalize(text)), set())
-        return frozenset(listed) | self.keyword_tags(text)
+        found = frozenset(listed) | self.keyword_tags(text)
+        if kind != "movie" and summary:
+            found |= self.description_tags(summary)
+        return found
 
     def is_seasonal(self, show: str, kind: str, title: str, tags: Iterable[str]) -> bool:
         """Seasonal items air only in season: holiday movies and specials, and every episode

@@ -361,11 +361,12 @@ button {
   left: 96px;
   right: 96px;
   bottom: 64px;
-  height: 190px;
+  min-height: 190px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 48px;
-  padding: 0 40px;
+  padding: 20px 40px;
   background: var(--rc-color-header);
   border-top: 5px solid var(--rc-color-focus);
 }
@@ -415,6 +416,19 @@ button {
   color: var(--rc-color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The short description (at most 200 characters from the server): two lines at most. */
+.banner-description {
+  margin: 0;
+  font-size: var(--rc-font-size-small);
+  line-height: 1.3;
+  color: var(--rc-color-text-muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .banner-progress-row {
@@ -539,6 +553,11 @@ button {
   font-size: var(--rc-font-size-small);
   font-style: italic;
   color: var(--rc-color-text-dim);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .grid {

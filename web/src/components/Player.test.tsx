@@ -22,6 +22,7 @@ const slot: TunedSlot = {
   transplant: false,
   holiday: null,
   holiday_name: null,
+  description: "",
   media_url: "/media/fixture/ep.mp4?sig=x",
 };
 
@@ -63,6 +64,7 @@ const bumperSlot = (over: Partial<TunedSlot>): TunedSlot => ({
   transplant: false,
   holiday: null,
   holiday_name: null,
+  description: "",
   media_url: null,
   ...over,
 });
