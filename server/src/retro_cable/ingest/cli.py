@@ -1,7 +1,7 @@
 """Run an ingest job: `python -m retro_cable.ingest plex|tmdb|scan|normalize [options]`.
 
   plex       import carried shows and movies from Plex (PLEX_URL, PLEX_TOKEN)
-  tmdb       fill air dates and runtimes from TMDB (TMDB_TOKEN)
+  tmdb       fill air dates, runtimes and descriptions from TMDB (TMDB_TOKEN), shows and movies
   scan       read Plex-named folders off the disk, without Plex (--tv DIR, --movies DIR;
              each may be given more than once: the rig adds the LiveTV downloads)
   acquire    add carried titles with no files to sonarr-livetv and radarr-livetv
@@ -50,7 +50,7 @@ from retro_cable.ingest.plex import PlexClient, import_plex
 from retro_cable.ingest.plex import http_fetch as plex_http_fetch
 from retro_cable.ingest.progress import PROGRESS, ProgressFile
 from retro_cable.ingest.scan import scan_movies, scan_tv
-from retro_cable.ingest.tmdb import TmdbClient, fill_gaps, lineup_ids
+from retro_cable.ingest.tmdb import TmdbClient, fill_gaps, fill_movies, lineup_ids, lineup_movie_ids
 from retro_cable.ingest.tmdb import http_fetch as tmdb_http_fetch
 
 
@@ -244,11 +244,14 @@ def main(argv: list[str]) -> int:
 
 def _tmdb(db: sqlite3.Connection, catalog: Catalog, source: TmdbClient, every: float | None) -> int:
     """Fill gaps from TMDB by the lineup's ids (the admin overlay's too, read again each
-    time); with `every`, again every that many seconds, as new encodes arrive."""
+    time): shows, then movies; with `every`, again every that many seconds, as new encodes
+    arrive."""
     while True:
-        lineup = lineup_ids(apply_overlay(catalog, store.head(db).overlay))
-        stats = fill_gaps(db, source, datetime.now(UTC), lineup=lineup)
+        effective = apply_overlay(catalog, store.head(db).overlay)
+        stats = fill_gaps(db, source, datetime.now(UTC), lineup=lineup_ids(effective))
         print(json.dumps(asdict(stats), indent=2), flush=True)
+        movies = fill_movies(db, source, datetime.now(UTC), lineup_movie_ids(effective))
+        print(json.dumps(asdict(movies), indent=2), flush=True)
         if every is None:
             return 0
         time.sleep(every)

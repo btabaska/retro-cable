@@ -307,3 +307,51 @@ def test_short_media_stays_off_the_air_unless_allowed(
     monkeypatch.setenv("RC_ALLOW_SHORT_MEDIA", "1")
     assert Settings.from_env().allow_short_media is True
     assert simpsons(Settings.from_env()) == {120}
+
+
+# --- descriptions (Nov 11 2026) ---------------------------------------------------------------
+
+LONG = (
+    "Bart starts a band with his friends in the garage. It is loud, and the neighbors are not"
+    " amused at all by any of it. Meanwhile Lisa takes up the saxophone again and practices"
+    " every single night until Homer finally snaps and hides the instrument in the attic."
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "short"),
+    [
+        ("", ""),
+        ("  A short one.\n", "A short one."),
+        # Plex's text sometimes drops the space after a comma; numbers keep theirs.
+        ("Ruth moves in next door,to the annoyance of Homer,who sulks. It costs $1,000.",
+         "Ruth moves in next door, to the annoyance of Homer, who sulks. It costs $1,000."),
+        (LONG, "Bart starts a band with his friends in the garage. It is loud, and the neighbors"
+               " are not amused at all by any of it."),
+        ("word " * 80, ("word " * 80)[:199].rsplit(" ", 1)[0] + "…"),
+    ],
+)  # fmt: skip
+def test_a_short_description_keeps_whole_sentences_up_to_200_characters(
+    text: str, short: str
+) -> None:
+    from retro_cable.tv import short_description
+
+    assert short_description(text) == short
+    assert len(short_description(text)) <= 200
+
+
+def test_guide_and_tune_carry_a_short_description(client: TestClient, tmp_path: Path) -> None:
+    db = connect(tmp_path / "rc.db")
+    db.execute("UPDATE episodes SET summary = ? WHERE show_id = 'the-simpsons'", (LONG,))
+    db.close()
+    tune = client.get("/tune/ktvu", params={"year": 1998}).json()
+    shows = [s for s in [tune["current"], *tune["next"]] if s["kind"] == "episode"]
+    assert shows and all(s["description"].startswith("Bart starts a band") for s in shows)
+    assert all(len(s["description"]) <= 200 for s in shows)
+    bumpers = [s for s in [tune["current"], *tune["next"]] if s["kind"] == "bumper"]
+    assert all(s["description"] == "" for s in bumpers)
+    guide = client.get("/guide", params={"year": 1998, "start": "20:00", "hours": 2}).json()
+    ktvu = next(r for r in guide["channels"] if r["channel"]["id"] == "ktvu")
+    assert any(s["description"].startswith("Bart") for s in ktvu["slots"])
+    cn = next(r for r in guide["channels"] if r["channel"]["id"] == "cartoon-network")
+    assert all(s["description"] == "" for s in cn["slots"])  # Dexter has none

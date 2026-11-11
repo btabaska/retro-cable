@@ -404,31 +404,39 @@ def test_tmdb_fills_by_the_lineups_ids_from_the_catalog(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from retro_cable.ingest.tmdb import TmdbStats
+    from retro_cable.ingest.tmdb import TmdbMovieStats, TmdbStats
 
     monkeypatch.setenv("TMDB_TOKEN", "s3cret")
     monkeypatch.setattr(cli, "tmdb_http_fetch", lambda token: None)
     monkeypatch.setattr(cli, "lineup_ids", lambda catalog: {"arthur": 789})
+    monkeypatch.setattr(cli, "lineup_movie_ids", lambda catalog: {"halloweentown": 11})
     seen: list[object] = []
 
     def fake_fill(db: object, source: object, now: object, lineup: object = None) -> TmdbStats:
         seen.append(lineup)
         return TmdbStats(shows=1)
 
+    def fake_movies(db: object, source: object, now: object, lineup: object) -> TmdbMovieStats:
+        seen.append(lineup)
+        return TmdbMovieStats(movies=2)
+
     monkeypatch.setattr(cli, "fill_gaps", fake_fill)
+    monkeypatch.setattr(cli, "fill_movies", fake_movies)
     code = cli.main(["tmdb", "--db", str(tmp_path / "db.sqlite"), "--catalog", str(make_catalog())])
 
     assert code == 0
-    assert seen == [{"arthur": 789}]
+    assert seen == [{"arthur": 789}, {"halloweentown": 11}]
     out = capsys.readouterr().out
-    assert json.loads(out)["shows"] == 1
+    shows, end = json.JSONDecoder().raw_decode(out)
+    movies = json.loads(out[end:])
+    assert (shows["shows"], movies["movies"]) == (1, 2)
     assert "s3cret" not in out
 
 
 def test_tmdb_watch_fills_every_interval(
     tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from retro_cable.ingest.tmdb import TmdbStats
+    from retro_cable.ingest.tmdb import TmdbMovieStats, TmdbStats
 
     monkeypatch.setenv("TMDB_TOKEN", "s3cret")
     monkeypatch.setattr(cli, "tmdb_http_fetch", lambda token: None)
@@ -439,6 +447,7 @@ def test_tmdb_watch_fills_every_interval(
         return TmdbStats()
 
     monkeypatch.setattr(cli, "fill_gaps", fake_fill)
+    monkeypatch.setattr(cli, "fill_movies", lambda *a: TmdbMovieStats())
     naps: list[float] = []
 
     def sleep(seconds: float) -> None:

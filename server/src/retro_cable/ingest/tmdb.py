@@ -1,4 +1,5 @@
-"""Fill catalog gaps from TMDB: missing air dates, runtimes and titles, and episodes not on disk.
+"""Fill catalog gaps from TMDB: missing air dates, runtimes, titles and descriptions, episodes
+not on disk, and the lineup's movies (description, release date, runtime).
 
 This is the app's only external call at runtime, made by the worker. Plex values always win;
 TMDB only fills what is empty.
@@ -29,6 +30,15 @@ class EpisodeFacts:
     title: str
     air_date: date | None
     runtime_seconds: int | None
+    overview: str = ""
+
+
+@dataclass(frozen=True)
+class MovieFacts:
+    title: str
+    release_date: date | None
+    runtime_seconds: int | None
+    overview: str
 
 
 class MetadataSource(Protocol):
@@ -58,9 +68,20 @@ class TmdbClient:
                     title=e.get("name") or "",
                     air_date=date.fromisoformat(air) if air else None,
                     runtime_seconds=int(runtime) * 60 if runtime else None,
+                    overview=(e.get("overview") or "").strip(),
                 )
             )
         return out
+
+    def movie(self, tmdb_id: int) -> MovieFacts:
+        data: dict[str, Any] = self._fetch(f"/3/movie/{tmdb_id}", None)
+        released, runtime = data.get("release_date"), data.get("runtime")
+        return MovieFacts(
+            title=data.get("title") or "",
+            release_date=date.fromisoformat(released) if released else None,
+            runtime_seconds=int(runtime) * 60 if runtime else None,
+            overview=(data.get("overview") or "").strip(),
+        )
 
 
 def http_fetch(
@@ -78,6 +99,7 @@ class TmdbStats:
     added_episodes: int = 0
     filled_air_dates: int = 0
     filled_runtimes: int = 0
+    filled_summaries: int = 0
     shows_without_tmdb_id: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     # Episodes TMDB has another title for under the same number (`show SxxEyy`): its
@@ -149,7 +171,7 @@ def _fill_show(
     rows = {
         (r["season"], r["episode"]): r
         for r in db.execute(
-            "SELECT season, episode, title, air_date, runtime_seconds FROM episodes"
+            "SELECT season, episode, title, air_date, runtime_seconds, summary FROM episodes"
             " WHERE show_id = ?",
             (show_id,),
         )
@@ -175,9 +197,9 @@ def _fill_show(
                     continue
                 db.execute(
                     "INSERT INTO episodes (show_id, season, episode, title, air_date,"
-                    " air_date_source, runtime_seconds) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    " air_date_source, runtime_seconds, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (show_id, f.season, f.episode, f.title, air, "tmdb" if air else None,
-                     f.runtime_seconds),
+                     f.runtime_seconds, f.overview or None),
                 )  # fmt: skip
                 stats.added_episodes += 1
                 continue
@@ -188,20 +210,29 @@ def _fill_show(
                 if row["air_date"] is None or row["runtime_seconds"] is None:
                     stats.mismatched_titles.append(f"{show_id} S{f.season:02d}E{f.episode:02d}")
                 continue
-            if row["air_date"] is None and air:
-                stats.filled_air_dates += 1
-            if row["runtime_seconds"] is None and f.runtime_seconds:
-                stats.filled_runtimes += 1
+            fills = (
+                not row["title"] and f.title,
+                row["air_date"] is None and air,
+                row["runtime_seconds"] is None and f.runtime_seconds,
+                not row["summary"] and f.overview,
+            )
+            if not any(fills):
+                continue  # rewriting the same values would still make the api rebuild
+            stats.filled_air_dates += bool(fills[1])
+            stats.filled_runtimes += bool(fills[2])
+            stats.filled_summaries += bool(fills[3])
             db.execute(
                 """UPDATE episodes SET
                      title = CASE WHEN title = '' THEN ? ELSE title END,
                      air_date_source = CASE WHEN air_date IS NULL AND ? IS NOT NULL
                        THEN 'tmdb' ELSE air_date_source END,
                      air_date = COALESCE(air_date, ?),
-                     runtime_seconds = COALESCE(runtime_seconds, ?)
+                     runtime_seconds = COALESCE(runtime_seconds, ?),
+                     summary = COALESCE(NULLIF(summary, ''), ?)
                    WHERE show_id = ? AND season = ? AND episode = ?""",
-                (f.title, air, air, f.runtime_seconds, show_id, f.season, f.episode),
-            )
+                (f.title, air, air, f.runtime_seconds, f.overview or None, show_id, f.season,
+                 f.episode),
+            )  # fmt: skip
 
 
 def _fill_by_title(
@@ -231,19 +262,20 @@ def _fill_by_title(
         if there is not None and there["title"] and _title_key(there["title"]) == title:
             continue
         air = found.air_date.isoformat() if found.air_date else None
-        if row["air_date"] is None and air:
-            stats.filled_air_dates += 1
-        if row["runtime_seconds"] is None and found.runtime_seconds:
-            stats.filled_runtimes += 1
-        db.execute(
-            """UPDATE episodes SET
-                 air_date_source = CASE WHEN air_date IS NULL AND ? IS NOT NULL
-                   THEN 'tmdb' ELSE air_date_source END,
-                 air_date = COALESCE(air_date, ?),
-                 runtime_seconds = COALESCE(runtime_seconds, ?)
-               WHERE show_id = ? AND season = ? AND episode = ?""",
-            (air, air, found.runtime_seconds, show_id, *key),
-        )
+        dated = row["air_date"] is None and air is not None
+        timed = row["runtime_seconds"] is None and found.runtime_seconds is not None
+        stats.filled_air_dates += dated
+        stats.filled_runtimes += timed
+        if dated or timed:  # with nothing to add, a write would only make the api rebuild
+            db.execute(
+                """UPDATE episodes SET
+                     air_date_source = CASE WHEN air_date IS NULL AND ? IS NOT NULL
+                       THEN 'tmdb' ELSE air_date_source END,
+                     air_date = COALESCE(air_date, ?),
+                     runtime_seconds = COALESCE(runtime_seconds, ?)
+                   WHERE show_id = ? AND season = ? AND episode = ?""",
+                (air, air, found.runtime_seconds, show_id, *key),
+            )
         stats.matched_by_title += 1
         moved.add(key)
     return moved
@@ -277,5 +309,67 @@ def fill_gaps(
     db.execute(
         "INSERT INTO import_runs (source, started_at, finished_at, stats) VALUES (?, ?, ?, ?)",
         ("tmdb", stamp, stamp, json.dumps(asdict(stats))),
+    )
+    return stats
+
+
+def lineup_movie_ids(catalog: "Catalog") -> dict[str, int]:
+    """Movie id -> TMDB movie number from the lineup (`tmdb_id: movie:N` in the effective
+    overrides)."""
+    out: dict[str, int] = {}
+    for o in catalog.overrides.shows:
+        kind, _, number = (o.tmdb_id or "").partition(":")
+        if kind == "movie" and number.isdigit():
+            out[o.show] = int(number)
+    return out
+
+
+class MovieSource(Protocol):
+    def movie(self, tmdb_id: int) -> MovieFacts: ...
+
+
+@dataclass
+class TmdbMovieStats:
+    movies: int = 0
+    filled_premieres: int = 0
+    filled_runtimes: int = 0
+    filled_summaries: int = 0
+    failed: list[str] = field(default_factory=list)
+
+
+def fill_movies(
+    db: sqlite3.Connection, source: MovieSource, now: datetime, lineup: Mapping[str, int]
+) -> TmdbMovieStats:
+    """Fill the lineup's movies from TMDB by their ids: an empty description, release date
+    (the premiere date the scheduler keeps a movie to) or runtime. Only movies missing one
+    are looked up, so a filled library costs no calls; values already there are kept."""
+    stats = TmdbMovieStats()
+    for m in db.execute(
+        "SELECT id, premiere_date, runtime_seconds, summary FROM movies ORDER BY id"
+    ).fetchall():
+        tmdb_id = lineup.get(m["id"])
+        if tmdb_id is None or (m["premiere_date"] and m["runtime_seconds"] and m["summary"]):
+            continue
+        try:
+            facts = source.movie(tmdb_id)
+        except (OSError, ValueError, KeyError):
+            stats.failed.append(m["id"])
+            continue
+        released = facts.release_date.isoformat() if facts.release_date else None
+        stats.filled_premieres += bool(not m["premiere_date"] and released)
+        stats.filled_runtimes += bool(not m["runtime_seconds"] and facts.runtime_seconds)
+        stats.filled_summaries += bool(not m["summary"] and facts.overview)
+        db.execute(
+            """UPDATE movies SET premiere_date = COALESCE(premiere_date, ?),
+                 runtime_seconds = COALESCE(runtime_seconds, ?),
+                 summary = COALESCE(NULLIF(summary, ''), ?)
+               WHERE id = ?""",
+            (released, facts.runtime_seconds, facts.overview or None, m["id"]),
+        )
+        stats.movies += 1
+    stamp = now.isoformat()
+    db.execute(
+        "INSERT INTO import_runs (source, started_at, finished_at, stats) VALUES (?, ?, ?, ?)",
+        ("tmdb-movies", stamp, stamp, json.dumps(asdict(stats))),
     )
     return stats

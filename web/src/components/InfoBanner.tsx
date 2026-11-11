@@ -57,6 +57,11 @@ export function InfoBanner({ channel, slot, next, now, year, timeZone, onGuide, 
             </span>
           )}
         </div>
+        {slot && slot.kind !== "bumper" && slot.description && (
+          <p className="banner-description" data-testid="banner-description">
+            {slot.description}
+          </p>
+        )}
         <div className="banner-progress-row">
           <span>{formatShortTime(start, timeZone)}</span>
           <div className="banner-progress">

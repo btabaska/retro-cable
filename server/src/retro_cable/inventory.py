@@ -179,13 +179,20 @@ def _untagged_specials(catalog: Catalog, db: sqlite3.Connection) -> list[str]:
     tagger = Tagger(catalog)
     found = []
     for r in db.execute(
-        "SELECT e.show_id, e.season, e.episode, e.title, s.title AS show_title FROM episodes e"
+        "SELECT e.show_id, e.season, e.episode, e.title, e.summary, s.title AS show_title"
+        " FROM episodes e"
         " JOIN shows s ON s.id = e.show_id ORDER BY e.show_id, e.season, e.episode"
     ):
         if r["show_id"] not in tagger.seasonal_shows:
             continue
         tags = tagger.tags(
-            r["show_id"], "episode", r["show_title"], r["title"], r["season"], r["episode"]
+            r["show_id"],
+            "episode",
+            r["show_title"],
+            r["title"],
+            r["season"],
+            r["episode"],
+            r["summary"] or "",
         )
         if not tags:
             found.append(f"{r['show_id']} S{r['season']:02d}E{r['episode']:02d}")

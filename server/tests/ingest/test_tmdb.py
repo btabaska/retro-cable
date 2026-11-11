@@ -4,7 +4,14 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 
 from retro_cable.catalog.models import PartOf, ShowOverride
-from retro_cable.ingest.tmdb import EpisodeFacts, TmdbClient, fill_gaps
+from retro_cable.ingest.tmdb import (
+    EpisodeFacts,
+    MovieFacts,
+    TmdbClient,
+    fill_gaps,
+    fill_movies,
+    lineup_movie_ids,
+)
 from tests.conftest import MakeCatalog
 from tests.ingest.conftest import RecordedFetch
 
@@ -17,8 +24,19 @@ def test_client_lists_seasons(tmdb_fetch: RecordedFetch) -> None:
 
 def test_client_parses_episodes(tmdb_fetch: RecordedFetch) -> None:
     episodes = TmdbClient(tmdb_fetch).season(456, 10)
-    assert episodes[0] == EpisodeFacts(10, 1, "Lard of the Dance", date(1998, 8, 23), 1320)
+    assert episodes[0] == EpisodeFacts(
+        10, 1, "Lard of the Dance", date(1998, 8, 23), 1320,
+        "Lisa worries about growing up when a new girl arrives at school.",
+    )  # fmt: skip
+    assert episodes[1].overview == ""  # none on TMDB
     assert episodes[3].air_date is None  # TMDB sends "" for unknown dates
+
+
+def test_client_reads_a_movie(tmdb_fetch: RecordedFetch) -> None:
+    assert TmdbClient(tmdb_fetch).movie(11508) == MovieFacts(
+        title="Addams Family Reunion", release_date=date(1998, 9, 22), runtime_seconds=88 * 60,
+        overview="The Addams family go to a reunion that turns out to be for another family.",
+    )  # fmt: skip
 
 
 class FakeSource:
@@ -295,3 +313,91 @@ def test_a_title_under_another_number_takes_that_episodes_date(db: sqlite3.Conne
     assert stats.matched_by_title == 3
     assert stats.filled_air_dates == 3
     assert stats.mismatched_titles == ["muppets S01E04"]  # no TMDB S02E29 to disagree with
+
+
+# --- descriptions (Nov 11 2026) ---------------------------------------------------------------
+
+
+def test_episode_descriptions_fill_only_empty_summaries(db: sqlite3.Connection) -> None:
+    seed(db)
+    db.execute("UPDATE episodes SET summary = 'From Plex.' WHERE episode = 1")
+    described = {
+        456: {
+            10: [
+                replace(SIMPSONS[456][10][0], overview="TMDB's words."),
+                replace(SIMPSONS[456][10][1], overview="Homer dreams big."),
+                replace(SIMPSONS[456][10][2], overview="Three scary tales."),
+            ]
+        }
+    }
+    stats = fill_gaps(db, FakeSource(described), now=NOW)
+    got = dict(db.execute("SELECT episode, summary FROM episodes").fetchall())
+    assert got == {1: "From Plex.", 2: "Homer dreams big.", 4: "Three scary tales."}
+    assert stats.filled_summaries == 1  # episode 4; episode 2 was added with its description
+
+
+class FakeMovies:
+    def __init__(self, data: dict[int, MovieFacts], broken: frozenset[int] = frozenset()) -> None:
+        self.data, self.broken = data, broken
+        self.calls: list[int] = []
+
+    def movie(self, tmdb_id: int) -> MovieFacts:
+        self.calls.append(tmdb_id)
+        if tmdb_id in self.broken:
+            raise OSError("tmdb down")
+        return self.data[tmdb_id]
+
+
+REUNION = MovieFacts("Addams Family Reunion", date(1998, 9, 22), 5280, "A family reunion.")
+
+
+def test_lineup_movies_get_a_description_a_release_date_and_a_runtime(
+    db: sqlite3.Connection,
+) -> None:
+    """TMDB filled shows only, so a movie whose folder had no year stayed undated and aired in
+    any year. A lineup movie missing any of these is looked up once by its TMDB id."""
+    db.execute(
+        "INSERT INTO movies (id, title, year, premiere_date, runtime_seconds, summary) VALUES"
+        " ('addams-family-reunion', 'Addams Family Reunion', 1998, NULL, NULL, NULL),"
+        " ('halloweentown', 'Halloweentown', 1998, '1998-10-17', 5040, 'From Plex.'),"
+        " ('broken', 'Broken', NULL, NULL, NULL, NULL),"
+        " ('no-id', 'No Id', NULL, NULL, NULL, NULL)"
+    )
+    source = FakeMovies({11508: REUNION, 1: REUNION}, broken=frozenset({999}))
+    lineup = {"addams-family-reunion": 11508, "halloweentown": 1, "broken": 999}
+    stats = fill_movies(db, source, NOW, lineup)
+    assert source.calls == [11508, 999]  # Halloweentown lacks nothing
+    got = db.execute(
+        "SELECT premiere_date, runtime_seconds, summary FROM movies"
+        " WHERE id = 'addams-family-reunion'"
+    ).fetchone()
+    assert tuple(got) == ("1998-09-22", 5280, "A family reunion.")
+    assert (stats.movies, stats.filled_premieres, stats.filled_summaries) == (1, 1, 1)
+    assert stats.failed == ["broken"]
+    source.calls.clear()
+    fill_movies(db, source, NOW, lineup)
+    assert source.calls == [999]  # only the one still missing everything
+
+
+def test_lineup_movie_ids_come_from_the_effective_overrides(make_catalog: MakeCatalog) -> None:
+    from retro_cable.catalog import load_catalog
+
+    overrides = (
+        "shows:\n"
+        "  - { show: addams-family-reunion, tmdb_id: 'movie:11508', year: 1998 }\n"
+        "  - { show: the-simpsons, tmdb_id: 'tv:456' }\n"
+    )
+    catalog = load_catalog(make_catalog(overrides=overrides))
+    assert lineup_movie_ids(catalog) == {"addams-family-reunion": 11508}
+
+
+def test_a_run_with_nothing_to_fill_writes_nothing(db: sqlite3.Connection) -> None:
+    """Every write bumps SQLite's data_version, which makes the api rebuild its schedules: a
+    6-hourly run that rewrote every episode with its own values slowed the TV while it ran.
+    Once filled, a run changes only its own import_runs row."""
+    seed(db)
+    described = {456: {10: [replace(f, overview="Words.") for f in SIMPSONS[456][10]]}}
+    fill_gaps(db, FakeSource(described), now=NOW)
+    before = db.total_changes
+    fill_gaps(db, FakeSource(described), now=NOW)
+    assert db.total_changes - before == 1

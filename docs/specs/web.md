@@ -74,6 +74,7 @@ The first frontend is a browser app with the same TV interface, so agents can te
 ## Implemented (Phase 7: Feel)
 
 - **Guide cell kicker.** After the start time: `NEW` in the focus gold, bold; `MOVIE` for movies; and (until M2) the holiday name in `color.holiday`, bold and upper case (`8:00 · NEW · HALLOWEEN`); since M2 a holiday cell has a left bar instead (below). On a focused cell the kicker uses `onFocus`. The words are always text, never color alone.
+- **Descriptions (Nov 11 2026).** The info banner shows the slot's `description` under the title row, in the small muted type, two lines at most, with a space restored after a comma that lacks one (the banner grows from its 190 px minimum); not for bumpers, and no line when it is empty. The guide details panel's italic line shows the description when there is one, else the episode label as before, also two lines at most.
 - **Badges.** The info banner and the guide details show `NEW` (`.badge-new`) and the holiday (`.badge-holiday`: 2px holiday-color border and text, no fill). The details pane also shows a `MOVIE` outline badge. Bumpers and reruns never get NEW.
 - **Movies.** The line under the title reads the premiere year and running time ("1998 · 1h 25m") instead of season and episode (`src/lib/program.ts`). Cells keep their true length.
 - **Bumpers without media** show a station ID slate on `color.background`: number and call sign, channel name, and "Up next 8:27 Seinfeld". Bumpers with media play them.

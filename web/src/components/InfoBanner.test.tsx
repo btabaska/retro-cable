@@ -30,6 +30,7 @@ const slot = (over: Partial<TunedSlot>): TunedSlot => ({
   transplant: false,
   holiday: null,
   holiday_name: null,
+  description: "",
   media_url: null,
   ...over,
 });
@@ -89,5 +90,19 @@ describe("InfoBanner", () => {
       }),
     );
     expect(screen.getByText("1998 · 1h 25m")).toBeInTheDocument();
+  });
+  it("shows the episode's short description under the title", () => {
+    renderBanner(slot({ description: "Doug dresses as Quailman for the school party." }));
+    expect(screen.getByTestId("banner-description")).toHaveTextContent("Doug dresses as Quailman for the school party.");
+  });
+
+  it("leaves the description line out when there is none, and during bumpers", () => {
+    renderBanner(slot({ description: "" }));
+    expect(screen.queryByTestId("banner-description")).toBeNull();
+  });
+
+  it("never describes a bumper", () => {
+    renderBanner(slot({ kind: "bumper", description: "Stray text." }));
+    expect(screen.queryByTestId("banner-description")).toBeNull();
   });
 });

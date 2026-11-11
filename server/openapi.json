@@ -954,6 +954,12 @@
             ],
             "title": "Air Date"
           },
+          "description": {
+            "default": "",
+            "description": "A short description of the episode or movie (whole sentences, at most 200 characters); empty when unknown",
+            "title": "Description",
+            "type": "string"
+          },
           "end": {
             "format": "date-time",
             "title": "End",
@@ -2209,6 +2215,12 @@
               }
             ],
             "title": "Air Date"
+          },
+          "description": {
+            "default": "",
+            "description": "A short description of the episode or movie (whole sentences, at most 200 characters); empty when unknown",
+            "title": "Description",
+            "type": "string"
           },
           "end": {
             "format": "date-time",
