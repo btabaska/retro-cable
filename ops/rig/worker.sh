@@ -67,7 +67,7 @@ cycle() {
   # Off unless RC_ACQUIRE=1: nothing is requested until the show lineup is final.
   if [[ ${RC_ACQUIRE:-0} == 1 ]]; then
     log "acquire started"
-    if ingest acquire >"$data/last-acquire.json"; then
+    if ingest acquire --livetv-tv "$livetv_tv" >"$data/last-acquire.json"; then
       log "acquire done ($data/last-acquire.json)"
     else
       log "acquire failed or refused ($data/last-acquire.json); normalizing anyway"

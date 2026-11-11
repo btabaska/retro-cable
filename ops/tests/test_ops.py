@@ -321,6 +321,8 @@ def test_rig_worker_acquires_only_when_asked(tmp_path: Path) -> None:
     jobs = [p.split()[3] for p in _pythons(log)]
     assert jobs == ["scan", "acquire", "normalize", "assemble"], "after the scan, before normalize"
     assert (tmp_path / "data/last-acquire.json").is_file()
+    # sonarr-livetv's /tv, so finished downloads whose imports are encoded leave its queue.
+    assert _pythons(log)[1].endswith(f"acquire --livetv-tv {media}/sources/tv")
 
 
 def test_rig_worker_deletes_only_live_tv_originals_and_never_acquires_by_default() -> None:

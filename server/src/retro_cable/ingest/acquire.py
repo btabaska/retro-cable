@@ -34,6 +34,12 @@ Rules:
   premiere anywhere, or a US debut). Seasons a part_of or episodes_of show needs are kept.
   Sonarr then adds no new seasons of that show, and unfinished downloads holding only those
   seasons are cancelled (see trim_seasons).
+- A finished download leaves sonarr-livetv's queue once nothing Sonarr imported from it is
+  left under the LiveTV share's sources/tv (`livetv_tv`): normalize encoded and deleted all
+  of it. A pack with fewer files than the episodes it was grabbed for otherwise stays queued
+  (importPending), and Sonarr imports a deleted episode again from the seeding torrent. The
+  torrent stays in Deluge, relabelled sonarr-livetv-imported for the reaper, and nothing is
+  searched for again (see release_imported).
 - radarr-livetv and sonarr-livetv are asked to search their missing movies and episodes
   again about daily: they search a title only when it is added, and their RSS sync sees
   only new posts.
@@ -47,7 +53,7 @@ import sqlite3
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 from retro_cable.admin import store
@@ -221,6 +227,9 @@ class InstanceReport:
     # Seasons unmonitored because they can never air (sonarr-livetv; see trim_seasons): id,
     # title, seasons and (not in a dry run) how many unfinished downloads were cancelled.
     trimmed: list[dict[str, Any]] = field(default_factory=list)
+    # Finished downloads taken out of sonarr-livetv's queue (in a dry run: would be): title,
+    # and how many files Sonarr had imported from it (see release_imported).
+    released: list[dict[str, Any]] = field(default_factory=list)
     searched_missing: bool = False  # asked to search its missing movies or episodes again
 
 
@@ -670,6 +679,58 @@ def trim_seasons(request: Request, rules: Airable, report: InstanceReport, dry_r
         report.trimmed.append(entry)
 
 
+def _imported(request: Request, download: str) -> list[str]:
+    """The paths Sonarr imported from this download (its downloadFolderImported history)."""
+    paths: list[str] = []
+    page = 1
+    while True:
+        params = {"page": str(page), "pageSize": "500", "downloadId": download, "eventType": "3"}
+        got = request("GET", "/api/v3/history", params, None) or {}
+        batch = got.get("records") or []
+        paths += [str((r.get("data") or {}).get("importedPath") or "") for r in batch]
+        if not batch or page * 500 >= int(got.get("totalRecords") or 0):
+            return [p for p in paths if p]
+        page += 1
+
+
+def release_imported(
+    request: Request, livetv_tv: Path, report: InstanceReport, dry_run: bool
+) -> None:
+    """Take finished downloads out of sonarr-livetv's queue once every file Sonarr imported
+    from them is gone from `livetv_tv` (its /tv): normalize encoded and deleted it. Packs
+    with fewer files than the episodes they were grabbed for stay queued as importPending,
+    and Sonarr imports a deleted episode again from the torrent (300 on Nov 11). The torrent
+    stays in Deluge, relabelled for the reaper (changeCategory), and Sonarr searches for
+    nothing again (skipRedownload). A download being imported, one nothing was imported from
+    yet, and every download while `livetv_tv` is missing or empty are left alone."""
+    try:
+        if not livetv_tv.is_dir() or next(livetv_tv.iterdir(), None) is None:
+            return
+        downloads: dict[str, list[dict[str, Any]]] = {}
+        for r in _queue(request):
+            if r.get("downloadId"):
+                downloads.setdefault(str(r["downloadId"]), []).append(r)
+        for download, records in downloads.items():
+            if not all(r.get("status") == "completed"
+                       and r.get("trackedDownloadState") in ("importPending", "importBlocked")
+                       for r in records):  # fmt: skip
+                continue
+            paths = _imported(request, download)
+            if not paths or any(
+                not p.startswith(SONARR_ROOT + "/")
+                or (livetv_tv / PurePosixPath(p).relative_to(SONARR_ROOT)).exists()
+                for p in paths
+            ):
+                continue
+            if not dry_run:
+                request("DELETE", f"/api/v3/queue/{records[0]['id']}",
+                        {"removeFromClient": "false", "blocklist": "false",
+                         "skipRedownload": "true", "changeCategory": "true"}, None)  # fmt: skip
+            report.released.append({"title": records[0].get("title"), "imported": len(paths)})
+    except _ERRORS as err:
+        report.failed.append({"id": "queue", "title": "", "reason": f"releasing: {err}"})
+
+
 SEARCH_EVERY = timedelta(hours=23)  # about daily, with the worker's 6-hour passes
 _NO_INDEXERS = re.compile(
     r"^(All (search-capable )?indexers are (temporarily )?unavailable|No indexers available)",
@@ -752,9 +813,11 @@ def acquire(
     dry_run: bool,
     extra: Iterable[Mapping[str, Any]] = (),
     now: datetime | None = None,
+    livetv_tv: Path | None = None,
 ) -> AcquireReport:
     """Add every carried title with no files to sonarr-livetv or radarr-livetv (see the
-    module docstring). An instance that is None is unset (RC_*_LIVETV_URL and _KEY)."""
+    module docstring). An instance that is None is unset (RC_*_LIVETV_URL and _KEY).
+    `livetv_tv` is where sonarr-livetv's /tv is mounted; without it no download is released."""
     found, with_files, excluded = wanted(db, catalog, extra)
     report = AcquireReport(dry_run, with_files, excluded, InstanceReport(SONARR),
                            InstanceReport(RADARR))  # fmt: skip
@@ -762,6 +825,8 @@ def acquire(
     _add(RADARR_API, radarr, [w for w in found if w.kind == "movie"], report.movies, dry_run)
     if sonarr is not None and report.shows.error is None:
         trim_seasons(sonarr, airable(db, catalog, extra), report.shows, dry_run)
+    if sonarr is not None and report.shows.error is None and livetv_tv is not None:
+        release_imported(sonarr, livetv_tv, report.shows, dry_run)
     for request, instance in ((sonarr, report.shows), (radarr, report.movies)):
         if request is not None and instance.error is None and now is not None and not dry_run:
             search_missing(db, request, instance, now)

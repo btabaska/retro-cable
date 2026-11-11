@@ -33,6 +33,7 @@ class FakeArr:
         fail_post: bool = False,
         episodes: Mapping[int, list[dict[str, Any]]] | None = None,
         queue: list[dict[str, Any]] | None = None,
+        history: Mapping[str, list[str]] | None = None,
     ) -> None:
         self.kind = kind
         self.roots = roots if roots is not None else (["/tv"] if kind == "series" else ["/movies"])
@@ -48,6 +49,7 @@ class FakeArr:
         self.commands: list[dict[str, Any]] = []
         self.episodes = dict(episodes or {})  # series id -> its episodes
         self.queue = list(queue or [])
+        self.history = dict(history or {})  # download id -> the paths imported from it
         self.deleted: list[tuple[str, dict[str, str]]] = []
         self.health: list[dict[str, Any]] = []
 
@@ -86,6 +88,12 @@ class FakeArr:
             page, size = int(q.get("page", "1")), int(q.get("pageSize", "10"))
             return {"totalRecords": len(self.queue),
                     "records": self.queue[(page - 1) * size : page * size]}  # fmt: skip
+        if path == "/api/v3/history":
+            assert q.get("eventType") == "3", "imports only"
+            imported = self.history.get(q["downloadId"], [])
+            return {"totalRecords": len(imported), "records": [
+                {"eventType": "downloadFolderImported", "downloadId": q["downloadId"],
+                 "data": {"importedPath": p}} for p in imported]}  # fmt: skip
         if path == "/api/v3/series/lookup":
             return self.lookups.get(q["term"], [])
         if path == "/api/v3/movie/lookup":
@@ -550,12 +558,16 @@ def test_acquire_cli_prints_a_json_summary_and_never_the_keys(
     conn.execute("INSERT INTO movies (id, title, year) VALUES ('halloweentown', 'H', 1998)")
     conn.close()
 
-    args = ["acquire", "--db", str(db), "--catalog", str(make_catalog()), "--dry-run"]
+    tv = tmp_path / "livetv-tv"
+    (tv / "Show (1999)").mkdir(parents=True)
+    args = ["acquire", "--db", str(db), "--catalog", str(make_catalog()), "--dry-run",
+            "--livetv-tv", str(tv)]  # fmt: skip
     assert cli.main(args) == 0
     captured = capsys.readouterr()
     out = json.loads(captured.out)
     assert out["dry_run"] is True
     assert "X-Men" in [a["title"] for a in out["shows"]["added"]]
+    assert out["shows"]["released"] == [] and "/api/v3/queue" in fakes["http://sonarr:8990"].gets
     assert all(m == "GET" for f in fakes.values() for m, _, _ in f.calls)
     assert sorted(seen_keys) == ["radarr-secret-key", "sonarr-secret-key"]
     assert "secret" not in captured.out + captured.err
@@ -1003,3 +1015,70 @@ def test_no_episode_search_while_every_search_indexer_is_down(
     sonarr.health = []
     out = asdict(acquire(library, catalog, sonarr=sonarr, radarr=None, dry_run=False, now=now))
     assert out["shows"]["searched_missing"] is True
+
+
+# --- releasing finished downloads whose imports are encoded (Nov 11 2026) -----------------
+
+
+def _pack(ident: int, download: str, state: str = "importPending") -> list[dict[str, Any]]:
+    """A completed season pack in Sonarr's queue: one record per episode it was grabbed for."""
+    status = "completed" if state.startswith("import") else "queued"
+    return [{"id": ident + n, "seriesId": 1, "downloadId": download, "seasonNumber": 1,
+             "status": status, "trackedDownloadState": state, "title": f"Pack {download}"}
+            for n in range(3)]  # fmt: skip
+
+
+def test_finished_downloads_whose_imports_are_encoded_leave_sonarrs_queue(
+    library: sqlite3.Connection, make_catalog: MakeCatalog, tmp_path: Path
+) -> None:
+    """A pack with fewer files than the episodes Sonarr grabbed it for stays in its queue
+    (importPending) after the import. When normalize deletes an imported file, Sonarr sees
+    the episode without a file and imports it again from the seeding torrent: on Nov 11, 300
+    episodes had come back that way. So once nothing Sonarr imported from a finished download
+    is left on disk (normalize encoded and deleted all of it), acquire removes the download
+    from the queue: kept in Deluge, relabelled sonarr-livetv-imported (the reaper's hold),
+    and not searched for again."""
+    tv = tmp_path / "livetv-tv"
+    (tv / "Show (1999)" / "Season 01").mkdir(parents=True)
+    (tv / "Show (1999)" / "Season 01" / "S01E04.mkv").write_bytes(b"x")
+    queue = [
+        *_pack(10, "done"),  # both imports encoded and deleted: released
+        *_pack(20, "waiting"),  # one import still waits for normalize: kept
+        *_pack(30, "importing", "importing"),  # Sonarr is importing right now: kept
+        *_pack(40, "nothing"),  # nothing imported yet: kept
+        *_pack(50, "downloading", "downloading"),  # unfinished: kept
+    ]
+    history = {
+        "done": ["/tv/Show (1999)/Season 01/S01E01.mkv", "/tv/Show (1999)/Season 01/S01E02.mkv"],
+        "waiting": ["/tv/Show (1999)/Season 01/S01E03.mkv",
+                    "/tv/Show (1999)/Season 01/S01E04.mkv"],
+        "importing": ["/tv/Show (1999)/Season 01/S01E05.mkv"],
+    }  # fmt: skip
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS, queue=queue, history=history)
+    out = _trim(library, make_catalog, sonarr, livetv_tv=tv)
+    assert out["shows"]["released"] == [{"title": "Pack done", "imported": 2}]
+    assert sonarr.deleted == [("/api/v3/queue/10", {
+        "removeFromClient": "false", "blocklist": "false", "skipRedownload": "true",
+        "changeCategory": "true"})]  # fmt: skip
+
+    dry = FakeArr("series", lookups=SONARR_LOOKUPS, queue=queue, history=history)
+    out = _trim(library, make_catalog, dry, livetv_tv=tv, dry_run=True)
+    assert out["shows"]["released"] == [{"title": "Pack done", "imported": 2}]
+    assert dry.deleted == [], "a dry run removes nothing"
+
+
+def test_nothing_is_released_without_the_download_folder(
+    library: sqlite3.Connection, make_catalog: MakeCatalog, tmp_path: Path
+) -> None:
+    """An unmounted or empty LiveTV share looks like every import was deleted: never act on
+    that. Without --livetv-tv the queue isn't read at all."""
+    history = {"done": ["/tv/Show (1999)/Season 01/S01E01.mkv"]}
+    (tmp_path / "empty").mkdir()
+    for tv in (tmp_path / "missing", tmp_path / "empty"):
+        sonarr = FakeArr("series", lookups=SONARR_LOOKUPS, queue=_pack(10, "done"),
+                         history=history)  # fmt: skip
+        out = _trim(library, make_catalog, sonarr, livetv_tv=tv)
+        assert out["shows"]["released"] == [] and sonarr.deleted == []
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS, queue=_pack(10, "done"), history=history)
+    _trim(library, make_catalog, sonarr)
+    assert "/api/v3/history" not in sonarr.gets and sonarr.deleted == []

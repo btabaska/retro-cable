@@ -116,6 +116,10 @@ def _parser() -> argparse.ArgumentParser:
                       help="the mini's /api/admin/library (/admin channels)")  # fmt: skip
     norm.add_argument("--manifest", action="store_true",
                       help="write JSON sidecars and manifest.json (the rig)")  # fmt: skip
+    acq = parser.add_argument_group("acquire")
+    acq.add_argument("--livetv-tv", type=Path, default=None,
+                     help="sonarr-livetv's /tv here: release finished downloads whose "
+                          "imports are all encoded and deleted (the rig)")  # fmt: skip
     idx = parser.add_argument_group("index-media")
     idx.add_argument("--manifest-file", type=Path, default=None,
                      help="default <media dir>/manifest.json")  # fmt: skip
@@ -298,7 +302,7 @@ def _acquire(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace)
     # The mini's /admin channels count as carried.
     report = acquire(db, catalog, sonarr=_arr("SONARR"), radarr=_arr("RADARR"),
                      dry_run=args.dry_run, extra=_mini_items(args),
-                     now=datetime.now(UTC))  # fmt: skip
+                     now=datetime.now(UTC), livetv_tv=args.livetv_tv)  # fmt: skip
     print(json.dumps(asdict(report), indent=2))
     return 0 if report.ok else 1
 
