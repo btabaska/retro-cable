@@ -16,7 +16,7 @@ from retro_cable.ingest.scan import (
     show_title,
     show_year,
 )
-from tests.conftest import CARRIAGE, MakeCatalog
+from tests.conftest import CARRIAGE, OVERRIDES, MakeCatalog
 
 
 @pytest.mark.parametrize(
@@ -530,6 +530,70 @@ def test_scan_movies_matches_the_minis_admin_movies(
     stats = scan_movies(db, root, load_catalog(make_catalog()), extra=mini)
     assert rows(db, "SELECT id, title FROM movies") == [("the-rugrats-movie", "The Rugrats Movie")]
     assert stats.unmatched_folders == ["Nobody Carries Me (1999)"]
+
+
+def test_scan_movies_takes_the_year_from_the_lineup_when_the_folder_has_none(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """A release-named folder often has no `(Year)`, and nothing else dates a movie: TMDB
+    fills shows only. Undated, it would air in any year. The lineup knows its release year
+    (overrides.yaml, or the mini's library item for a movie the builder placed)."""
+    root = tmp_path / "movies"
+    touch(root / "Halloweentown_DVDRip_XviD-KIDS" / "h.avi")
+    touch(root / "The Rugrats Movie 1080p WEB-DL" / "r.mkv")
+    overrides = OVERRIDES + "  - show: halloweentown\n    year: 1998\n"
+    mini: list[dict[str, Any]] = [
+        {"id": "the-rugrats-movie", "title": "The Rugrats Movie", "kind": "movie", "year": 1998,
+         "channels": [{"id": "custom-nick-flicks"}]},
+    ]  # fmt: skip
+    scan_movies(db, root, load_catalog(make_catalog(overrides=overrides)), extra=mini)
+    assert rows(db, "SELECT id, year FROM movies ORDER BY id") == [
+        ("halloweentown", 1998),
+        ("the-rugrats-movie", 1998),
+    ]
+
+
+def test_scan_movies_skips_a_different_movie_inside_the_folder(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """A download named for one movie held another (Nov 11 2026: Serenity, 2005, in a Scooby-Doo
+    and the Cyber Chase folder, aired on a kids' channel as the Scooby-Doo movie). A subfolder or
+    file named for another year, with no word of the title, is not this movie."""
+    root = tmp_path / "movies"
+    folder = root / "Scooby Doo and the Cyber Chase [DVD-Rip.2001]"
+    wrong = folder / "Serenity (2005) [1080p]" / "Serenity.2005.1080p.BrRip.x264.YIFY.mkv"
+    touch(wrong, size=30)
+    mini: list[dict[str, Any]] = [
+        {"id": "scooby-doo-and-the-cyber-chase", "title": "Scooby-Doo and the Cyber Chase",
+         "kind": "movie", "year": 2001, "channels": [{"id": "custom-adventure-central"}]},
+    ]  # fmt: skip
+    catalog = load_catalog(make_catalog())
+    stats = scan_movies(db, root, catalog, extra=mini)
+    assert rows(db, "SELECT id FROM movies") == []
+    assert stats.mismatched == [str(wrong.relative_to(root))]
+
+    right = folder / "Scooby.Doo.and.the.Cyber.Chase.2001.DVDRip.avi"
+    touch(right, size=10)
+    stats = scan_movies(db, root, catalog, extra=mini)
+    assert rows(db, "SELECT file_path FROM movies") == [(str(right),)]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "h.mkv",  # no year: nothing to go on
+        "Halloweentown.1999.mkv",  # a year off: a re-release or a late DVD
+        "Halloweentown.2005.Remastered.mkv",  # the title's words are there
+        "Disneys Halloweentown (DVD 2004).mkv",  # a later release, same title
+    ],
+)
+def test_scan_movies_keeps_files_that_could_be_the_movie(
+    name: str, db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    root = tmp_path / "movies"
+    touch(root / "Halloweentown (1998)" / name)
+    stats = scan_movies(db, root, load_catalog(make_catalog()))
+    assert stats.movies == 1 and stats.mismatched == []
 
 
 def test_scan_reads_season_and_episode_numbers_from_a_whole_show_folder(

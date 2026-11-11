@@ -588,7 +588,26 @@ def scan_tv(
 class MovieScanStats:
     movies: int = 0
     unmatched_folders: list[str] = field(default_factory=list)
+    mismatched: list[str] = field(default_factory=list)  # files named for another movie
     missing_roots: list[str] = field(default_factory=list)
+
+
+_ANY_YEAR = re.compile(r"(?<!\d)(19\d{2}|20[0-2]\d)(?!\d)")
+_FILLER_WORDS = frozenset({"a", "an", "and", "the", "of", "in", "on", "to", "movie"})
+
+
+def _words(title: str) -> set[str]:
+    return set(normalize_title(title).split()) - _FILLER_WORDS
+
+
+def other_movie(name: str, title: str, year: int | None) -> bool:
+    """A file or subfolder named for a different movie than `title` (released `year`): it
+    names a year more than one off and shares no word of the title. Without a year on
+    either side there is nothing to go on, so it could be the movie."""
+    years = [int(y) for y in _ANY_YEAR.findall(name)]
+    if year is None or not years or any(abs(y - year) <= 1 for y in years):
+        return False
+    return not _words(movie_title(name)) & _words(title)
 
 
 def scan_movies(
@@ -602,9 +621,11 @@ def scan_movies(
 ) -> MovieScanStats:
     """Attach carried movies from `<root>/<Title (Year)>/` (or a release-named folder, see
     `movie_title`): the biggest video file that isn't a trailer or extra, from the earliest
-    root that has one. `extra` is the mini's /api/admin/library items: movies on its /admin
-    channels are carried too, under its ids. The premiere date is left alone (the year
-    bounds it, see load_library)."""
+    root that has one, unless it or a folder it sits in is named for another movie
+    (`other_movie`; listed as mismatched). `extra` is the mini's /api/admin/library items:
+    movies on its /admin channels are carried too, under its ids. The year is the lineup's
+    (overrides.yaml, or the mini's item) when it has one, else the folder's; the premiere
+    date is left alone (the year bounds it, see load_library)."""
     stats = MovieScanStats()
     more = {
         str(i["id"]): str(i.get("title") or i["id"])
@@ -612,6 +633,8 @@ def scan_movies(
         if i.get("id") and i.get("channels") and i.get("kind") == "movie"
     }
     index, titles = _Index(catalog, "movie", more), more | _titles(catalog)
+    lineup = {o.show: o.year for o in catalog.overrides.shows if o.year is not None}
+    lineup |= {str(i["id"]): int(i["year"]) for i in extra if i.get("id") and i.get("year")}
     picks: dict[str, tuple[tuple[int, int, str], Path, Path]] = {}
     for rank, top in enumerate(_present(root, stats.missing_roots)):
         for folder in _folders(top):
@@ -619,13 +642,19 @@ def scan_movies(
             if slug is None:
                 stats.unmatched_folders.append(folder.name)
                 continue
+            year = lineup.get(slug) or show_year(folder.name, [])
+            title = titles.get(slug, movie_title(folder.name))
             for f in _video_files(folder):
+                inner = [*f.relative_to(folder).parent.parts, f.stem]
+                if any(other_movie(part, title, year) for part in inner):
+                    stats.mismatched.append(str(f.relative_to(top)))
+                    continue
                 if not EXTRA.search(f.stem):
                     key = (rank, -f.stat().st_size, str(f))
                     if slug not in picks or key < picks[slug][0]:
                         picks[slug] = (key, f, folder)
     for slug, (_, best, folder) in picks.items():
-        year = show_year(folder.name, [])
+        year = lineup.get(slug) or show_year(folder.name, [])
         size = best.stat().st_size
         row = db.execute(
             "SELECT file_path, file_size, source_seconds FROM movies WHERE id = ?", (slug,)
