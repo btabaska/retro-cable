@@ -124,6 +124,7 @@ function fakeApi(): AdminApi & { channels: AdminChannelRow[] } {
     setPremiere: vi.fn(() => Promise.reject(new Error("unused"))),
     getMediaProgress: vi.fn(() => Promise.reject(new NotAvailable("no"))),
     getStationRuns: vi.fn(() => Promise.resolve({ auto_apply: true, runs: [] })),
+    getReports: vi.fn(() => Promise.resolve({ schedule: "Sundays at 8 AM", reports: [] })),
     undo: vi.fn(() => {
       channels.pop();
       return Promise.resolve({ message: "Restored", state: state(10, false) });
@@ -596,5 +597,55 @@ describe("AdminApp M2", () => {
     await user.click(await screen.findByRole("button", { name: "Station" }));
     expect(await screen.findByText(/hasn't run yet/)).toBeInTheDocument();
     expect(screen.getByTestId("station-mode")).toHaveTextContent("Changes apply on their own");
+  });
+  it("shows the latest Sunday report and the headlines of older ones", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    const report = {
+      week_of: "2026-11-08", since: "2026-11-08T13:00:00Z", until: "2026-11-15T13:00:00Z",
+      viewing: { seconds: 3240, sessions: 3, last_week_seconds: 900, busiest_hour: "20:00",
+                 top_shows: [{ show: "the-simpsons", title: "The Simpsons", channel: "KTVU (Fox)",
+                               seconds: 2640, completion: 1 }],
+                 top_channels: [{ id: "ktvu", name: "KTVU (Fox)", seconds: 2640 }] },
+      station: { id: 3, status: "proposed", summary: "3 changes proposed", week_of: "2026-11-15" },
+      pending: ["The station manager's proposal waits for you in /admin, Station."],
+      library: { episodes: 6301, shows: 140, movies: 79, episodes_added: 412, empty_count: 2,
+                 empty: ["Doug", "Rugrats"] },
+      conversion: { done: 5746, total: 8774, left: 3028, failed: 3, hours_left: 50.5 },
+      backups: { ok: true, last_backup_at: "2026-11-15T06:00:00Z", last_backup_bytes: 1438872,
+                 restore_ok: true, restore_at: "2026-11-15T06:00:10Z", restore_problems: [],
+                 schedule_warnings: ["kqed: Sat Nov 11 2000: Some Movie would air before its first air date."] },
+      headline: ["Watched 54 min (last week 15 min), most The Simpsons on KTVU (Fox).",
+                 "Backups: last 7 h ago, restore test passed."],
+    };
+    vi.mocked(api.getReports).mockResolvedValue({
+      schedule: "Sundays at 8 AM",
+      reports: [
+        { id: 2, created_at: "2026-11-15T13:00:00Z", week_of: "2026-11-08", report },
+        { id: 1, created_at: "2026-11-08T13:00:00Z", week_of: "2026-11-01",
+          report: { ...report, week_of: "2026-11-01", headline: ["Nothing watched this week."] } },
+      ],
+    });
+    render(<AdminApp api={api} />);
+    await user.click(await screen.findByRole("button", { name: "Report" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Sunday report" })).toHaveFocus();
+    const latest = await screen.findByTestId("report-latest");
+    expect(latest).toHaveTextContent("Week of Nov 8, 2026");
+    expect(latest).toHaveTextContent("54 min watched (last week 15 min)");
+    expect(latest).toHaveTextContent("The Simpsons on KTVU (Fox)");
+    expect(latest).toHaveTextContent("Waits for you: The station manager's proposal");
+    expect(latest).toHaveTextContent("6,301 episodes (+412) of 140 shows, 79 movies");
+    expect(latest).toHaveTextContent("Nothing yet for 2 carried titles: Doug, Rugrats");
+    expect(latest).toHaveTextContent("3,028 files left, about 51 h; 3 failed");
+    expect(latest).toHaveTextContent("Restore test passed");
+    expect(latest).toHaveTextContent("Some Movie would air before its first air date");
+    expect(screen.getByTestId("report-older")).toHaveTextContent("Week of Nov 1, 2026: Nothing watched this week.");
+  });
+
+  it("says when the first Sunday report is due", async () => {
+    const user = userEvent.setup();
+    render(<AdminApp api={fakeApi()} />);
+    await user.click(await screen.findByRole("button", { name: "Report" }));
+    expect(await screen.findByText("The first report comes Sundays at 8 AM.")).toBeInTheDocument();
   });
 });

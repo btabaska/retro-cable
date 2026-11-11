@@ -5,11 +5,17 @@ import { ChannelEditor } from "./ChannelEditor";
 import { ChannelList } from "./ChannelList";
 import { focusTitle } from "./focus";
 import { MediaPanel } from "./MediaPanel";
+import { ReportPanel } from "./ReportPanel";
 import { StationPanel } from "./StationPanel";
 import { Toast } from "./Toast";
 
-type View = { kind: "list" } | { kind: "edit"; id: string | null } | { kind: "media" } | { kind: "station" };
-type Tab = "list" | "media" | "station";
+type View =
+  | { kind: "list" }
+  | { kind: "edit"; id: string | null }
+  | { kind: "media" }
+  | { kind: "station" }
+  | { kind: "report" };
+type Tab = "list" | "media" | "station" | "report";
 
 interface ToastState {
   message: string;
@@ -22,7 +28,8 @@ interface AdminAppProps {
 }
 
 /** /admin on a phone: channels you can add, edit, preview and undo, the media conversion's
- * progress, and what the weekly station manager changed. LAN only, no sign-in. */
+ * progress, what the weekly station manager changed, and the Sunday report. LAN only, no
+ * sign-in. */
 export function AdminApp({ api = liveAdminApi }: AdminAppProps) {
   const [view, setView] = useState<View>({ kind: "list" });
   const [list, setList] = useState<AdminChannelList | null>(null);
@@ -112,6 +119,19 @@ export function AdminApp({ api = liveAdminApi }: AdminAppProps) {
         </main>
       </div>
     );
+  } else if (view.kind === "report") {
+    body = (
+      <div className="adm-screen">
+        <header className="adm-header">
+          <h1 className="adm-title" tabIndex={-1}>
+            Sunday report
+          </h1>
+        </header>
+        <main className="adm-body">
+          <ReportPanel api={api} />
+        </main>
+      </div>
+    );
   } else {
     body = (
       <div className="adm-screen">
@@ -142,6 +162,7 @@ export function AdminApp({ api = liveAdminApi }: AdminAppProps) {
     ["list", "Channels"],
     ["media", "Media"],
     ["station", "Station"],
+    ["report", "Report"],
   ];
   return (
     <div className="adm" data-testid="admin">

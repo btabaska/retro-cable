@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from retro_cable import __version__, media, tv, watch
 from retro_cable.admin import media as admin_media
+from retro_cable.admin import reports as admin_reports
 from retro_cable.admin import router as admin
 from retro_cable.admin import station as admin_station
 from retro_cable.admin import store
@@ -233,6 +234,7 @@ def create_app(
     app.include_router(admin.router(schedules, clock, config.db_path, config.seed))
     app.include_router(admin_media.router(config.media_dir, clock))
     app.include_router(admin_station.router(config.db_path))
+    app.include_router(admin_reports.router(config.db_path))
     app.include_router(watch.router(schedules, clock))
 
     @app.get("/media/{path:path}", name="getMedia", include_in_schema=False)

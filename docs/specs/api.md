@@ -71,6 +71,7 @@ Admin routes live under `/admin/*` (`/api/admin/*` behind Caddy) and appear in `
 | `GET /admin/state` | `adminState` | Revision, catalog version and can_undo |
 | `GET /admin/media/progress` | `adminMediaProgress` | How far the rig's conversion has got (M2): see below. 404 until the rig has written `progress.json` |
 | `GET /admin/station/runs?limit=` | `adminStationRuns` | The weekly station manager's runs, newest first (M5; `limit` 1 to 100, default 20): `auto_apply` (`RC_STATION_AUTO_APPLY` on this server) and per run its id, `created_at`, `week_of`, `status` (`applied`, `proposed`, `dry_run`, `skipped`, `failed`), model, the `revision_id` it saved, a summary, the report (signals, changes, power hours, what was left out; `catalog.md`, M5) and `can_undo` (applied and still the head revision: `POST /admin/undo` reverts it) |
+| `GET /admin/reports?limit=` | `adminReports` | The Sunday reports, newest first (Phase 8; `limit` 1 to 52, default 8): `schedule` ("Sundays at 8 AM") and per report its id, `created_at`, `week_of` and the report (`ops.md`, The Sunday report): viewing against the week before, the week's station manager run, what waits for Brandon, what is on the air and the carried titles with nothing yet, the conversion, the backups with the restore test's schedule warnings, and the headline it pushed |
 
 **Conversion progress** (`GET /admin/media/progress`, M2 B13) reads `progress.json` at the media root, which the rig's worker keeps current (`ingest/progress.py`, see `ops.md`):
 

@@ -1,0 +1,21 @@
+[Unit]
+Description=Retro Cable nightly backup and restore test (ops/backup.sh)
+Documentation=file:///opt/retro-cable/docs/specs/ops.md
+Requires=docker.service
+After=docker.service network-online.target remote-fs.target
+Wants=network-online.target
+# The homelab's failure alert (a push on the ntfy `backups` topic); a host without that
+# template unit only logs that it is missing.
+OnFailure=ntfy-notify@%n.service
+
+[Service]
+Type=oneshot
+# Installed by ops/systemd/install.sh, which sets User= to the checkout's owner (the user who
+# runs deploy.sh and docker) and the checkout's path if it isn't /opt/retro-cable.
+User=CHECKOUT_OWNER
+WorkingDirectory=/opt/retro-cable
+# Waits for a running deploy (shared lock), backs up inside the api container, copies the
+# backup to RC_BACKUP_DIR on the NAS and restore-tests that copy.
+ExecStart=/opt/retro-cable/ops/backup.sh
+TimeoutStartSec=1h
+Nice=10
