@@ -35,8 +35,9 @@ from retro_cable.ingest.plex import _title_index, normalize_title
 VIDEO = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".mpg", ".mpeg", ".xvid",
          ".divx", ".flv", ".webm"}  # fmt: skip
 SKIP_DIRS = {"@eaDir", "#recycle", "#snapshot", ".AppleDouble"}
-EXTRA = re.compile(r"(?:^|[-_. ])(?:sample|trailer|featurette|behindthescenes|extras?)(?:$|[-_. ])",
-                   re.I)  # fmt: skip
+EXTRA = re.compile(
+    r"(?:^|[-_. ])(?:samples?|trailers?|featurettes?|behindthescenes|extras?)(?:$|[-_. ])", re.I
+)
 
 _SXE = re.compile(r"(?<![A-Za-z0-9])[Ss](\d{1,2})[ ._-]?[Ee](\d{1,3})(?:-?[Ee]\d{1,3})*")
 _NXM = re.compile(r"(?<![0-9A-Za-z])(\d{1,2})x(\d{2,3})(?![0-9])")
@@ -327,14 +328,21 @@ def _absolute(files: list[Path]) -> dict[Path, tuple[int, int, str]]:
     return found
 
 
+def _in_extras(f: Path, folder: Path) -> bool:
+    """In an `Extras` / `Featurettes` folder below the show folder (`Mission Hill - Extras/
+    Animatic Episodes - S1E15.avi`): never an episode, whatever its name says."""
+    return any(EXTRA.search(p.name) for p in f.relative_to(folder).parents if p.name)
+
+
 def _collect(
     folder: Path, root: Path, stats: ScanStats, rank: int = 0
 ) -> tuple[list[Path], list[_Found]]:
     files = _video_files(folder)
-    episodes = {f: parse_episode(f.parent.name, f.name) for f in files}
+    extras = {f for f in files if _in_extras(f, folder)}
+    episodes = {f: None if f in extras else parse_episode(f.parent.name, f.name) for f in files}
     loose: dict[Path, list[Path]] = {}
     for f, parsed in episodes.items():
-        if parsed is not None or _season_of(f.parent.name) is not None:
+        if parsed is not None or f in extras or _season_of(f.parent.name) is not None:
             continue
         # `Season 1/Gravity Falls 720p/01 Tourist Trapped.mp4`: a release folder in a season
         if f.parent != folder and not EXTRA.search(f.parent.name):

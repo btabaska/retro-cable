@@ -602,3 +602,23 @@ def test_scan_reads_absolute_numbers_and_release_folders_in_a_season(
         "Show/Extras/Making Of 01.mkv", "Show/Extras/Making Of 02.mkv",
         "Show/Extras/Making Of 26.mkv",
     ]  # fmt: skip
+
+
+def test_files_in_an_extras_folder_are_never_episodes(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    # Mission Hill's DVD rip keeps the unfinished episodes' animatics in `Mission Hill -
+    # Extras`, named `S1E15`; they aired on the mini as episodes 15 and 16 (Nov 2026).
+    root = tmp_path / "tv"
+    show = root / "Dexters Laboratory"
+    touch(show / "Dexters Laboratory - Season 1" / "Dexters Laboratory - S1E01 - Changes.avi")
+    touch(show / "Dexters Laboratory - Extras" / "Animatic Episodes - S1E15 - Unfinished.avi")
+    touch(show / "Featurettes" / "Season 1" / "Dexters Laboratory - S01E02 - Making Of.mkv")
+    stats = scan_tv(db, root, load_catalog(make_catalog()))
+    assert rows(db, "SELECT show_id, season, episode FROM episodes") == [
+        ("dexters-laboratory", 1, 1)
+    ]
+    assert sorted(stats.unparsed) == [
+        "Dexters Laboratory/Dexters Laboratory - Extras/Animatic Episodes - S1E15 - Unfinished.avi",
+        "Dexters Laboratory/Featurettes/Season 1/Dexters Laboratory - S01E02 - Making Of.mkv",
+    ]
