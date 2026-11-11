@@ -948,3 +948,58 @@ def test_no_search_while_every_indexer_is_down(
     radarr.health = [{"message": "Indexers unavailable due to failures: IPT"}]
     out = asdict(acquire(library, catalog, sonarr=None, radarr=radarr, dry_run=False, now=now))
     assert out["movies"]["searched_missing"] is True, "Bitmagnet still searches"
+
+
+# --- searching again for missing episodes (Nov 11 2026) ------------------------------------
+
+
+def test_missing_episodes_are_searched_again_once_a_day(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Sonarr, like Radarr, searches a series when it is added and never again. On Nov 11,
+    112 of 145 series in sonarr-livetv had never had a file: 42 never searched, 63 searched
+    once on Nov 9 while every indexer was failing. So acquire asks sonarr-livetv to search
+    its missing monitored episodes again, at most daily, on its own clock."""
+    from datetime import UTC, datetime, timedelta
+
+    catalog = load_catalog(make_catalog())
+    first = datetime(2026, 11, 11, 2, 0, tzinfo=UTC)
+
+    def run(now: datetime, **kw: Any) -> tuple[FakeArr, FakeArr, dict[str, Any]]:
+        sonarr = FakeArr("series", lookups=SONARR_LOOKUPS)
+        radarr = FakeArr("movie", lookups=RADARR_LOOKUPS)
+        report = acquire(library, catalog, sonarr=sonarr, radarr=radarr, now=now, **kw)
+        out: dict[str, Any] = asdict(report)
+        return sonarr, radarr, out
+
+    sonarr, radarr, out = run(first, dry_run=False)
+    assert {"name": "MissingEpisodeSearch", "monitored": True} in sonarr.commands
+    assert out["shows"]["searched_missing"] is True
+    assert [c["name"] for c in radarr.commands] == ["MissingMoviesSearch"]
+    sonarr, _, out = run(first + timedelta(hours=6), dry_run=False)
+    assert "MissingEpisodeSearch" not in [c["name"] for c in sonarr.commands]
+    assert out["shows"]["searched_missing"] is False
+    sonarr, _, _ = run(first + timedelta(days=1, minutes=1), dry_run=True)
+    assert sonarr.commands == [], "a dry run searches nothing"
+    sonarr, _, _ = run(first + timedelta(days=1, minutes=1), dry_run=False)
+    assert "MissingEpisodeSearch" in [c["name"] for c in sonarr.commands]
+
+
+def test_no_episode_search_while_every_search_indexer_is_down(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Sonarr's words for it (Nov 10): "All search-capable indexers are temporarily
+    unavailable due to recent indexer errors". Skipped and not recorded."""
+    from datetime import UTC, datetime
+
+    catalog = load_catalog(make_catalog())
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS)
+    sonarr.health = [{"message": "All search-capable indexers are temporarily unavailable"
+                                 " due to recent indexer errors"}]  # fmt: skip
+    now = datetime(2026, 11, 11, 2, 0, tzinfo=UTC)
+    out = asdict(acquire(library, catalog, sonarr=sonarr, radarr=None, dry_run=False, now=now))
+    assert out["shows"]["searched_missing"] is False
+    assert "MissingEpisodeSearch" not in [c["name"] for c in sonarr.commands]
+    sonarr.health = []
+    out = asdict(acquire(library, catalog, sonarr=sonarr, radarr=None, dry_run=False, now=now))
+    assert out["shows"]["searched_missing"] is True

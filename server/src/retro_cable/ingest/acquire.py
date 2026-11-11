@@ -34,8 +34,9 @@ Rules:
   premiere anywhere, or a US debut). Seasons a part_of or episodes_of show needs are kept.
   Sonarr then adds no new seasons of that show, and unfinished downloads holding only those
   seasons are cancelled (see trim_seasons).
-- radarr-livetv is asked to search its missing movies again about daily: Radarr searches
-  a movie only when it is added, and its RSS sync sees only new posts.
+- radarr-livetv and sonarr-livetv are asked to search their missing movies and episodes
+  again about daily: they search a title only when it is added, and their RSS sync sees
+  only new posts.
 - `dry_run` only reads (GET); nothing is added, changed, cancelled or searched.
 
 The API keys travel in a header (ingest/http.py) and never appear in output or a repr.
@@ -220,7 +221,7 @@ class InstanceReport:
     # Seasons unmonitored because they can never air (sonarr-livetv; see trim_seasons): id,
     # title, seasons and (not in a dry run) how many unfinished downloads were cancelled.
     trimmed: list[dict[str, Any]] = field(default_factory=list)
-    searched_missing: bool = False  # radarr-livetv was asked to search its missing movies
+    searched_missing: bool = False  # asked to search its missing movies or episodes again
 
 
 @dataclass
@@ -670,29 +671,54 @@ def trim_seasons(request: Request, rules: Airable, report: InstanceReport, dry_r
 
 
 SEARCH_EVERY = timedelta(hours=23)  # about daily, with the worker's 6-hour passes
-_SEARCHED = "acquire-search-movies"  # import_runs source
-_NO_INDEXERS = re.compile(r"^(All indexers are unavailable|No indexers available)", re.I)
+_NO_INDEXERS = re.compile(
+    r"^(All (search-capable )?indexers are (temporarily )?unavailable|No indexers available)",
+    re.I,
+)
 _FAILING = re.compile(r"^Indexers unavailable due to failures(?: for more than \d+ hours)?: (.+)$")
 
 
-def search_missing_movies(
+@dataclass(frozen=True)
+class _Search:
+    root: str
+    command: dict[str, Any]
+    source: str  # import_runs source: when it last searched
+
+
+_SEARCH = {
+    RADARR: _Search(
+        RADARR_ROOT,
+        {"name": "MissingMoviesSearch", "filterKey": "monitored", "filterValue": "true"},
+        "acquire-search-movies",
+    ),
+    SONARR: _Search(
+        SONARR_ROOT, {"name": "MissingEpisodeSearch", "monitored": True}, "acquire-search-episodes"
+    ),
+}
+
+
+def search_missing(
     db: sqlite3.Connection, request: Request, report: InstanceReport, now: datetime
 ) -> None:
-    """Ask radarr-livetv to search all its missing movies again, at most daily. Radarr
-    searches a movie once, when it is added, and its RSS sync only sees new posts, so a
-    release that was missing then (or had no seeders) is otherwise never found."""
+    """Ask the instance to search all its missing monitored movies or episodes again, at
+    most daily. Radarr and Sonarr search a title once, when it is added, and their RSS sync
+    only sees new posts, so a release that was missing then (or had no seeders, or came
+    while every indexer was failing) is otherwise never found."""
+    search = _SEARCH[report.instance]
     last = db.execute(
-        "SELECT MAX(started_at) FROM import_runs WHERE source = ?", (_SEARCHED,)
+        "SELECT MAX(started_at) FROM import_runs WHERE source = ?", (search.source,)
     ).fetchone()[0]
     if last is not None and now - datetime.fromisoformat(last) < SEARCH_EVERY:
         return
     try:
         roots = [str(r.get("path", "")).rstrip("/") or "/"
                  for r in request("GET", "/api/v3/rootfolder", None, None) or []]  # fmt: skip
-        if roots != [RADARR_ROOT]:
-            report.error = report.error or f"{RADARR}'s root folders are {roots}: not searching"
+        if roots != [search.root]:
+            report.error = (
+                report.error or f"{report.instance}'s root folders are {roots}: not searching"
+            )
             return
-        # Radarr backs off from failing indexers; with none left a search finds nothing.
+        # The arrs back off from failing indexers; with none left a search finds nothing.
         health = [
             str(h.get("message", "")) for h in request("GET", "/api/v3/health", None, None) or []
         ]
@@ -704,15 +730,14 @@ def search_missing_movies(
             searching = {str(i.get("name")) for i in indexers if i.get("enableAutomaticSearch")}
             if searching <= down:
                 return
-        search = {"name": "MissingMoviesSearch", "filterKey": "monitored", "filterValue": "true"}
-        request("POST", "/api/v3/command", None, search)
+        request("POST", "/api/v3/command", None, search.command)
     except _ERRORS as err:
         report.failed.append({"id": "missing", "title": "", "reason": f"search: {err}"})
         return
     stamp = now.isoformat()
     db.execute(
         "INSERT INTO import_runs (source, started_at, finished_at, stats) VALUES (?, ?, ?, '{}')",
-        (_SEARCHED, stamp, stamp),
+        (search.source, stamp, stamp),
     )
     db.commit()
     report.searched_missing = True
@@ -737,6 +762,7 @@ def acquire(
     _add(RADARR_API, radarr, [w for w in found if w.kind == "movie"], report.movies, dry_run)
     if sonarr is not None and report.shows.error is None:
         trim_seasons(sonarr, airable(db, catalog, extra), report.shows, dry_run)
-    if radarr is not None and report.movies.error is None and now is not None and not dry_run:
-        search_missing_movies(db, radarr, report.movies, now)
+    for request, instance in ((sonarr, report.shows), (radarr, report.movies)):
+        if request is not None and instance.error is None and now is not None and not dry_run:
+            search_missing(db, request, instance, now)
     return report
