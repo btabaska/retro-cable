@@ -389,3 +389,15 @@ def test_lineup_movie_ids_come_from_the_effective_overrides(make_catalog: MakeCa
     )
     catalog = load_catalog(make_catalog(overrides=overrides))
     assert lineup_movie_ids(catalog) == {"addams-family-reunion": 11508}
+
+
+def test_a_run_with_nothing_to_fill_writes_nothing(db: sqlite3.Connection) -> None:
+    """Every write bumps SQLite's data_version, which makes the api rebuild its schedules: a
+    6-hourly run that rewrote every episode with its own values slowed the TV while it ran.
+    Once filled, a run changes only its own import_runs row."""
+    seed(db)
+    described = {456: {10: [replace(f, overview="Words.") for f in SIMPSONS[456][10]]}}
+    fill_gaps(db, FakeSource(described), now=NOW)
+    before = db.total_changes
+    fill_gaps(db, FakeSource(described), now=NOW)
+    assert db.total_changes - before == 1

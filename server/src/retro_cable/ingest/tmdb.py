@@ -210,12 +210,17 @@ def _fill_show(
                 if row["air_date"] is None or row["runtime_seconds"] is None:
                     stats.mismatched_titles.append(f"{show_id} S{f.season:02d}E{f.episode:02d}")
                 continue
-            if row["air_date"] is None and air:
-                stats.filled_air_dates += 1
-            if row["runtime_seconds"] is None and f.runtime_seconds:
-                stats.filled_runtimes += 1
-            if not row["summary"] and f.overview:
-                stats.filled_summaries += 1
+            fills = (
+                not row["title"] and f.title,
+                row["air_date"] is None and air,
+                row["runtime_seconds"] is None and f.runtime_seconds,
+                not row["summary"] and f.overview,
+            )
+            if not any(fills):
+                continue  # rewriting the same values would still make the api rebuild
+            stats.filled_air_dates += bool(fills[1])
+            stats.filled_runtimes += bool(fills[2])
+            stats.filled_summaries += bool(fills[3])
             db.execute(
                 """UPDATE episodes SET
                      title = CASE WHEN title = '' THEN ? ELSE title END,
@@ -257,19 +262,20 @@ def _fill_by_title(
         if there is not None and there["title"] and _title_key(there["title"]) == title:
             continue
         air = found.air_date.isoformat() if found.air_date else None
-        if row["air_date"] is None and air:
-            stats.filled_air_dates += 1
-        if row["runtime_seconds"] is None and found.runtime_seconds:
-            stats.filled_runtimes += 1
-        db.execute(
-            """UPDATE episodes SET
-                 air_date_source = CASE WHEN air_date IS NULL AND ? IS NOT NULL
-                   THEN 'tmdb' ELSE air_date_source END,
-                 air_date = COALESCE(air_date, ?),
-                 runtime_seconds = COALESCE(runtime_seconds, ?)
-               WHERE show_id = ? AND season = ? AND episode = ?""",
-            (air, air, found.runtime_seconds, show_id, *key),
-        )
+        dated = row["air_date"] is None and air is not None
+        timed = row["runtime_seconds"] is None and found.runtime_seconds is not None
+        stats.filled_air_dates += dated
+        stats.filled_runtimes += timed
+        if dated or timed:  # with nothing to add, a write would only make the api rebuild
+            db.execute(
+                """UPDATE episodes SET
+                     air_date_source = CASE WHEN air_date IS NULL AND ? IS NOT NULL
+                       THEN 'tmdb' ELSE air_date_source END,
+                     air_date = COALESCE(air_date, ?),
+                     runtime_seconds = COALESCE(runtime_seconds, ?)
+                   WHERE show_id = ? AND season = ? AND episode = ?""",
+                (air, air, found.runtime_seconds, show_id, *key),
+            )
         stats.matched_by_title += 1
         moved.add(key)
     return moved

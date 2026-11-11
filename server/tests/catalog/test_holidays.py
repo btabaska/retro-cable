@@ -170,3 +170,18 @@ def test_overrides_still_win_over_a_description(make_catalog: object) -> None:
     t = Tagger(catalog)
     got = t.tags("the-simpsons", "episode", "The Simpsons", "x", 8, 1, "It's Christmas Eve.")
     assert got == frozenset()
+
+
+def test_keyword_matches_are_remembered_across_rebuilds() -> None:
+    """The scheduler builds a new Tagger on every rebuild (any database change), and scanning
+    thousands of descriptions each time cost the mini half a second per rebuild (Nov 11 2026).
+    The same text under the same holiday words is matched once."""
+    from retro_cable.catalog.holidays import _matches
+
+    catalog = load_catalog(REPO_CATALOG)
+    text = "A brand new description about a snow day that nobody has tagged before, 7d1e."
+    Tagger(catalog).tags("s", "episode", "Show", "Title", 1, 1, text)
+    before = _matches.cache_info()
+    assert Tagger(catalog).tags("s", "episode", "Show", "Title", 1, 1, text) == frozenset()
+    after = _matches.cache_info()
+    assert after.hits >= before.hits + 2 and after.misses == before.misses  # title and text

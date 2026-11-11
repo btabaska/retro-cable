@@ -26,6 +26,7 @@ import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
+from functools import lru_cache
 
 from retro_cable.catalog.air_dates import episode_key
 from retro_cable.catalog.load import Catalog
@@ -91,9 +92,25 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", folded.lower()).strip()
 
 
-def _pattern(words: Iterable[str]) -> re.Pattern[str]:
+Patterns = tuple[tuple[str, str], ...]  # (holiday id, regex source), hashable
+
+
+def _pattern(words: Iterable[str]) -> str:
     alternatives = "|".join(re.escape(normalize(w)) for w in sorted(words))
-    return re.compile(rf"(?<![a-z0-9])(?:{alternatives})")
+    return rf"(?<![a-z0-9])(?:{alternatives})"
+
+
+@lru_cache(maxsize=64)
+def _compiled(patterns: Patterns) -> tuple[tuple[str, re.Pattern[str]], ...]:
+    return tuple((hid, re.compile(rx)) for hid, rx in patterns)
+
+
+@lru_cache(maxsize=1 << 16)
+def _matches(patterns: Patterns, text: str) -> frozenset[str]:
+    """The holidays whose words `text` names. Remembered: the scheduler builds a Tagger on
+    every rebuild, and scanning thousands of descriptions each time cost half a second."""
+    folded = normalize(text)
+    return frozenset(hid for hid, rx in _compiled(patterns) if rx.search(folded))
 
 
 def holiday_date(holiday: Holiday, year: int) -> date:
@@ -151,14 +168,15 @@ class Tagger:
 
     def __init__(self, catalog: Catalog) -> None:
         self.holidays = {h.id: h for h in catalog.holidays.holidays}
-        self._patterns: list[tuple[str, re.Pattern[str]]] = []
-        self._described: list[tuple[str, re.Pattern[str]]] = []
+        patterns: list[tuple[str, str]] = []
+        described: list[tuple[str, str]] = []
         for h in catalog.holidays.holidays:
             words = {normalize(h.name), *KEYWORDS.get(h.id, ())}
-            self._patterns.append((h.id, _pattern(words)))
+            patterns.append((h.id, _pattern(words)))
             strict = DESCRIPTION_KEYWORDS.get(h.id)
-            described = {normalize(h.name), *strict} if strict is not None else words
-            self._described.append((h.id, _pattern(described)))
+            described.append((h.id, _pattern({normalize(h.name), *strict} if strict else words)))
+        self._patterns: Patterns = tuple(patterns)
+        self._described: Patterns = tuple(described)
         self._tagged: dict[tuple[str, str], set[str]] = {}
         for h in catalog.holidays.holidays:
             for item in h.tagged:
@@ -181,12 +199,10 @@ class Tagger:
         self._calendar: dict[date, Calendar] = {}
 
     def keyword_tags(self, text: str) -> frozenset[str]:
-        folded = normalize(text)
-        return frozenset(hid for hid, rx in self._patterns if rx.search(folded))
+        return _matches(self._patterns, text)
 
     def description_tags(self, text: str) -> frozenset[str]:
-        folded = normalize(text)
-        return frozenset(hid for hid, rx in self._described if rx.search(folded))
+        return _matches(self._described, text)
 
     def tags(
         self,
