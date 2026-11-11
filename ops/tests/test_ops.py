@@ -21,6 +21,7 @@ SCRIPTS = [
     "rollback.sh",
     "smoke.sh",
     "station-manager.sh",
+    "backup.sh",
     "systemd/install.sh",
     "rig/worker.sh",
     "rig/up.sh",
@@ -860,10 +861,11 @@ def test_install_renders_the_units_once_and_enables_the_timer(tmp_path: Path) ->
     assert (dest / "retro-cable-station-manager.timer").read_text() == timer.replace(
         "/opt/retro-cable", repo
     )
+    assert (dest / "retro-cable-backup.service").read_text().count(f"{repo}/ops/backup.sh") == 1
     assert calls.read_text().splitlines() == [
         "daemon-reload",
-        "enable --now retro-cable-station-manager.timer",
-        "list-timers retro-cable-station-manager.timer --no-pager",
+        "enable --now retro-cable-station-manager.timer retro-cable-backup.timer",
+        "list-timers retro-cable-station-manager.timer retro-cable-backup.timer --no-pager",
     ]
 
     # Again: nothing to rewrite, so no reload; the check passes.
@@ -890,3 +892,125 @@ def test_api_gets_the_local_model_settings_and_the_example_names_them() -> None:
     for key in ("RC_LLM_URL", "RC_LLM_KEY", "RC_LLM_MODEL", "RC_STATION_AUTO_APPLY"):
         assert f"# {key}=" in text
     assert re.search(r"^# RC_LLM_KEY=\s", text, flags=re.M), "names only, never a key"
+
+
+# --- nightly backups (Phase 8) ------------------------------------------------
+
+BACKUP = "retro-cable-20261112T090000Z.sqlite.gz"
+OLD = "retro-cable-20240101T090000Z.sqlite.gz"
+
+
+def test_backup_timer_runs_nightly_at_1am_new_york_and_catches_up() -> None:
+    timer = unit("retro-cable-backup.timer")
+    assert timer["Timer"]["OnCalendar"] == "*-*-* 01:00:00 America/New_York"
+    assert timer["Timer"]["Persistent"] == "true"
+    assert timer["Timer"]["Unit"] == "retro-cable-backup.service"
+    assert timer["Install"]["WantedBy"] == "timers.target"
+    service = unit("retro-cable-backup.service")
+    assert service["Service"]["Type"] == "oneshot"
+    assert service["Service"]["ExecStart"] == "/opt/retro-cable/ops/backup.sh"
+    assert service["Unit"]["Requires"] == "docker.service"
+    assert service["Service"]["User"] == "CHECKOUT_OWNER"
+
+
+def test_timer_jobs_alert_through_the_homelab_when_they_fail() -> None:
+    for name in ("retro-cable-backup.service", "retro-cable-station-manager.service"):
+        assert unit(name)["Unit"]["OnFailure"] == "ntfy-notify@%n.service"
+
+
+def test_backup_shares_the_deploy_lock() -> None:
+    text = (OPS / "backup.sh").read_text()
+    assert 'exec 9>"$state/deploy.lock"' in text and "flock -w" in text
+
+
+@pytest.fixture
+def backup_host(tmp_path: Path) -> tuple[dict[str, str], Path, Path, Path]:
+    """A fake docker whose api container takes a backup into the data dir, names an old NAS
+    copy (and a path outside the folder) as expired, and saves what the restore test reads."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log, data, nas = tmp_path / "docker.log", tmp_path / "data", tmp_path / "nas"
+    nas.mkdir()
+    (nas / OLD).write_text("old")
+    (nas / "home-assistant.tar").write_text("not ours")
+    (tmp_path / "outside.sqlite.gz").write_text("never removed")
+    docker = bin_dir / "docker"
+    docker.write_text(f"""#!/usr/bin/env bash
+echo "$*" >> {log}
+case "$*" in
+  *"backup take"*) mkdir -p {data}/backups; echo backup > {data}/backups/{BACKUP}; echo {BACKUP} ;;
+  *"backup expired"*) cat > {tmp_path}/listed; echo {OLD}; echo ../outside.sqlite.gz ;;
+  *"backup verify"*) cat > {tmp_path}/verified ;;
+esac
+""")
+    docker.chmod(0o755)
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "RC_STATE_DIR": str(tmp_path / "state"),
+        "RC_DATA_DIR": str(data),
+        "RC_BACKUP_DIR": str(nas),
+        "RC_API_WAIT_DELAY": "0",
+        "RC_ENV_FILE": str(tmp_path / "none.env"),
+    }
+    return env, log, nas, tmp_path
+
+
+def test_backup_copies_to_the_nas_prunes_it_and_restore_tests_the_nas_copy(
+    backup_host: tuple[dict[str, str], Path, Path, Path],
+) -> None:
+    env, log, nas, tmp = backup_host
+    result = run("backup.sh", env=env)
+    assert result.returncode == 0, result.stderr
+    compose = f"compose -f {OPS / 'compose.yml'} exec -T api"
+    calls = log.read_text().splitlines()
+    assert calls[0].endswith(f"{compose} true")
+    assert calls[1].endswith(f"{compose} python -m retro_cable.backup take --dest /data/backups")
+    assert calls[2].endswith(f"{compose} python -m retro_cable.backup expired")
+    assert calls[3].endswith(f"{compose} python -m retro_cable.backup verify - --name {BACKUP}")
+    assert (nas / BACKUP).read_text() == "backup\n"
+    assert not list(nas.glob(".*part"))
+    assert sorted((tmp / "listed").read_text().split()) == sorted([BACKUP, OLD])
+    assert not (nas / OLD).exists()
+    assert (nas / "home-assistant.tar").exists()
+    assert (tmp / "outside.sqlite.gz").exists()
+    assert (tmp / "verified").read_text() == "backup\n"  # the NAS copy, not the local one
+
+
+def test_backup_needs_its_nas_folder(backup_host: tuple[dict[str, str], Path, Path, Path]) -> None:
+    env, log, nas, _ = backup_host
+    shutil.rmtree(nas)
+    result = run("backup.sh", env=env)
+    assert result.returncode == 1 and "mounted" in result.stderr
+    assert not log.exists()
+    del env["RC_BACKUP_DIR"]
+    result = run("backup.sh", env=env)
+    assert result.returncode == 2 and "RC_BACKUP_DIR" in result.stderr
+
+
+def test_backup_reads_its_folder_from_the_env_file(
+    backup_host: tuple[dict[str, str], Path, Path, Path],
+) -> None:
+    env, _, nas, tmp = backup_host
+    env_file = tmp / "host.env"
+    env_file.write_text(f"RC_BACKUP_DIR={nas}  # the NAS\n")
+    del env["RC_BACKUP_DIR"]
+    env["RC_ENV_FILE"] = str(env_file)
+    result = run("backup.sh", env=env)
+    assert result.returncode == 0, result.stderr
+    assert (nas / BACKUP).exists()
+
+
+def test_backup_fails_when_the_restore_test_does(
+    backup_host: tuple[dict[str, str], Path, Path, Path],
+) -> None:
+    env, _, nas, _ = backup_host
+    docker = Path(env["PATH"].split(":")[0]) / "docker"
+    verify = '*"backup verify"*) '
+    docker.write_text(docker.read_text().replace(f"{verify}cat", f"{verify}exit 1; cat"))
+    result = run("backup.sh", env=env)
+    assert result.returncode == 1
+    assert (nas / BACKUP).exists()  # the copy stays; the failure shows in the unit's status
+
+
+def test_env_example_names_the_backup_folder() -> None:
+    assert "# RC_BACKUP_DIR=/mnt/nas-backups/retro-cable" in (OPS / ".env.example").read_text()
