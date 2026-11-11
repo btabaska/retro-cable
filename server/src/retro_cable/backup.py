@@ -8,7 +8,9 @@
            prunes the NAS copies this way: the container can't see them)
   verify   the restore test, on a backup file or `-` for stdin: unzip it to a scratch
            directory, check its integrity, migrate it, and build a day on every channel from
-           the catalog and its /admin overlay with the scheduler checks. Exit 1 if it fails.
+           the catalog and its /admin overlay. Exit 1 if any of that fails. What the /admin
+           smoke test finds in those days (an undated movie, say) is the data's problem, not
+           the backup's: recorded as warnings, for the Sunday report.
 
 `take` and `verify` record their result in the live database's import_runs (sources `backup`
 and `restore-test`); the restored copy is thrown away. On the mini ops/backup.sh runs them in
@@ -105,6 +107,7 @@ def take(db_path: Path, dest: Path, now: datetime, *, create: bool = True) -> Pa
 class RestoreTest:
     ok: bool
     problems: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     schema: int | None = None
     revision: int | None = None
     channels: int = 0
@@ -165,7 +168,10 @@ def _check(db: sqlite3.Connection, base: Catalog, today: date, seed: int) -> Res
     sched = Scheduler(merged, load_library(db), seed=seed)
     days = [safe_day(y, today.month, today.day) for y in TEST_YEARS]
     for channel in merged.channels.channels:
-        test.problems += [f"{channel.id}: {p}" for p in smoke_test(sched, channel, days)]
+        try:
+            test.warnings += [f"{channel.id}: {p}" for p in smoke_test(sched, channel, days)]
+        except Exception as e:  # any crash building a day fails the test
+            test.problems.append(f"{channel.id}: building a day failed: {type(e).__name__}: {e}")
         test.channels += 1
     test.ok = not test.problems
     return test
@@ -269,6 +275,8 @@ def main(
           f" {result.channels} channels, {result.counts}")  # fmt: skip
     for p in result.problems:
         print(f"  {p}", file=sys.stderr)
+    for w in result.warnings:
+        print(f"  warning: {w}", file=sys.stderr)
     return 0 if result.ok else 1
 
 

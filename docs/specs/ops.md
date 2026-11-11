@@ -176,7 +176,7 @@ GitHub is the handoff point: Claude Code opens PRs, a self-hosted runner on your
 | OS patching | Weekly | Security updates; holds reboots for approval | Yes, for reboots |
 | Backups | Nightly | SQLite to the NAS with a restore test every night (see Nightly backups below; `ops/.env` stays on the host) | No |
 | Cert and DNS check | Daily | Certificate validity and split DNS | No |
-| Weekly report | Sunday | Telemetry summary, archive gaps, pending approvals, AI proposal | — |
+| Weekly report | Sunday | Telemetry summary, archive gaps, pending approvals, AI proposal (see The Sunday report below: no telemetry stack yet, so viewing, library, conversion and backups) | — |
 
 When a job fails in a way its runbook doesn't cover, Hermes opens a GitHub issue with logs; Claude Code fixes the cause in the repo.
 
@@ -340,4 +340,14 @@ The plan's "SQLite and config to the NAS; monthly test restore". What a backup h
 - **Where:** the NAS `backups` share (volume1), mounted read-write on the mini at `/mnt/nas-backups` (CIFS automount with the mini's other NAS credentials, uid 1000), folder `retro-cable/`. `RC_BACKUP_DIR=/mnt/nas-backups/retro-cable`.
 - **Install, once:** create the folder, add `RC_BACKUP_DIR` to `ops/.env`, then `sudo ops/systemd/install.sh`, which now installs both timers (station manager and backup); `deploy.sh`'s `--check` covers both.
 - **Restoring:** stop the stack, `gunzip -c <backup> > $RC_DATA_DIR/retro-cable.db` (remove the old `-wal` and `-shm`), start it with `ops/deploy.sh <version>`. `ops/rollback.sh` is still the way back from a bad deploy (its snapshot is taken at the deploy).
+- **Schedule warnings, not failures:** the restore test fails only when the backup can't be used: unreadable, corrupt, failing the migrations or the catalog checks, or a crash while building a day. What the /admin smoke test finds in the days it builds is the data's problem, not the backup's, so it is recorded as `warnings` and the job passes; the Sunday report lists them. The first run on the mini (Nov 11 2026) found three movies with no date at all (the scheduler airs an undated movie in any year), one of them a wrong download (see `catalog.md`).
 - **Not backed up:** `ops/.env` (the media secret, the LiteLLM, Plex and TMDB keys stay on the host and out of the NAS share; each can be re-issued) and the rig's own database (`ops/rig/data`: its encodes are recorded in `manifest.json` on the NAS, and a fresh scan rebuilds the rest).
+
+## The Sunday report (Phase 8)
+
+The plan's weekly report, without a telemetry stack yet: `python -m retro_cable.report run [--no-push]`, from the live database and the rig's `progress.json`.
+
+- **What it covers** (the 7 days before it runs): viewing (time watched against the week before, the top 5 shows with their channel and the top 5 channels, the busiest hour; from `watch_sessions` and the station manager's signals); the week's station manager run (status and summary) and what waits for Brandon (a proposal, when auto-apply is off); what is on the air (episodes and movies that can air, shows with any, episodes added since the last report, and the carried titles of the YAML and /admin lineup with nothing that can air yet, A to Z, up to 30 named); the conversion (files done, left, failed, and hours left at the median of the rig's recent files); backups (the last backup and restore test from `import_runs`; good when a backup is under 36 hours old and its restore test passed; the restore test's schedule warnings). The headline is those in a few lines, plus anything waiting.
+- **Kept:** every run is saved in `weekly_reports` (migration 0009) and shown in /admin's Report tab (`GET /admin/reports`); the next report compares against it ("+412 episodes").
+- **Pushed** to Brandon's phone through the homelab's ntfy when `RC_NTFY_URL` is set (a topic URL on the LAN; `RC_NTFY_TOKEN` when the topic needs one, never logged; tapping opens `RC_REPORT_LINK`). Title "Retro Cable, week of Nov 8", the headline as the body, priority 4 when the backups need a look, else 3. Saved before it is pushed; a failed push exits 1 (so the unit's `OnFailure` alert fires) with only the error's type printed.
+- **On the mini:** `ops/weekly-report.sh [--no-push]` runs it in the api container, waiting for the deploy lock and the api like the station manager; `retro-cable-weekly-report.timer` fires Sundays at 8 AM New York time (after the 1 AM backup and the 2 AM station manager; `Persistent=true`), installed by `ops/systemd/install.sh` with the other two.

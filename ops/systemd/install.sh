@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Install Retro Cable's systemd timers on the mini: the weekly station manager (M5) and the
-# nightly backup (Phase 8). One time, as root:
+# Install Retro Cable's systemd timers on the mini: the weekly station manager (M5), the
+# nightly backup and the Sunday report (Phase 8). One time, as root:
 #   sudo ops/systemd/install.sh
 # Idempotent: units are rewritten only when they differ from this checkout's, then systemd
 # reloads and the timers are enabled. The service runs as the checkout's owner (the user who
@@ -13,8 +13,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 dest=${RC_SYSTEMD_DIR:-/etc/systemd/system}
 units=(retro-cable-station-manager.service retro-cable-station-manager.timer
-  retro-cable-backup.service retro-cable-backup.timer)
-timers=(retro-cable-station-manager.timer retro-cable-backup.timer)
+  retro-cable-backup.service retro-cable-backup.timer
+  retro-cable-weekly-report.service retro-cable-weekly-report.timer)
+timers=(retro-cable-station-manager.timer retro-cable-backup.timer retro-cable-weekly-report.timer)
 owner=${RC_SERVICE_USER:-$(stat -c %U "$repo" 2>/dev/null || stat -f %Su "$repo")}
 
 render() {

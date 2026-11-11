@@ -22,6 +22,7 @@ SCRIPTS = [
     "smoke.sh",
     "station-manager.sh",
     "backup.sh",
+    "weekly-report.sh",
     "systemd/install.sh",
     "rig/worker.sh",
     "rig/up.sh",
@@ -864,8 +865,10 @@ def test_install_renders_the_units_once_and_enables_the_timer(tmp_path: Path) ->
     assert (dest / "retro-cable-backup.service").read_text().count(f"{repo}/ops/backup.sh") == 1
     assert calls.read_text().splitlines() == [
         "daemon-reload",
-        "enable --now retro-cable-station-manager.timer retro-cable-backup.timer",
-        "list-timers retro-cable-station-manager.timer retro-cable-backup.timer --no-pager",
+        "enable --now retro-cable-station-manager.timer retro-cable-backup.timer"
+        " retro-cable-weekly-report.timer",
+        "list-timers retro-cable-station-manager.timer retro-cable-backup.timer"
+        " retro-cable-weekly-report.timer --no-pager",
     ]
 
     # Again: nothing to rewrite, so no reload; the check passes.
@@ -914,7 +917,11 @@ def test_backup_timer_runs_nightly_at_1am_new_york_and_catches_up() -> None:
 
 
 def test_timer_jobs_alert_through_the_homelab_when_they_fail() -> None:
-    for name in ("retro-cable-backup.service", "retro-cable-station-manager.service"):
+    for name in (
+        "retro-cable-backup.service",
+        "retro-cable-station-manager.service",
+        "retro-cable-weekly-report.service",
+    ):
         assert unit(name)["Unit"]["OnFailure"] == "ntfy-notify@%n.service"
 
 
@@ -1014,3 +1021,43 @@ def test_backup_fails_when_the_restore_test_does(
 
 def test_env_example_names_the_backup_folder() -> None:
     assert "# RC_BACKUP_DIR=/mnt/nas-backups/retro-cable" in (OPS / ".env.example").read_text()
+
+
+# --- the Sunday report (Phase 8) ----------------------------------------------
+
+
+def test_weekly_report_timer_runs_sundays_at_8am_new_york_and_catches_up() -> None:
+    timer = unit("retro-cable-weekly-report.timer")
+    assert timer["Timer"]["OnCalendar"] == "Sun *-*-* 08:00:00 America/New_York"
+    assert timer["Timer"]["Persistent"] == "true"
+    assert timer["Timer"]["Unit"] == "retro-cable-weekly-report.service"
+    service = unit("retro-cable-weekly-report.service")
+    assert service["Service"]["Type"] == "oneshot"
+    assert service["Service"]["ExecStart"] == "/opt/retro-cable/ops/weekly-report.sh"
+    assert service["Unit"]["Requires"] == "docker.service"
+    assert service["Service"]["User"] == "CHECKOUT_OWNER"
+
+
+def test_weekly_report_runs_the_job_in_the_api_container(
+    tmp_path: Path, fake_docker: tuple[Path, Path]
+) -> None:
+    bin_dir, log = fake_docker
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "RC_STATE_DIR": str(tmp_path / "state"),
+        "RC_API_WAIT_DELAY": "0",
+    }
+    result = run("weekly-report.sh", "--no-push", env=env)
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text().splitlines()
+    compose = f"compose -f {OPS / 'compose.yml'}"
+    assert calls[0].endswith(f"{compose} exec -T api true")
+    assert calls[-1].endswith(f"{compose} exec -T api python -m retro_cable.report run --no-push")
+    assert 'exec 9>"$state/deploy.lock"' in (OPS / "weekly-report.sh").read_text()
+
+
+def test_env_example_names_the_report_push_settings_without_values() -> None:
+    text = (OPS / ".env.example").read_text()
+    for key in ("RC_NTFY_URL", "RC_NTFY_TOKEN", "RC_REPORT_LINK"):
+        assert f"# {key}=" in text
+    assert re.search(r"^# RC_NTFY_TOKEN=\s", text, flags=re.M), "names only, never a token"

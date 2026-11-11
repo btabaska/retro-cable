@@ -779,3 +779,13 @@
   display: block;
   margin-top: 6px;
 }
+
+/* The Sunday report's section labels. */
+.adm-report-head {
+  margin: 14px 0 4px;
+  font-size: var(--rc-admin-font-caption);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--rc-admin-ink-muted);
+}

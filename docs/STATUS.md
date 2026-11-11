@@ -1,6 +1,19 @@
 # Status
 
-**Current phase:** Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it, M4 (Live TV downloads) on top of M3, and M5 (the weekly station manager) on top of M4. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+**Current phase:** Phase 8 (operations), started Nov 11 2026 while the rig converts the Live TV backlog: nightly backups with a restore test and the Sunday report are in review as `m6/operations`, stacked on M5. Before that, Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it, M4 (Live TV downloads) on top of M3, and M5 (the weekly station manager) on top of M4. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+
+## Phase 8 (part): backups and the Sunday report (in review, `m6/operations`, stacked on #24)
+
+Brandon (Nov 11 2026): keep building while the downloads and conversion run. Specs: `ops.md` (Nightly backups and the restore test; The Sunday report), `api.md` and `web.md` (the Report tab).
+
+- [x] Nightly backups: `python -m retro_cable.backup take` (SQLite backup API, gzipped, retention 14 nights / 8 weeks / 12 months) by `ops/backup.sh` at 1 AM, kept in the data dir and on the NAS `backups` share (`/mnt/nas-backups/retro-cable` on the mini), before the mini's restic run takes it offsite
+- [x] The restore test every night on the NAS copy: integrity, migrations, the /admin overlay through the catalog checks, and a day on every channel in 1995, 2000 and 2005; schedule findings are warnings for the report
+- [x] The Sunday report: viewing, the station manager's run and what waits for approval, what is on the air and what carried titles still lack, the conversion, backups; saved for /admin's new Report tab and pushed through the homelab's ntfy when `RC_NTFY_URL` is set; Sundays 8 AM
+- [x] Timer jobs alert through the homelab's `ntfy-notify@` when they fail
+- [x] On the mini (Nov 11): the NAS backups share mounted at `/mnt/nas-backups`, `RC_BACKUP_DIR` set, deployed, `sudo ops/systemd/install.sh`; the first backup (1.4 MB) and restore test ran
+- [ ] Brandon: an ntfy topic and token for the report (`RC_NTFY_URL`, `RC_NTFY_TOKEN`, `RC_REPORT_LINK` in the mini's `ops/.env`); until then it is in /admin only
+- [ ] Brandon (Home repo): add `/opt/retro-cable-data/backups` to the mini's restic `BACKUP_PATHS`, as the Home runbook planned "once it holds state"
+- Not yet in Phase 8: telemetry and dashboards (Prometheus, Loki, Grafana), patching, the cert and DNS check
 
 ## Milestone M5: the weekly AI station manager (in review, stacked on #23)
 
@@ -12,7 +25,7 @@ Brandon (Nov 7 2026): "make sure it runs on a weekly schedule, like Sundays at 2
 - [x] Guardrails in code: weights and power hours only (nothing carried or dropped, no dates, launches, premieres or holidays), the authenticity dial caps drift (default 30: x0.62 to x1.62), at most a fifth of a channel's weights per week, the /admin checks and a week's smoke test per channel; a Hypothesis property keeps the scheduler invariants
 - [x] Auto-apply on by default (`RC_STATION_AUTO_APPLY=1`): one /admin revision per week, undone in one tap; every run (applied, proposed, dry, skipped, failed) recorded and shown in /admin's new Station tab (`GET /api/admin/station/runs`)
 - [x] Timer: `ops/systemd/retro-cable-station-manager.{service,timer}`, Sundays 02:00 America/New_York, `Persistent=true`, running the job in the api container; shares a lock with `deploy.sh`
-- [ ] On the mini: add `RC_LLM_URL=http://192.168.10.12:4000`, `RC_LLM_MODEL=chat` and `RC_LLM_KEY` to `/opt/retro-cable/ops/.env`, deploy, then `sudo ops/systemd/install.sh` once
+- [x] On the mini (Nov 7 2026): `RC_LLM_URL`, `RC_LLM_MODEL` and `RC_LLM_KEY` in `/opt/retro-cable/ops/.env`, deployed, `sudo ops/systemd/install.sh` run
 - [ ] Brandon watches for a couple of weeks (2 hours is the minimum), then reads the first applied run in /admin → Station
 - Not yet: likes (hold Select on the banner), the authenticity dial in /admin, Telegram reports
 
@@ -26,6 +39,7 @@ Shows Retro Cable needs that aren't on the NAS are downloaded, never into Plex (
 - [x] Brandon's final list (Nov 7, 410 titles: 204 shows, 173 movies, 33 specials) applied to the YAML (`m4/final-lineup`, stacked on #22). `python -m retro_cable.channel_builder.lineup prune` kept 98 carried titles and removed 177 (61 `remove` rows, 116 not in the list). Templates were fixed where their pools emptied; no template was dropped and every channel still carries something. The other 313 kept titles are for the channel builder to place. Kept titles have the list's TMDB id and first-aired year in `overrides.yaml`; the builder records them for the shows it places (overlay `ids[]`); acquire prefers them; `/api/admin/library` lists carried titles with nothing on disk, so the rig sees builder-placed shows
 - [x] `acquire --dry-run` on the real instances (read-only, Nov 7): 80 carried titles have no files; 72 resolve (65 by TMDB id) and 8 don't (5 maybe already on the NAS under another folder name, 3 with no TMDB id or year). Details in `docs/specs/ops.md`
 - [x] First live acquire on Nov 8 (rig worker on `m5/station-manager`): 137 shows and 159 movies added. The unresolved titles were fixed by lookup-only overrides, the qualifier rule, strict TMDB matches, `part_of` (shows TheTVDB files as seasons of another series: Animaniacs 2020, Justice League Unlimited, Pokémon Horizons, The New Scooby and Scrappy-Doo Show, the Lupin parts; the scheduler airs them as their own shows) and `episodes_of` (TV movies that are episodes: Sozin's Comet, Really Big Shrimp, Reggie's Big Beach Break, joined on the rig by `ingest assemble` once their episodes convert; Heidi (1993) the same way, from TheTVDB's two-part miniseries). Mini deployed at `sha-413eeb9`
+- [x] Acquire on: `RC_ACQUIRE=1` and the two API keys on the rig since Nov 8 2026; the rig worker downloads what carried titles lack, every pass
 - [ ] Brandon reviews the prune (judgment calls in the PR; KTVU's Fox Kids block now has nothing in 1990–91 and 1996–98) and the dry run, then sets `RC_ACQUIRE=1` and the two API keys in the rig's `ops/rig/.env` and redeploys the rig worker
 
 ## Milestone M3 / Phase 11 (part): AI channel builder (in review, stacked on #18)
@@ -48,10 +62,10 @@ Shows Retro Cable needs that aren't on the NAS are downloaded, never into Plex (
 - [ ] Conversion of the real library: running on the rig since Nov 2. Only shows a channel carries (YAML, or a channel made in `/admin`), 13 episodes per show per turn, earliest year first; uncarried shows are not converted (Brandon, Nov 2). About 50–80 s per episode, so roughly 2 days for the 2,980 carried episodes (about Nov 4–5). 110 were done at 21:10 UTC on Nov 2; the `/admin` Media tab shows live progress and an ETA
 - Real episodes on the dial right now (Nov 2, 21:10 UTC): KTVU (The Simpsons 1990–2010; Batman: The Animated Series 1993–95; Animaniacs 1994–95), Cartoon Network and Boomerang (Scooby-Doo 1993–2010; on Cartoon Network also Johnny Bravo, Ed, Edd n Eddy, Courage from 1998–2000), Comedy Central (South Park 1998–2010), Toonami (Batman, 2000). Best years to try: 1995 and 1999–2001. Other channels show Off Air until their shows convert
 - [x] `/admin` Media tab backed by `GET /api/admin/media/progress`, read from the `progress.json` the rig worker keeps on the NAS (#14). Encodes count only when whole (video, audio, length within 2% of the source); `/health` and `media-index` now fail a deploy on an unwritable data dir; the web container rejects non-private clients itself (#14)
-- [ ] Plex import and TMDB fill: `PLEX_URL` and `PLEX_TOKEN` are in the mini's `ops/.env` (Nov 2, read from the NAS Plex server's own settings; the token authenticates). Waiting on a TMDB v4 read access token as `TMDB_TOKEN`. Until both run, air dates come from the disk scan's synthesized dates
+- [ ] Plex import and TMDB fill: `PLEX_URL` and `PLEX_TOKEN` are in the mini's `ops/.env` (Nov 2, read from the NAS Plex server's own settings; the token authenticates). `TMDB_TOKEN` is set too, and the mini's `tmdb` service fills air dates the library lacks (`COMPOSE_PROFILES=media-index,tmdb`)
 - [ ] Brandon's check: open the TV from a LAN device; real episodes play on their channels, and at least three channels tune and play past a program boundary
 
-Waiting on Brandon: the TMDB token (his show lineup reached `catalog/carriage.yaml` in M4, `m4/final-lineup`). Brandon approved M2 on Nov 2, with its defaults (library channels keep their shows; weekly cadence after a pretend premiere; label and colours; NVENC bitrate); only carried shows convert, and the rig reads the mini's `/admin` library.
+Brandon's show lineup reached `catalog/carriage.yaml` in M4 (`m4/final-lineup`). Brandon approved M2 on Nov 2, with its defaults (library channels keep their shows; weekly cadence after a pretend premiere; label and colours; NVENC bitrate); only carried shows convert, and the rig reads the mini's `/admin` library.
 
 Checks on #16 (`ae9ce4c`): server, web and local-test green; `make lint` and `make test` (server 397, tools 9, ops 44 + 2 skipped, web 79, e2e 8) pass in a clean worktree.
 

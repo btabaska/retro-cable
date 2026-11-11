@@ -1,0 +1,13 @@
+[Unit]
+Description=Retro Cable Sunday report, 8 AM New York time
+Documentation=file:///opt/retro-cable/docs/specs/ops.md
+
+[Timer]
+# After the 2 AM station manager and the 1 AM backup, so the report has both; a morning push.
+OnCalendar=Sun *-*-* 08:00:00 America/New_York
+# A Sunday missed while the mini was off runs at the next boot.
+Persistent=true
+Unit=retro-cable-weekly-report.service
+
+[Install]
+WantedBy=timers.target

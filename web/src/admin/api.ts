@@ -20,6 +20,8 @@ export type AdminChannelShow = S["AdminChannelShow"];
 export type PremiereResult = S["PremiereResult"];
 export type StationRuns = S["StationRuns"];
 export type StationRun = S["StationRunRow"];
+export type Reports = S["Reports"];
+export type WeeklyReport = S["WeeklyReport"];
 
 /** A pretend premiere either lands or comes back with the reason it was refused. */
 export type PremiereOutcome = { saved: true; result: PremiereResult } | { saved: false; check: CheckResult };
@@ -128,6 +130,12 @@ export async function getStationRuns(): Promise<StationRuns> {
   return data;
 }
 
+export async function getReports(): Promise<Reports> {
+  const { data, response } = await api.GET("/admin/reports", { params: { query: { limit: 8 } } });
+  if (!data) throw fail("reports", response.status);
+  return data;
+}
+
 export async function undo(): Promise<ChangeResult> {
   const { data, response } = await api.POST("/admin/undo");
   if (!data) throw fail("undo", response.status);
@@ -146,6 +154,7 @@ export interface AdminApi {
   setPremiere: typeof setPremiere;
   getMediaProgress: typeof getMediaProgress;
   getStationRuns: typeof getStationRuns;
+  getReports: typeof getReports;
   undo: typeof undo;
 }
 
@@ -160,5 +169,6 @@ export const liveAdminApi: AdminApi = {
   setPremiere,
   getMediaProgress,
   getStationRuns,
+  getReports,
   undo,
 };

@@ -13,7 +13,7 @@ from retro_cable import backup
 from retro_cable.admin import store
 from retro_cable.catalog.overlay import Overlay
 from retro_cable.db import MIGRATIONS, connect, migrate
-from tests.conftest import MakeCatalog
+from tests.conftest import CARRIAGE, MakeCatalog
 from tests.test_api_tv import seed_db
 
 NOW = datetime(2026, 11, 12, 9, 0, tzinfo=UTC)  # 4:00 AM in New York, when the timer fires
@@ -207,6 +207,28 @@ def test_a_truncated_backup_fails_the_restore_test(
     made = backup.take(db_path, tmp_path / "b", NOW).read_bytes()
     code, [stats] = verify(db_path, make_catalog(), made[: len(made) // 2], monkeypatch)
     assert code == 1 and stats["ok"] is False
+
+
+def test_schedule_problems_in_the_data_are_warnings_not_a_failed_restore(
+    db_path: Path, tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A movie with no date at all airs in any year (the scheduler allows it), which the /admin smoke test flags. That is
+    the data's problem, not the backup's: recorded as a warning, and the job still passes."""
+    db = connect(db_path)
+    db.execute(
+        "INSERT INTO movies (id, title, runtime_seconds, file_path)"
+        " VALUES ('the-lion-king', 'The Lion King', 5340, 'k.mp4')"
+    )
+    db.close()
+    carriage = CARRIAGE + "  - { show: the-lion-king, title: The Lion King, channel: disney-movies,"
+    carriage += " from: 1990-01-01, kind: movie }\n"
+    made = backup.take(db_path, tmp_path / "b", NOW)
+    code, [stats] = verify(db_path, make_catalog(carriage=carriage), made.read_bytes(), monkeypatch)
+    assert code == 0
+    assert stats["ok"] is True and stats["problems"] == []
+    warnings = stats["warnings"]
+    assert isinstance(warnings, list) and warnings
+    assert all("The Lion King would air before its first air date" in w for w in warnings)
 
 
 def test_the_restore_test_never_touches_the_live_database_beyond_its_record(
