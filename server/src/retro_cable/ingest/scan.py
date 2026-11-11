@@ -159,16 +159,28 @@ def _keys(folder: str) -> list[str]:
     return [normalize_title(n) for n in names]
 
 
+# A folder `(year)` further than this from the lineup's year is a remake, not the show
+# (`Rugrats (2021)` for the 1991 Rugrats); closer is the same show premiering elsewhere
+# first (`Sailor Moon (1992)`, which the lineup has as 1995, its US debut).
+REMAKE_YEARS = 5
+
+
 class _Index:
     def __init__(self, catalog: Catalog, kind: str, more: Mapping[str, str] = {}) -> None:
         # `more`: id -> title of others carried (the mini's /admin channels); the YAML wins.
         self.exact = {normalize_title(t): i for i, t in more.items()} | _title_index(catalog, kind)
         self.compact = {k.replace(" ", ""): v for k, v in self.exact.items()}
+        overrides = catalog.overrides.shows if kind == "show" else []
+        self.years = {o.show: o.year for o in overrides if o.year is not None}
 
     def match(self, folder: str) -> str | None:
-        for key in _keys(folder):
+        for n, key in enumerate(_keys(folder)):
             slug = self.exact.get(key) or self.compact.get(key.replace(" ", ""))
             if slug:
+                # Matched without its year (not a plex_title naming it): a remake?
+                year, lineup = show_year(folder, []), self.years.get(slug)
+                if n and year and lineup and abs(year - lineup) > REMAKE_YEARS:
+                    return None
                 return slug
         return None
 

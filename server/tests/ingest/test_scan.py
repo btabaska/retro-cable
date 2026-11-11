@@ -622,3 +622,33 @@ def test_files_in_an_extras_folder_are_never_episodes(
         "Dexters Laboratory/Dexters Laboratory - Extras/Animatic Episodes - S1E15 - Unfinished.avi",
         "Dexters Laboratory/Featurettes/Season 1/Dexters Laboratory - S01E02 - Making Of.mkv",
     ]
+
+
+def test_a_remake_years_apart_is_not_the_carried_show(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """sonarr-livetv held `Rugrats (2021)` next to `Rugrats (1991)` (Nov 11 2026): the year
+    was dropped to match the carried `Rugrats`, and the 2021 reboot aired as the 1991 show.
+    A folder whose `(year)` is more than 5 years from the lineup's year is another show,
+    stored as uncarried. A few years apart is the same show (`Sailor Moon (1992)`, which
+    the lineup has as 1995: its US debut). A plex_title that names the year still wins."""
+    carriage = CARRIAGE + (
+        "  - { show: rugrats, title: Rugrats, channel: ktvu, from: 1991-01-01 }\n"
+        "  - { show: sailor-moon, title: Sailor Moon, channel: ktvu, from: 1995-09-11 }\n"
+    )
+    overrides = """
+    shows:
+      - { show: rugrats, year: 1991 }
+      - { show: sailor-moon, year: 1995 }
+      - { show: x-men, year: 1992, plex_title: "X-Men (2011)" }
+    """
+    catalog = load_catalog(make_catalog(carriage=carriage, overrides=overrides))
+    root = tmp_path / "tv"
+    for folder in ("Rugrats (1991)", "Rugrats (2021)", "Sailor Moon (1992)", "X-Men (2011)"):
+        episode = 2 if folder == "Rugrats (2021)" else 1
+        touch(root / folder / "Season 01" / f"{folder} - S01E0{episode} - Pilot.mkv")
+    scan_tv(db, root, catalog)
+    assert rows(db, "SELECT show_id, season, episode FROM episodes ORDER BY show_id") == [
+        ("rugrats", 1, 1), ("rugrats-2021", 1, 2), ("sailor-moon", 1, 1), ("x-men", 1, 1),
+    ]  # fmt: skip
+    assert rows(db, "SELECT title FROM shows WHERE id = 'rugrats-2021'") == [("Rugrats (2021)",)]
