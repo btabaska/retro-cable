@@ -139,6 +139,21 @@ final class LiveTVTests: XCTestCase {
         XCTAssertTrue(waitFor(app.state != .runningForeground, timeout: 5))
     }
 
+    /// TV-37: Home sends the app away; coming back shows Live TV again with the banner.
+    func testReturningFromTheBackgroundShowsLiveWithTheBanner() {
+        let app = launch()
+        remote.press(.select)
+        XCTAssertTrue(element(app, "info-banner").waitForExistence(timeout: 15))
+        XCTAssertTrue(waitFor(!self.element(app, "info-banner").exists, timeout: 6))
+        remote.press(.home)
+        XCTAssertTrue(waitFor(app.state != .runningForeground, timeout: 5))
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        app.activate()
+        XCTAssertTrue(element(app, "live").waitForExistence(timeout: 10))
+        XCTAssertTrue(element(app, "info-banner").waitForExistence(timeout: 5))
+        XCTAssertTrue(waitFor(self.element(app, "banner-title").label != "Tuning…", timeout: 8))
+    }
+
     /// TV-40's measurement: 20 channel changes 4 s apart. Each one's press-to-first-frame time
     /// is in the log ("tune <channel> <ms> ms", subsystem us.tabaska.retrocable). Opt-in, since it
     /// takes a minute and a half: RC_FLIPS=1 make test-tvos-ui.
