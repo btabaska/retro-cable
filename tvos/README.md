@@ -105,14 +105,18 @@ that subsystem. Lines look like `tune ktvu 850 ms`. Signed media URLs are never 
 
 ```sh
 make tvos
-xcrun simctl boot "RC Apple TV" && open -a Simulator
+xcrun simctl boot "RC Apple TV"
 xcrun simctl install "RC Apple TV" tvos/build/Build/Products/Debug-appletvsimulator/RetroCable.app
 xcrun simctl launch "RC Apple TV" us.tabaska.retrocable -RCNoWatch
+xcrun simctl io "RC Apple TV" screenshot power-on.png
 ```
 
-The Simulator's remote (Window > Show Apple TV Remote) or the keyboard (arrows, Return, Escape,
-Space) drives it. `-RCNoWatch` keeps simulator viewing out of the station manager's data. Shut it
-down with `xcrun simctl shutdown "RC Apple TV"`.
+Xcode 27.2 has no Simulator app, so `open -a Simulator` fails. Its replacement for device and
+simulator windows is DeviceHub (`open /Applications/Xcode.app/Contents/Applications/DeviceHub.app`);
+whether it forwards a remote or the keyboard to an Apple TV simulator wasn't checked. `simctl` has
+no command for remote presses, so past the power-on screen the UI tests (`make test-tvos-ui`) are
+the way to drive the app. `-RCNoWatch` keeps simulator viewing out of the station manager's data.
+Shut it down with `xcrun simctl shutdown "RC Apple TV"`.
 
 ## Later: TestFlight with the paid account
 
