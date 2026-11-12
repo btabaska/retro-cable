@@ -77,7 +77,7 @@ public final class AppModel {
     }
 
     /// How long no signal waits between tries, and how long the server line waits after a failure.
-    public static let retrySeconds: Double = 5
+    public nonisolated static let retrySeconds: Double = 5
 
     public private(set) var screen: Screen = .powerOn
     public private(set) var serverLine: ServerLine = .tuning
@@ -202,6 +202,7 @@ public final class AppModel {
     /// Fills the server line, retrying every 5 s until the server answers or the task is cancelled.
     public func loadVersion() async {
         while !Task.isCancelled {
+            let started = clock.seconds()
             do {
                 serverLine = .version(try await api.version())
                 return
@@ -210,7 +211,7 @@ public final class AppModel {
             } catch {
                 serverLine = .noSignal
             }
-            do { try await sleeper.sleep(seconds: Self.retrySeconds) } catch { return }
+            do { try await waitForNextTry(startedAt: started) } catch { return }
         }
     }
 
@@ -228,6 +229,7 @@ public final class AppModel {
     /// channel. Until a lineup arrives the screen is no signal, retried every 5 s with no press.
     public func turnOn() async {
         while !Task.isCancelled {
+            let started = clock.seconds()
             do {
                 let lineup = try await api.channels(year: year)
                 apply(lineup, keepChannel: false)
@@ -239,8 +241,19 @@ public final class AppModel {
             } catch {
                 if lineup == nil { screen = .noSignal }
             }
-            do { try await sleeper.sleep(seconds: Self.retrySeconds) } catch { return }
+            do { try await waitForNextTry(startedAt: started) } catch { return }
         }
+    }
+
+    /// Retries run on a 5 s cadence from the start of each try, not 5 s after it gave up: a try
+    /// that hangs until its timeout must not stretch the gap (TV-5).
+    private func waitForNextTry(startedAt started: TimeInterval) async throws {
+        try await sleeper.sleep(seconds: Self.retryDelay(startedAt: started, now: clock.seconds()))
+    }
+
+    /// What is left of the 5 s since a try started (0 if it took longer).
+    nonisolated static func retryDelay(startedAt started: TimeInterval, now: TimeInterval) -> Double {
+        max(0, retrySeconds - (now - started))
     }
 
     private func startLive(pressedAt: TimeInterval?) {
@@ -397,6 +410,7 @@ public final class AppModel {
         let query = grid.query(zone: zone)
         let asked = year
         let opened = grid.opened
+        let started = clock.seconds()
         guideRequest = Task { [weak self, api] in
             let answer = try? await api.guide(
                 year: asked, date: query.date, start: query.time, hours: GuideGrid.fetchHours
@@ -409,7 +423,8 @@ public final class AppModel {
             } else {
                 self.guideStatus = .failed
                 guard self.screen == .guide, !self.backgrounded else { return }
-                self.guideRetry = self.timers.schedule(after: Self.retrySeconds) { [weak self] in
+                let wait = Self.retryDelay(startedAt: started, now: self.clock.seconds())
+                self.guideRetry = self.timers.schedule(after: wait) { [weak self] in
                     self?.guideRetry = nil
                     self?.loadGuide()
                 }
@@ -490,6 +505,7 @@ public final class AppModel {
         if screen == .guide || screen == .yearPicker { screen = .live }
         showBanner()
         while !Task.isCancelled {
+            let started = clock.seconds()
             do {
                 let lineup = try await api.channels(year: valid)
                 guard year == valid else { return }
@@ -500,7 +516,7 @@ public final class AppModel {
             } catch is CancellationError {
                 return
             } catch {
-                do { try await sleeper.sleep(seconds: Self.retrySeconds) } catch { return }
+                do { try await waitForNextTry(startedAt: started) } catch { return }
             }
         }
     }

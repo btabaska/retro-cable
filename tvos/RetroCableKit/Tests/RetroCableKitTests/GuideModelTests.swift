@@ -74,6 +74,25 @@ import Testing
         #expect(rig.app.guideDetails()?.title == "kfix 1")
     }
 
+    /// TV-22 / TV-5: a /guide try that hangs for 3 s is retried 2 s after it gives up, so tries
+    /// stay 5 s apart.
+    @Test func aSlowGuideFailureKeepsTheFiveSecondCadence() async {
+        let rig = LiveRig()
+        await rig.turnedOn()
+        rig.guideFeed.failing = true
+        let clock = rig.clock
+        rig.guideFeed.onRequest = { clock.pass(3) }
+        rig.app.openGuide()
+        await until { rig.app.guideStatus == .failed }
+        #expect(guideRequests(rig).count == 1)
+        rig.clock.advance(1.9)
+        await settle()
+        #expect(guideRequests(rig).count == 1)
+        rig.clock.advance(0.1)
+        await until { guideRequests(rig).count == 2 }
+        #expect(guideRequests(rig).count == 2)
+    }
+
     @Test func closingTheGuideStopsItsRetries() async {
         let rig = LiveRig()
         rig.guideFeed.failing = true

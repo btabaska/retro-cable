@@ -41,6 +41,11 @@ final class ManualClock: MonotonicClock, TimerScheduler, @unchecked Sendable {
         }
     }
 
+    /// Moves the clock without firing timers: time spent inside a request (a hung connection).
+    func pass(_ seconds: TimeInterval) {
+        lock.withLock { current += seconds }
+    }
+
     /// Moves time forward, firing due timers (and any they schedule that also fall due).
     @MainActor
     func advance(_ seconds: TimeInterval) {
@@ -238,13 +243,21 @@ func settle(_ rounds: Int = 30) async {
 final class GuideFeed: @unchecked Sendable {
     private let lock = NSLock()
     private var failingNow = false
+    private var hook: (@Sendable () -> Void)?
 
     var failing: Bool {
         get { lock.withLock { failingNow } }
         set { lock.withLock { failingNow = newValue } }
     }
 
+    /// Runs inside every request, before it answers (a test lets time pass there).
+    var onRequest: (@Sendable () -> Void)? {
+        get { lock.withLock { hook } }
+        set { lock.withLock { hook = newValue } }
+    }
+
     func answer() throws -> (Int, Data) {
+        onRequest?()
         if failing { throw URLError(.cannotConnectToHost) }
         return (200, try Self.body())
     }

@@ -12,11 +12,12 @@ public struct URLSessionTransport: HTTPTransport {
         self.session = session
     }
 
-    /// No cookies, no disk cache, short timeouts: every answer is about simulated now.
+    /// No cookies, no disk cache, short timeouts: every answer is about simulated now. Each
+    /// request also sets its own (shorter) timeout, which wins over the session's.
     public static func makeSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForRequest = APIClient.guideTimeout
         config.timeoutIntervalForResource = 20
         config.waitsForConnectivity = false
         return URLSession(configuration: config)
@@ -51,6 +52,12 @@ public enum APIError: Error, Equatable, Sendable, CustomStringConvertible {
 public struct APIClient: Sendable {
     public let baseURL: URL
     let transport: any HTTPTransport
+
+    /// /version, /channels, /tune and /watch give up after 4 s, under the 5 s retry cadence, so a
+    /// host that doesn't answer at all (powered off) can't stretch the retries (TV-5).
+    public static let quickTimeout: TimeInterval = 4
+    /// /guide answers 13.5 h of every channel, so it gets longer.
+    public static let guideTimeout: TimeInterval = 8
 
     public init(baseURL: URL, transport: any HTTPTransport = URLSessionTransport()) {
         self.baseURL = baseURL
@@ -92,7 +99,7 @@ public struct APIClient: Sendable {
             URLQueryItem(name: "date", value: date),
             URLQueryItem(name: "start", value: start),
             URLQueryItem(name: "hours", value: Self.number(hours)),
-        ])
+        ], timeout: Self.guideTimeout)
     }
 
     /// What is on a channel now, and the `count` slots after it.
@@ -107,6 +114,7 @@ public struct APIClient: Sendable {
     public func postWatch(_ report: WatchReport) async throws {
         var request = URLRequest(url: url(["watch"], query: []))
         request.httpMethod = "POST"
+        request.timeoutInterval = Self.quickTimeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(report)
         _ = try await send(request, expecting: 204)
@@ -119,13 +127,18 @@ public struct APIClient: Sendable {
 
     // MARK: - Plumbing
 
-    private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
-        try await get([path], query: query)
+    private func get<T: Decodable>(
+        _ path: String, query: [URLQueryItem] = [], timeout: TimeInterval = quickTimeout
+    ) async throws -> T {
+        try await get([path], query: query, timeout: timeout)
     }
 
-    private func get<T: Decodable>(_ segments: [String], query: [URLQueryItem]) async throws -> T {
+    private func get<T: Decodable>(
+        _ segments: [String], query: [URLQueryItem], timeout: TimeInterval = quickTimeout
+    ) async throws -> T {
         var request = URLRequest(url: url(segments, query: query))
         request.httpMethod = "GET"
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data = try await send(request, expecting: 200)
         do {

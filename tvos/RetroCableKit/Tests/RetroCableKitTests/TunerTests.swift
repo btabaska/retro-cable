@@ -286,6 +286,27 @@ final class TunerRig {
         #expect(rig.tuner.slot?.title == "Show 1")
     }
 
+    /// TV-12 / TV-5: a /tune that takes 3 s to fail is retried 2 s later: tries start 5 s apart.
+    @Test func aSlowTuneFailureRetriesFiveSecondsAfterItStarted() async {
+        let rig = TunerRig()
+        rig.tuner.tune(rig.ktvu, year: 1998)
+        await rig.server.waitFor(1)
+        rig.clock.advance(3)
+        rig.server.failLast()
+        await rig.tuner.settled()
+        #expect(rig.clock.waiting.contains(2))
+        rig.clock.advance(2)
+        await rig.server.waitFor(2)
+        #expect(rig.server.requests.count == 2)
+        // A try that hangs past 5 s goes again at once.
+        rig.clock.advance(8)
+        rig.server.failLast()
+        await rig.tuner.settled()
+        rig.clock.advance(0)
+        await rig.server.waitFor(3)
+        #expect(rig.server.requests.count == 3)
+    }
+
     /// TV-14: five quick presses land on the fifth channel; the old sound stops on the first
     /// press, and answers for channels flipped past are dropped.
     @Test func rapidFlippingPlaysOnlyTheLastChannel() async {

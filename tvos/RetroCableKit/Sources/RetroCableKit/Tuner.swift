@@ -62,6 +62,8 @@ public final class Tuner {
     /// The latest request; answers to any earlier one are dropped.
     @ObservationIgnored private var serial = 0
     @ObservationIgnored private var requesting = false
+    /// When the latest /tune request started (monotonic), for the 5 s retry cadence.
+    @ObservationIgnored private var requestedAt: TimeInterval = 0
     @ObservationIgnored private var fetches: [Int: Task<Void, Never>] = [:]
     @ObservationIgnored private var retryTimer: TimerHandle?
     @ObservationIgnored private var endTimer: TimerHandle?
@@ -150,6 +152,7 @@ public final class Tuner {
         serial += 1
         let mine = serial
         requesting = true
+        requestedAt = clock.seconds()
         retryTimer?.cancel()
         retryTimer = nil
         let fetch = self.fetch
@@ -193,7 +196,10 @@ public final class Tuner {
     private func failed(_ reason: Reason) {
         switch reason {
         case .tune, .refill:
-            retryTimer = timers.schedule(after: Self.retrySeconds) { [weak self] in
+            // 5 s after this try started, so a try that hung until its timeout isn't followed by
+            // another 5 s of nothing (TV-5, TV-12).
+            let wait = max(0, Self.retrySeconds - (clock.seconds() - requestedAt))
+            retryTimer = timers.schedule(after: wait) { [weak self] in
                 self?.request(reason)
             }
         case .mediaRetry:

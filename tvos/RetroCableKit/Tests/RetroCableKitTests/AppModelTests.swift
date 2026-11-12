@@ -41,8 +41,14 @@ final class RecordingSleeper: Sleeper, @unchecked Sendable {
         return defaults
     }
 
-    func model(_ transport: StubTransport, _ defaults: UserDefaults, sleeper: RecordingSleeper = RecordingSleeper()) -> AppModel {
-        AppModel(api: APIClient(baseURL: base, transport: transport), settings: Settings(defaults), sleeper: sleeper)
+    func model(
+        _ transport: StubTransport, _ defaults: UserDefaults, sleeper: RecordingSleeper = RecordingSleeper(),
+        clock: ManualClock = ManualClock()
+    ) -> AppModel {
+        AppModel(
+            api: APIClient(baseURL: base, transport: transport), settings: Settings(defaults), sleeper: sleeper,
+            clock: clock, timers: clock
+        )
     }
 
     /// TV-3: the power-on text.
@@ -123,6 +129,46 @@ final class RecordingSleeper: Sleeper, @unchecked Sendable {
         #expect(app.screen == .live)
         #expect(app.channelID == "kfix")
         #expect(screens.contains(.noSignal))
+    }
+
+    /// TV-5 with a host that doesn't answer (powered off): each try hangs until its timeout. The
+    /// next try starts 5 s after the last one started, not 5 s after it gave up, so the server is
+    /// seen within 5 s of answering again.
+    @Test func retriesKeepAFiveSecondCadenceWhenTriesHang() async {
+        let clock = ManualClock()
+        let hanging = LockedValue(true)
+        let transport = StubTransport { request in
+            if hanging.value {
+                clock.pass(request.timeoutInterval)
+                throw URLError(.timedOut)
+            }
+            return (200, try RepoFiles.fixture("channels.json"))
+        }
+        let sleeper = RecordingSleeper { count in
+            if count == 3 { hanging.value = false }
+        }
+        let app = model(transport, defaults(), sleeper: sleeper, clock: clock)
+        await app.turnOn()
+        #expect(app.screen == .live)
+        #expect(transport.requests.count == 4)
+        // Each hung try already took 4 s, so the next one waits only the 1 s left of the 5.
+        #expect(sleeper.delays == [1, 1, 1])
+    }
+
+    /// A try that fails at once (connection refused) waits the rest of the 5 s.
+    @Test func aQuickFailureWaitsTheRestOfFiveSeconds() async {
+        let clock = ManualClock()
+        let transport = StubTransport { _ in
+            clock.pass(1.5)
+            throw URLError(.cannotConnectToHost)
+        }
+        let sleeper = RecordingSleeper { count in
+            if count == 2 { transport.respond { _ in (200, try RepoFiles.fixture("version.json")) } }
+        }
+        let app = model(transport, defaults(), sleeper: sleeper, clock: clock)
+        await app.loadVersion()
+        #expect(app.serverLine.text == "Server v0.0.0 · c8e0e3d")
+        #expect(sleeper.delays == [3.5, 3.5])
     }
 
     @Test func noSignalShowsOnTheFirstFailure() async {

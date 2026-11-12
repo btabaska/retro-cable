@@ -43,6 +43,19 @@ import Testing
         #expect(query(transport.requests.last) == ["year": "1998", "count": "3"])
     }
 
+    /// TV-5: a host that doesn't answer at all (powered off) gives up on the quick calls after
+    /// 4 s, so a 5 s retry cadence holds; the bigger /guide answer gets 8 s.
+    @Test func quickCallsTimeOutAfterFourSeconds() async throws {
+        let transport = fixtureTransport()
+        let api = APIClient(baseURL: base, transport: transport)
+        _ = try await api.version()
+        _ = try await api.channels(year: 1998)
+        _ = try await api.tune(channel: "kfix", year: 1998)
+        _ = try await api.guide(year: 1998, date: "11-11", start: "19:30", hours: 13.5)
+        #expect(transport.requests.map(\.timeoutInterval) == [4, 4, 4, 8])
+        #expect(APIClient.quickTimeout < AppModel.retrySeconds)
+    }
+
     @Test func readsTheServerVersion() async throws {
         let api = APIClient(baseURL: base, transport: fixtureTransport())
         let version = try await api.version()
