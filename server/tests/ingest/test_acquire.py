@@ -1017,6 +1017,64 @@ def test_no_episode_search_while_every_search_indexer_is_down(
     assert out["shows"]["searched_missing"] is True
 
 
+# --- not searching while the seedbox is full (Nov 12 2026) --------------------------------
+
+
+def test_with_search_off_titles_are_added_but_nothing_is_searched(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """Nov 12: the seedbox sat at its quota with its private-tracker downloads held, and
+    the daily search still grabbed three movies there. With search off (RC_ACQUIRE_SEARCH=off)
+    titles are still added, but nothing is searched: not on add and not the daily search,
+    which isn't recorded, so it runs on the first pass after search is back on."""
+    from datetime import UTC, datetime
+
+    catalog = load_catalog(make_catalog())
+    now = datetime(2026, 11, 12, 22, 0, tzinfo=UTC)
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS)
+    radarr = FakeArr("movie", lookups=RADARR_LOOKUPS)
+    out = asdict(acquire(library, catalog, sonarr=sonarr, radarr=radarr, dry_run=False,
+                         now=now, search=False))  # fmt: skip
+    assert out["searching"] is False
+    assert [a["id"] for a in out["movies"]["added"]] == ["halloweentown"]
+    assert radarr.posted[0]["addOptions"]["searchForMovie"] is False
+    assert all(b["addOptions"]["searchForMissingEpisodes"] is False for b in sonarr.posted)
+    assert sonarr.commands == [] and radarr.commands == []
+    assert out["shows"]["searched_missing"] is False and out["movies"]["searched_missing"] is False
+
+    radarr = FakeArr("movie", lookups=RADARR_LOOKUPS)
+    out = asdict(acquire(library, catalog, sonarr=None, radarr=radarr, dry_run=False, now=now))
+    assert out["searching"] is True
+    assert [c["name"] for c in radarr.commands] == ["MissingMoviesSearch"]
+
+
+def test_with_search_off_seasons_are_monitored_but_not_searched(
+    library: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    sonarr = FakeArr("series", lookups={**SONARR_LOOKUPS, "tvdb:76320": [JL]})
+    _part(library, make_catalog, sonarr, dry_run=False, search=False)
+    assert [s["seasonNumber"] for s in sonarr.put[0]["seasons"] if s["monitored"]] == [3, 4]
+    assert sonarr.commands == []
+
+
+@pytest.mark.parametrize(("value", "searching"), [("off", False), ("OFF", False), ("on", True),
+                                                  ("", True)])  # fmt: skip
+def test_acquire_cli_reads_rc_acquire_search(
+    tmp_path: Path,
+    make_catalog: MakeCatalog,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    value: str,
+    searching: bool,
+) -> None:
+    for name in ("SONARR", "RADARR"):
+        monkeypatch.delenv(f"RC_{name}_LIVETV_URL", raising=False)
+    monkeypatch.delenv("RC_PRIORITY_URL", raising=False)
+    monkeypatch.setenv("RC_ACQUIRE_SEARCH", value)
+    cli.main(["acquire", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog())])
+    assert json.loads(capsys.readouterr().out)["searching"] is searching
+
+
 # --- releasing finished downloads whose imports are encoded (Nov 11 2026) -----------------
 
 

@@ -43,6 +43,8 @@ Rules:
 - radarr-livetv and sonarr-livetv are asked to search their missing movies and episodes
   again about daily: they search a title only when it is added, and their RSS sync sees
   only new posts.
+- With search off (RC_ACQUIRE_SEARCH=off, Nov 12 2026: the seedbox was at its quota with
+  its private-tracker downloads held) titles are still added, but nothing is searched.
 - `dry_run` only reads (GET); nothing is added, changed, cancelled or searched.
 
 The API keys travel in a header (ingest/http.py) and never appear in output or a repr.
@@ -240,6 +242,7 @@ class AcquireReport:
     excluded: list[str]
     shows: InstanceReport
     movies: InstanceReport
+    searching: bool = True  # False: RC_ACQUIRE_SEARCH=off, nothing was searched (see acquire)
 
     @property
     def ok(self) -> bool:
@@ -352,6 +355,7 @@ def _add(
     items: list[Wanted],
     report: InstanceReport,
     dry_run: bool,
+    search: bool = True,
 ) -> None:
     if not items:
         return  # nothing wanted: the instance isn't asked anything
@@ -383,7 +387,7 @@ def _add(
 
     for w in items:
         if w.part_of is not None:
-            _add_seasons(request, w, report, dry_run, profile, records)
+            _add_seasons(request, w, report, dry_run, profile, records, search)
             continue
         if w.on_nas_as is not None:
             report.unresolved.append({"id": w.id, "title": w.title, "reason": (
@@ -411,8 +415,14 @@ def _add(
             "matched_on": how,
         }
         if not dry_run:
+            body = api.body(record, profile)
+            if not search:
+                body["addOptions"] = body["addOptions"] | {
+                    k: False for k in ("searchForMovie", "searchForMissingEpisodes")
+                    if k in body["addOptions"]
+                }  # fmt: skip
             try:
-                made = request("POST", f"/api/v3/{api.resource}", None, api.body(record, profile))
+                made = request("POST", f"/api/v3/{api.resource}", None, body)
             except _ERRORS as err:
                 report.failed.append({"id": w.id, "title": w.title, "reason": str(err)})
                 continue
@@ -429,10 +439,11 @@ def _add_seasons(
     dry_run: bool,
     profile: int,
     records: dict[int, Any],
+    search: bool = True,
 ) -> None:
     """A show that is seasons of another series (overrides.yaml part_of): add the series if
     Sonarr hasn't got it, with nothing monitored and no search, then monitor and search just
-    the missing seasons. Already monitored: present."""
+    the missing seasons (only monitor them with search off). Already monitored: present."""
     assert w.part_of is not None
     tvdb, seasons = w.part_of
     record = records.get(tvdb)
@@ -491,9 +502,9 @@ def _add_seasons(
                 + [{"seasonNumber": s, "monitored": True} for s in seasons if s not in listed],
             }
             record = request("PUT", f"/api/v3/series/{record['id']}", None, record) or record
-            for season in missing:
-                search = {"name": "SeasonSearch", "seriesId": record["id"], "seasonNumber": season}
-                request("POST", "/api/v3/command", None, search)
+            for season in missing if search else []:
+                command = {"name": "SeasonSearch", "seriesId": record["id"], "seasonNumber": season}
+                request("POST", "/api/v3/command", None, command)
         except (*_ERRORS, AssertionError) as err:
             report.failed.append({"id": w.id, "title": w.title, "reason": str(err)})
             return
@@ -814,20 +825,30 @@ def acquire(
     extra: Iterable[Mapping[str, Any]] = (),
     now: datetime | None = None,
     livetv_tv: Path | None = None,
+    search: bool = True,
 ) -> AcquireReport:
     """Add every carried title with no files to sonarr-livetv or radarr-livetv (see the
     module docstring). An instance that is None is unset (RC_*_LIVETV_URL and _KEY).
-    `livetv_tv` is where sonarr-livetv's /tv is mounted; without it no download is released."""
+    `livetv_tv` is where sonarr-livetv's /tv is mounted; without it no download is released.
+    With `search` off (RC_ACQUIRE_SEARCH=off: the seedbox is full) titles are added and seasons
+    monitored, but nothing is searched, so nothing new is grabbed."""
     found, with_files, excluded = wanted(db, catalog, extra)
     report = AcquireReport(dry_run, with_files, excluded, InstanceReport(SONARR),
-                           InstanceReport(RADARR))  # fmt: skip
-    _add(SONARR_API, sonarr, [w for w in found if w.kind == "show"], report.shows, dry_run)
-    _add(RADARR_API, radarr, [w for w in found if w.kind == "movie"], report.movies, dry_run)
+                           InstanceReport(RADARR), search)  # fmt: skip
+    _add(SONARR_API, sonarr, [w for w in found if w.kind == "show"], report.shows, dry_run, search)
+    _add(RADARR_API, radarr, [w for w in found if w.kind == "movie"], report.movies, dry_run,
+         search)  # fmt: skip
     if sonarr is not None and report.shows.error is None:
         trim_seasons(sonarr, airable(db, catalog, extra), report.shows, dry_run)
     if sonarr is not None and report.shows.error is None and livetv_tv is not None:
         release_imported(sonarr, livetv_tv, report.shows, dry_run)
     for request, instance in ((sonarr, report.shows), (radarr, report.movies)):
-        if request is not None and instance.error is None and now is not None and not dry_run:
+        if (
+            request is not None
+            and instance.error is None
+            and now is not None
+            and not dry_run
+            and search
+        ):
             search_missing(db, request, instance, now)
     return report
