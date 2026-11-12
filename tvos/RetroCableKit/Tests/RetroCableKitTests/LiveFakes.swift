@@ -231,3 +231,50 @@ enum Make {
 func settle(_ rounds: Int = 30) async {
     for _ in 0..<rounds { await Task.yield() }
 }
+
+/// What the rig's /api/guide answers: by default the fixture dial's on-air channels, each running
+/// half-hour shows ("<id> 1", "<id> 2", ...) from 7:30 PM for the whole 13.5 h. Thread-safe, as
+/// the transport calls it off the main actor.
+final class GuideFeed: @unchecked Sendable {
+    private let lock = NSLock()
+    private var failingNow = false
+
+    var failing: Bool {
+        get { lock.withLock { failingNow } }
+        set { lock.withLock { failingNow = newValue } }
+    }
+
+    func answer() throws -> (Int, Data) {
+        if failing { throw URLError(.cannotConnectToHost) }
+        return (200, try Self.body())
+    }
+
+    static func body() throws -> Data {
+        let lineup = try APIClient.decoder.decode(Lineup.self, from: RepoFiles.fixture("channels.json"))
+        let rows = lineup.channels.filter(\.onAir).map { channel in
+            GuideRow(channel: channel, slots: (0..<27).map { i in
+                Make.slot("\(channel.id) \(i + 1)", at: Double(i) * 30, seconds: 30 * 60).slot
+            })
+        }
+        let guide = Guide(
+            date: "1998-11-11", weekday: "Wednesday", timezone: Make.zone, start: Make.base,
+            end: Make.base.addingTimeInterval(13.5 * 3600), channels: rows
+        )
+        let encoder = JSONEncoder()
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(identifier: Make.zone)
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(formatter.string(from: date))
+        }
+        return try encoder.encode(guide)
+    }
+}
+
+/// Lets main-actor work run until `condition` holds (or gives up).
+@MainActor
+func until(_ condition: () -> Bool) async {
+    for _ in 0..<10_000 where !condition() {
+        await Task.yield()
+    }
+}

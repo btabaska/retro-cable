@@ -15,6 +15,10 @@ public struct ZonedParts: Equatable, Sendable {
 /// never the Apple TV's. Fixed en_US_POSIX patterns, so output never depends on device settings.
 public enum TimeFormat {
     static let shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    static let months = [
+        "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
+        "December",
+    ]
 
     /// "8:14 PM"
     public static func clock(_ t: Date, zone: String) -> String {

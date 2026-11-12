@@ -139,10 +139,16 @@ public enum TVLayout {
         public static let dialBottom: CGFloat = TVLayout.safe.maxY
         public static let dialPadding: CGFloat = 32
         public static let dialTitleHeight: CGFloat = 30
+        /// Between the dial title and the list.
+        public static let dialTitleGap: CGFloat = 12
+        /// The list's height: the panel less its padding and the title.
+        public static let dialListHeight: CGFloat = dialBottom - top - 2 * dialPadding - dialTitleHeight - dialTitleGap
         public static let dialColumnGap: CGFloat = 24
         public static let dialColumnWidth: CGFloat = 356
         public static let dialRowHeight: CGFloat = 56
         public static let dialRowMinHeight: CGFloat = 44
+        /// Rows per dial column before they shrink: two columns of 12 hold the 24 channels.
+        public static let dialRows = 12
         public static let columns = 7
         public static let yearCellGap: CGFloat = 16
         public static let yearCellHeight: CGFloat = 96

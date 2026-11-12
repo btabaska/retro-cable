@@ -63,8 +63,17 @@ public final class AppModel {
         case powerOn
         case noSignal
         case live
-        /// Milestone 3 fills it in; for now it shows the PiP and returns on Back.
+        /// The grid with the live PiP.
         case guide
+        /// Opened from the guide; the picture is hidden and silent while it shows.
+        case yearPicker
+    }
+
+    /// The guide's /guide request: "Loading the guide…", the grid, or "No signal" (retried).
+    public enum GuideStatus: Equatable, Sendable {
+        case loading
+        case loaded
+        case failed
     }
 
     /// How long no signal waits between tries, and how long the server line waits after a failure.
@@ -89,6 +98,15 @@ public final class AppModel {
     /// The turn-on in flight, if any.
     public private(set) var turningOn: Task<Void, Never>?
 
+    /// The guide's grid while the guide (or the year picker over it) shows; nil on Live TV, so
+    /// opening the guide always starts at the current half hour.
+    public private(set) var guide: GuideGrid?
+    public private(set) var guideStatus: GuideStatus = .loading
+    /// The year picker while it shows.
+    public private(set) var yearPicker: YearPickerModel?
+    /// The year change the picker started, if any.
+    public private(set) var changingYear: Task<Void, Never>?
+
     public let api: APIClient
     public let tuner: Tuner
     private let settings: Settings
@@ -103,6 +121,8 @@ public final class AppModel {
     private var midnightTimer: TimerHandle?
     private var refreshing: Task<Void, Never>?
     private var powerPressedAt: TimeInterval?
+    private var guideRequest: Task<Void, Never>?
+    private var guideRetry: TimerHandle?
 
     /// - Parameters:
     ///   - engine: the one video player (AVPlayer in the app).
@@ -155,7 +175,7 @@ public final class AppModel {
         switch screen {
         case .powerOn, .noSignal: true
         case .live: bannerVisible
-        case .guide: false
+        case .guide, .yearPicker: false
         }
     }
 
@@ -254,41 +274,52 @@ public final class AppModel {
 
     // MARK: - Remote
 
-    /// Swipe or click. Live TV: up/down change channel, left/right show the banner.
+    /// Swipe or click. Live TV: up/down change channel, left/right show the banner. The guide and
+    /// the year picker move their focus.
     public func move(_ direction: MoveDirection) {
-        guard screen == .live else { return }
-        switch direction {
-        case .up: step(1)
-        case .down: step(-1)
-        case .left, .right: showBanner()
+        switch screen {
+        case .live:
+            switch direction {
+            case .up: step(1)
+            case .down: step(-1)
+            case .left, .right: showBanner()
+            }
+        case .guide: guide?.move(direction)
+        case .yearPicker: yearPicker?.move(direction)
+        case .powerOn, .noSignal: break
         }
     }
 
-    /// Select (a click, not a hold). Live TV opens the guide.
+    /// Select (a click, not a hold). Live TV opens the guide; the guide tunes the focused row's
+    /// channel; the year picker sets the year.
     public func pressSelect() {
         switch screen {
         case .powerOn: pressPower()
         case .live: openGuide()
-        case .guide: closeGuide()
+        case .guide: watchFocusedChannel()
+        case .yearPicker: pickYear()
         case .noSignal: break
         }
     }
 
-    /// Play/Pause. Power on turns on; Live TV goes to the last channel.
+    /// Play/Pause. Power on turns on; Live TV goes to the last channel; the guide opens the year
+    /// picker.
     public func pressPlayPause() {
         switch screen {
         case .powerOn: pressPower()
         case .live: lastChannel()
-        case .guide, .noSignal: break
+        case .guide: openYearPicker()
+        case .yearPicker, .noSignal: break
         }
     }
 
     /// Back, when the app handles it (`backLeavesApp` is false): Live TV shows the banner, the
-    /// guide returns to Live TV without a retune.
+    /// guide returns to Live TV without a retune, the year picker returns to the guide.
     public func pressBack() {
         switch screen {
         case .live: if !bannerVisible { showBanner() }
         case .guide: closeGuide()
+        case .yearPicker: closeYearPicker()
         case .powerOn, .noSignal: break
         }
     }
@@ -318,16 +349,119 @@ public final class AppModel {
         showBanner()
     }
 
+    // MARK: - Guide
+
+    /// Opens the guide at the current half hour, focused on the tuned channel's program now. The
+    /// picture keeps playing in the PiP (TV-27).
     public func openGuide() {
         guard screen == .live else { return }
         screen = .guide
+        startGuide()
         updateWatching()
     }
 
+    /// Back to Live TV, same channel, no retune.
     public func closeGuide() {
         guard screen == .guide else { return }
         screen = .live
+        dropGuide()
         updateWatching()
+    }
+
+    /// The details panel for the focused cell; nil while loading or after a failure.
+    public func guideDetails() -> GuideDetails? {
+        guard let guide, let row = guide.focusedRow, let cell = guide.focusedCell else { return nil }
+        return GuideDetails.make(channel: row.channel, cell: cell, zone: zone)
+    }
+
+    /// Select in the guide: tune the focused row's channel to what airs now, back to Live TV with
+    /// the banner (TV-28). Nothing before the guide has loaded.
+    private func watchFocusedChannel() {
+        guard let id = guide?.focusedRow?.channel.id else { return }
+        closeGuide()
+        tune(to: id)
+        showBanner()
+    }
+
+    private func startGuide() {
+        guide = GuideGrid(now: simNow())
+        guideStatus = .loading
+        loadGuide()
+    }
+
+    /// One /guide request for 13.5 h from the window start; a failure reads "No signal" and is
+    /// retried every 5 s while the guide shows (TV-22).
+    private func loadGuide() {
+        guard let grid = guide else { return }
+        stopGuideLoad()
+        let query = grid.query(zone: zone)
+        let asked = year
+        let opened = grid.opened
+        guideRequest = Task { [weak self, api] in
+            let answer = try? await api.guide(
+                year: asked, date: query.date, start: query.time, hours: GuideGrid.fetchHours
+            )
+            guard let self, !Task.isCancelled, self.year == asked, self.guide?.opened == opened else { return }
+            self.guideRequest = nil
+            if let answer {
+                self.guide?.load(answer, tuned: self.channelID)
+                self.guideStatus = .loaded
+            } else {
+                self.guideStatus = .failed
+                guard self.screen == .guide, !self.backgrounded else { return }
+                self.guideRetry = self.timers.schedule(after: Self.retrySeconds) { [weak self] in
+                    self?.guideRetry = nil
+                    self?.loadGuide()
+                }
+            }
+        }
+    }
+
+    private func stopGuideLoad() {
+        guideRequest?.cancel()
+        guideRequest = nil
+        guideRetry?.cancel()
+        guideRetry = nil
+    }
+
+    private func dropGuide() {
+        stopGuideLoad()
+        guide = nil
+        guideStatus = .loading
+    }
+
+    // MARK: - Year picker
+
+    /// Play/Pause in the guide: the year picker, focused on the current year. The picture stops
+    /// (hidden and silent), which ends the watch session with tune_away (TV-31, TV-35).
+    private func openYearPicker() {
+        guard screen == .guide else { return }
+        screen = .yearPicker
+        stopGuideLoad()
+        let picker = YearPickerModel(current: year, timers: timers) { [api] in try await api.channels(year: $0) }
+        yearPicker = picker
+        picker.start()
+        tuner.stop()
+    }
+
+    /// Back: the guide as it was, the channel again at its live position, nothing changed.
+    private func closeYearPicker() {
+        guard screen == .yearPicker else { return }
+        yearPicker?.close()
+        yearPicker = nil
+        screen = .guide
+        if guideStatus != .loaded { loadGuide() }
+        retune()
+    }
+
+    /// Select: set the focused year, back to Live TV with a retune and the banner.
+    private func pickYear() {
+        guard let picker = yearPicker else { return }
+        let picked = picker.focused
+        changingYear = Task { [weak self] in
+            await self?.changeYear(picked)
+            self?.changingYear = nil
+        }
     }
 
     /// Show the banner and clock for 4 s of real time, restarting the 4 s (TV-18).
@@ -350,7 +484,10 @@ public final class AppModel {
         settings.year = valid
         year = valid
         tuner.stop()
-        if screen == .guide { screen = .live }
+        yearPicker?.close()
+        yearPicker = nil
+        dropGuide()
+        if screen == .guide || screen == .yearPicker { screen = .live }
         showBanner()
         while !Task.isCancelled {
             do {
@@ -401,22 +538,40 @@ public final class AppModel {
         midnightTimer = nil
         bannerVisible = false
         refreshing?.cancel()
+        stopGuideLoad()
+        yearPicker?.close()
     }
 
     /// Back on screen: fetch the lineup again (the simulated date may have changed) and retune at
-    /// the live position, keeping the screen; Live TV shows the banner (TV-37).
+    /// the live position, keeping the screen; Live TV shows the banner, and a stale guide reopens
+    /// at the current half hour (TV-37).
     public func enterForeground() {
         guard backgrounded else { return }
         backgrounded = false
-        guard screen == .live || screen == .guide else { return }
-        if screen == .live { showBanner() }
+        guard screen == .live || screen == .guide || screen == .yearPicker else { return }
+        switch screen {
+        case .live:
+            showBanner()
+        case .guide:
+            // A guide opened more than 30 simulated minutes ago reopens at the current half hour.
+            if let guide, guide.isStale(now: simNow()) {
+                startGuide()
+            } else if guideStatus != .loaded {
+                loadGuide()
+            }
+        case .yearPicker:
+            yearPicker?.start()
+        case .powerOn, .noSignal:
+            break
+        }
         scheduleHeartbeat()
         refreshing = Task { [weak self] in
             guard let self else { return }
             await self.refreshLineup()
             guard !self.backgrounded else { return }
             if self.midnightTimer == nil { self.scheduleMidnight() }
-            self.retune()
+            // The year picker keeps the picture off; leaving it retunes.
+            if self.screen != .yearPicker { self.retune() }
         }
     }
 
@@ -426,7 +581,7 @@ public final class AppModel {
         guard let lineup = try? await api.channels(year: asked), !Task.isCancelled, asked == year else { return }
         let before = channelID
         apply(lineup, keepChannel: true)
-        if channelID != before, !backgrounded { retune() }
+        if channelID != before, !backgrounded, screen != .yearPicker { retune() }
     }
 
     /// TV-38: at simulated midnight in the server's zone, fetch the lineup again so a channel

@@ -158,7 +158,7 @@ struct RemoteHints: View {
 }
 
 /// Badges (design 5.5): NEW gold, holiday outlined in holidayMuted, PRETEND PREMIERE outlined in
-/// transplant with the drawn diamond first.
+/// transplant with the drawn diamond first, "S5 · E12" and MOVIE outlined in textMuted.
 struct BadgeView: View {
     let badge: BannerContent.Badge
 
@@ -177,6 +177,7 @@ struct BadgeView: View {
             case .new: shape.fill(Palette.focus)
             case .holiday: shape.strokeBorder(Palette.holidayMuted, lineWidth: TVLayout.Badge.border)
             case .pretendPremiere: shape.strokeBorder(Palette.transplant, lineWidth: TVLayout.Badge.border)
+            case .outline: shape.strokeBorder(Palette.textMuted, lineWidth: TVLayout.Badge.border)
             }
         }
     }
@@ -185,7 +186,7 @@ struct BadgeView: View {
         switch badge {
         case .new: Palette.onFocus
         case .holiday: Palette.holidayMuted
-        case .pretendPremiere: Palette.text
+        case .pretendPremiere, .outline: Palette.text
         }
     }
 }

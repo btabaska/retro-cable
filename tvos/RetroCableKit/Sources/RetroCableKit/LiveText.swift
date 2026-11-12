@@ -56,12 +56,15 @@ public struct BannerContent: Equatable, Sendable {
         /// The holiday's name, upper case.
         case holiday(String)
         case pretendPremiere
+        /// Outlined in `textMuted`: "S5 · E12" and "MOVIE" (the guide's details panel).
+        case outline(String)
 
         public var text: String {
             switch self {
             case .new: "NEW"
             case .holiday(let name): name
             case .pretendPremiere: "PRETEND PREMIERE"
+            case .outline(let text): text
             }
         }
     }

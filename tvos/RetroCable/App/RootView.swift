@@ -19,7 +19,7 @@ struct RootView: View {
                 PowerOnView(model: model)
             case .noSignal:
                 NoSignalView()
-            case .live, .guide:
+            case .live, .guide, .yearPicker:
                 TVOn {
                     ZStack(alignment: .topLeading) {
                         if model.screen == .guide {

@@ -11,6 +11,7 @@ final class LiveRig {
     let engine = FakeEngine()
     let server = TuneServer()
     let transport: StubTransport
+    let guideFeed = GuideFeed()
     let store: UserDefaults
     var reports: [WatchReport] = []
     var logs: [String] = []
@@ -33,9 +34,11 @@ final class LiveRig {
         store.removePersistentDomain(forName: name)
         if let year { store.set(year, forKey: Settings.yearKey) }
         if let channel { store.set(channel, forKey: Settings.channelKey) }
+        let feed = guideFeed
         transport = StubTransport { request in
             let url = request.url!
             switch url.path {
+            case "/api/guide": return try feed.answer()
             case "/api/channels":
                 let year = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
                     .first { $0.name == "year" }?.value.flatMap(Int.init) ?? 1998
