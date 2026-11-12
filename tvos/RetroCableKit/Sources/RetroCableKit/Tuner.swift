@@ -16,6 +16,8 @@ public final class Tuner {
     public static let overrunTolerance: Double = 5
     /// Never start closer than this to the end of a file.
     public static let endClamp: Double = 0.25
+    /// A tune with no picture after this long shows "Tuning…" instead of black.
+    public static let stallSeconds: Double = 3
     /// A file differing from its slot by more than this is logged.
     public static let mismatchSeconds: Double = 3
     /// The slot-end timer fires this long after the end, so simulated now is past it.
@@ -68,6 +70,8 @@ public final class Tuner {
     @ObservationIgnored private var retryTimer: TimerHandle?
     @ObservationIgnored private var endTimer: TimerHandle?
     @ObservationIgnored private var tailTimer: TimerHandle?
+    /// Turns a black wait into "Tuning…" after `stallSeconds`.
+    @ObservationIgnored private var stallTimer: TimerHandle?
     /// The current load; events for any other are stale.
     @ObservationIgnored private var playbackID = 0
     @ObservationIgnored private var awaitingTail = false
@@ -109,6 +113,7 @@ public final class Tuner {
         self.channel = channel
         self.year = year
         self.pressedAt = pressedAt ?? clock.seconds()
+        waitForPicture()
         onSlotChange?()
         request(.tune)
     }
@@ -128,6 +133,8 @@ public final class Tuner {
         cancelTimers()
         retryTimer?.cancel()
         retryTimer = nil
+        stallTimer?.cancel()
+        stallTimer = nil
         engine.stop()
         playbackID += 1
         queue = []
@@ -202,6 +209,8 @@ public final class Tuner {
             retryTimer = timers.schedule(after: wait) { [weak self] in
                 self?.request(reason)
             }
+            // Nothing to play until an answer comes: say so rather than sit on black.
+            if slot == nil { showTuning() }
         case .mediaRetry:
             // No fresh URL to be had: the filler card until the slot ends.
             if let slot {
@@ -223,7 +232,8 @@ public final class Tuner {
             engine.stop()
             picture = .filler(title: slot.title)
         } else if let path = slot.mediaPath, let url = mediaURL(path) {
-            picture = .black
+            if picture != .tuning { picture = .black }
+            waitForPicture()
             engine.load(url, id: playbackID)
         } else {
             engine.stop()
@@ -265,10 +275,11 @@ public final class Tuner {
     private func advance() {
         cancelTimers()
         guard index + 1 < queue.count else {
-            // Ran out of slots before a refill answered: black ("Tuning…") until it does.
+            // Ran out of slots before a refill answered: black, then "Tuning…", until it does.
             engine.stop()
             playbackID += 1
             picture = .black
+            waitForPicture()
             demoSlate = nil
             queue = []
             index = 0
@@ -304,6 +315,7 @@ public final class Tuner {
             if retriedSlot != slot.start {
                 retriedSlot = slot.start
                 picture = .black
+                waitForPicture()
                 request(.mediaRetry)
             } else {
                 failedSlot = slot.start
@@ -320,7 +332,24 @@ public final class Tuner {
         }
     }
 
+    /// Black now; "Tuning…" if no picture has come `stallSeconds` from now.
+    private func waitForPicture() {
+        stallTimer?.cancel()
+        stallTimer = timers.schedule(after: Self.stallSeconds) { [weak self] in
+            self?.stallTimer = nil
+            self?.showTuning()
+        }
+    }
+
+    private func showTuning() {
+        stallTimer?.cancel()
+        stallTimer = nil
+        if picture == .black { picture = .tuning }
+    }
+
     private func firstFrame() {
+        stallTimer?.cancel()
+        stallTimer = nil
         guard let pressedAt, let channel else { return }
         self.pressedAt = nil
         let entry = TuneLatency(

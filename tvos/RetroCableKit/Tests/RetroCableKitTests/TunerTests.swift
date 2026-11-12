@@ -270,6 +270,8 @@ final class TunerRig {
         await rig.tuner.settled()
         #expect(rig.tuner.channel?.id == "ktvu")
         #expect(rig.tuner.slot == nil)
+        // Not a black screen that looks hung: the "Tuning…" card until an answer comes.
+        #expect(rig.tuner.picture == .tuning)
         #expect(rig.clock.waiting == [5])
         rig.clock.advance(4.9)
         #expect(rig.server.requests.count == 1)
@@ -284,6 +286,67 @@ final class TunerRig {
         rig.server.answerLast(Make.tune(rig.ktvu, now: 5, Make.evening()))
         await rig.tuner.settled()
         #expect(rig.tuner.slot?.title == "Show 1")
+    }
+
+    /// TV-12: a normal tune cuts to black, then to picture; only a tune with no first frame after
+    /// 3 s shows the "Tuning…" card, until the picture comes.
+    @Test func aSlowTuneShowsTuningUntilTheFirstFrame() async {
+        let rig = TunerRig()
+        rig.tuner.tune(rig.ktvu, year: 1998)
+        await rig.server.waitFor(1)
+        #expect(rig.tuner.picture == .black)
+        rig.clock.advance(2.9)
+        #expect(rig.tuner.picture == .black)
+        rig.clock.advance(0.1)
+        #expect(rig.tuner.picture == .tuning)
+        rig.server.answerLast(Make.tune(rig.ktvu, now: 5, Make.evening()))
+        await rig.tuner.settled()
+        #expect(rig.tuner.picture == .tuning)
+        rig.engine.play(duration: 23 * 60)
+        #expect(rig.tuner.picture == .video)
+    }
+
+    @Test func aQuickTuneNeverShowsTuning() async {
+        let rig = TunerRig()
+        await rig.tuned(now: 5)
+        rig.clock.advance(1)
+        rig.engine.play(duration: 23 * 60)
+        rig.clock.advance(10)
+        #expect(rig.tuner.picture == .video)
+        // A slate is a first frame too.
+        await rig.tuned(now: 1, [Make.slot("Filler", at: 0, seconds: 600, kind: .filler, media: nil)])
+        rig.clock.advance(10)
+        #expect(rig.tuner.picture == .filler(title: "Filler"))
+    }
+
+    /// The next slot's file loading slowly at slot end shows "Tuning…" after 3 s, too.
+    @Test func aSlowNextSlotShowsTuning() async {
+        let rig = TunerRig()
+        await rig.tuned(now: 5)
+        rig.engine.play(duration: 23 * 60)
+        rig.clock.advance(18 * 60 + 0.1)
+        #expect(rig.tuner.slot?.title == "Show 2")
+        #expect(rig.tuner.picture == .black)
+        rig.clock.advance(3)
+        #expect(rig.tuner.picture == .tuning)
+        rig.engine.play(duration: 23 * 60)
+        #expect(rig.tuner.picture == .video)
+    }
+
+    /// A refill failing while a slot plays changes nothing on screen.
+    @Test func aFailedRefillKeepsThePicture() async {
+        let rig = TunerRig()
+        await rig.tuned(now: 5)
+        rig.engine.play(duration: 23 * 60)
+        rig.clock.advance(18 * 60 + 0.1)
+        rig.engine.play(duration: 23 * 60)
+        rig.clock.advance(23 * 60)
+        rig.engine.play(duration: 23 * 60)
+        await rig.server.waitFor(2)
+        rig.server.failLast()
+        await rig.tuner.settled()
+        #expect(rig.tuner.slot?.title == "Show 3")
+        #expect(rig.tuner.picture == .video)
     }
 
     /// TV-12 / TV-5: a /tune that takes 3 s to fail is retried 2 s later: tries start 5 s apart.

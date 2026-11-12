@@ -250,6 +250,9 @@ so use fractions of the player height `h`:
   box, seven equal columns: `#C0C0C0 #C0C000 #00C0C0 #00C000 #C000C0 #C00000 #0000C0` (fixed
   broadcast colors, deliberately not tokens). Slot title centered, grid B at 0.07h, bottom at
   0.12h from the box bottom, tracking 2.
+- Tuning: the same filler card titled "Tuning…", shown when a tune (or the next slot's file) has
+  no first frame after 3 s, or `/tune` failed. A normal tune stays a hard cut to black, then to
+  picture (section 9); the card only covers a slow tune or an outage.
 
 ### 4.4 Number entry
 

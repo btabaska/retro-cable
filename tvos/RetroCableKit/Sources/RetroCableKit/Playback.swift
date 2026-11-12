@@ -95,6 +95,9 @@ public struct DemoSlate: Equatable, Sendable {
 public enum Picture: Equatable, Sendable {
     /// Tuning or loading: a digital box cuts to black, then to picture.
     case black
+    /// Still no picture `Tuner.stallSeconds` after a tune, or /tune failed: color bars titled
+    /// "Tuning…" (as the browser shows), so a long outage never looks like a hang (TV-12).
+    case tuning
     /// The file is playing.
     case video
     /// A bumper without media.

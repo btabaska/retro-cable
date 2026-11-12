@@ -27,8 +27,8 @@ struct PlayerLayerView: UIViewRepresentable {
     }
 }
 
-/// Everything in the player's frame: the video, black while tuning, the bumper slate, the filler
-/// card and the demo slate. Sized by its frame: full screen or the guide's PiP (design 4.3).
+/// Everything in the player's frame: the video, black while tuning ("Tuning…" bars if it takes
+/// long), the bumper slate, the filler card and the demo slate. Sized by its frame: full screen or the guide's PiP (design 4.3).
 struct PlayerArea: View {
     let tuner: Tuner
     let player: AVPlayer
@@ -48,6 +48,10 @@ struct PlayerArea: View {
                     BumperSlateView(slate: slate, height: h)
                 case .filler(let title):
                     FillerCard(title: title, height: h)
+                case .tuning:
+                    // A tune with no picture after 3 s, or /tune failing: never a black screen that
+                    // looks hung (TV-12).
+                    FillerCard(title: LiveText.tuning, height: h)
                 }
                 if let slate = tuner.demoSlate, tuner.picture == .video || tuner.picture == .black {
                     DemoSlateView(slate: slate, size: geo.size)

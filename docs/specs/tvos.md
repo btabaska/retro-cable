@@ -41,13 +41,14 @@ The app opens here on a cold launch, like the browser.
 
 - Shown instead of Live TV when the TV is on and the lineup (`/channels`) has failed with no lineup fetched yet: the era-style card "NO SIGNAL" and "Can't reach the cable box server. Retrying…".
 - The app retries every 5 s, with no input needed, and goes to Live TV by itself as soon as a lineup arrives.
-- A failed `/tune` with a lineup in hand is not "no signal": the channel stays, the banner title reads "Tuning…", and the tune is retried every 5 s.
+- A failed `/tune` with a lineup in hand is not "no signal": the channel stays, the banner title reads "Tuning…", the picture shows color bars titled "Tuning…" (so a long outage never looks like a hang), and the tune is retried every 5 s.
+- Every 5 s retry (no signal, the power-on server line, `/tune`, `/guide`) is counted from the start of the previous try, not from when it gave up, and `/version`, `/channels` and `/tune` give up after 4 s. So a server host that doesn't answer at all (powered off) still gets a try every 5 s.
 
 ### Live TV
 
 - Full-screen video, aspect-fit on black, so 4:3 is pillarboxed and 16:9 fills. No system transport bar, scrubber, info panel or subtitles menu ever appears.
 - **Tuning.** The app plays `current` from its position in the schedule: simulated now − slot start, worked out when the item is ready to play (not when the request was sent), so request time doesn't leave the picture behind. The position is clamped to 0.25 s before the end of the file.
-- **While tuning**, the old channel's picture and sound stop at once and a "Tuning…" state shows until the new channel's first frame (the browser shows color bars with "Tuning…"; the look is the design spec's).
+- **While tuning**, the old channel's picture and sound stop at once and the picture cuts to black until the new channel's first frame. If no picture has come 3 s after the tune (or the next slot's file), or `/tune` failed, color bars titled "Tuning…" show until it does, as in the browser.
 - **Auto-advance.** When the slot ends on the simulated clock, the next slot plays. Programs are never cut: if the file is still playing with at most 5 s left (seek rounding, buffering drift), it finishes first, then the next slot starts. Before the queue runs out (once the slot playing is the second to last one fetched), the app fetches `/tune` again; the answer restarts at the slot playing now.
 - **Duration mismatch.** When a file's real length differs from its slot by more than 3 s, the app logs the title, season and episode and both lengths in seconds ("The Simpsons S5E12: file runs 1381.0 s but its slot is 1376 s (+5.0 s)"), never the URL. It doesn't cut or stretch the program.
 - **Filler** (`kind: filler`, no media): color bars with the slot's title.
@@ -234,7 +235,7 @@ Each criterion names how it is checked: **Unit** (`swift test`, `make test-tvos`
 - **TV-9** A file whose length differs from its slot by more than 3 s logs "<title> S<s>E<e>: file runs <x> s but its slot is <y> s (<±d> s)", with no URL, and plays in full. — Unit
 - **TV-10** Filler shows color bars and its title. A bumper without media shows "02 KTVU", the channel name and "Up next 8:27 <next program>". A bumper with media plays. A demo-feed slot shows the title and "S5 · E12 — <episode>" slate; real media never does. — Unit (state), UI
 - **TV-11** When a file fails to play, the app retunes once and plays the fresh URL at the live position. If that fails too, it shows the filler card with the title until the slot ends, then advances. — Unit
-- **TV-12** When `/tune` fails while a lineup is loaded, the channel stays, the banner title reads "Tuning…" and the tune is retried every 5 s. — Unit
+- **TV-12** When `/tune` fails while a lineup is loaded, the channel stays, the banner title reads "Tuning…", the picture shows the "Tuning…" bars, and the tune is retried every 5 s from the start of the failed try. — Unit
 
 ### Remote on Live TV
 
