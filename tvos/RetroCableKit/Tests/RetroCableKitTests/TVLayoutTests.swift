@@ -75,4 +75,22 @@ import Testing
         #expect(TVLayout.Banner.fadeIn == 0.2)
         #expect(TVLayout.Banner.fadeOut == 0.3)
     }
+
+    /// Design 5.3: the half-hour labels at x 346, 844 and 1342, 498 apart; the details text stops
+    /// 40 pt clear of the PiP.
+    @Test func timeBarAndDetailsColumn() {
+        #expect((0..<3).map(L.Guide.halfHourLeft) == [346, 844, 1342])
+        #expect(L.Guide.detailsTextWidth == 1394)
+        #expect(L.Guide.pipFrame.minX - L.Guide.detailsTextRight == 40)
+        #expect(L.Guide.rowTop(L.Guide.visibleRows - 1) + L.Guide.rowHeight <= L.Guide.footerTop)
+    }
+
+    /// Design 6: the year grid starts about y 399 and ends about y 831, inside the safe area; the
+    /// dial's list is 734 pt tall.
+    @Test func yearPickerColumns() {
+        let Y = L.YearPicker.self
+        #expect(Y.dialListHeight == 734)
+        #expect(Y.dialHeight == 840)
+        #expect(Y.top + Y.dialHeight == L.safe.maxY)
+    }
 }

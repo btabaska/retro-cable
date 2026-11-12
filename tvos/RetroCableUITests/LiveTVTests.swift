@@ -5,51 +5,7 @@ import XCTest
 /// off (-RCNoWatch) so test runs never add viewing rows. Set RC_SCREENS to a folder to save
 /// screenshots there (make test-tvos-ui saves them to tvos/build/screens).
 @MainActor
-final class LiveTVTests: XCTestCase {
-    let remote = XCUIRemote.shared
-
-    func launch(year: String = "1998", channel: String = "ktvu") -> XCUIApplication {
-        continueAfterFailure = false
-        let app = XCUIApplication()
-        app.launchArguments += ["-RCNoWatch", "-rc.year", year, "-rc.channel", channel]
-        if let server = ProcessInfo.processInfo.environment["RC_SERVER_URL"] {
-            app.launchArguments += ["-RCServerURL", server]
-        }
-        app.launch()
-        XCTAssertTrue(element(app, "power-on").waitForExistence(timeout: 10), app.debugDescription)
-        return app
-    }
-
-    func element(_ app: XCUIApplication, _ id: String) -> XCUIElement {
-        app.descendants(matching: .any)[id].firstMatch
-    }
-
-    func waitFor(_ condition: @autoclosure () -> Bool, timeout: TimeInterval = 10) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if condition() { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        }
-        return condition()
-    }
-
-    func number(_ app: XCUIApplication) -> String {
-        let number = element(app, "banner-number")
-        return number.exists ? number.label : ""
-    }
-
-    func snap(_ name: String) {
-        let shot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: shot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        if let dir = ProcessInfo.processInfo.environment["RC_SCREENS"], !dir.isEmpty {
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? shot.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
-        }
-    }
-
+final class LiveTVTests: RCUITestCase {
     /// TV-4, TV-18: turning on goes to Live TV on the stored channel with the banner and clock,
     /// and the banner leaves after 4 s.
     func testTurningOnShowsTheBanner() {

@@ -140,16 +140,20 @@ struct Chip: View {
 /// "▲▼ Channel  SELECT Guide  ▶❚❚ Last channel": key words bold (D-12).
 struct RemoteHints: View {
     let hints: [RemoteHint]
+    /// The banner's hints are captions in textDim; the guide's footer uses 22 pt text, 36 apart.
+    var size: CGFloat = DesignTokens.fontSize.caption
+    var spacing: CGFloat = TVLayout.Banner.hintGap
+    var color: Color = Palette.textDim
 
     var body: some View {
-        HStack(spacing: TVLayout.Banner.hintGap) {
+        HStack(spacing: spacing) {
             ForEach(hints.indices, id: \.self) { index in
                 let hint = hints[index]
                 // U+FE0E keeps ▶ a text glyph; without it tvOS draws the emoji.
                 let key = hint.key.replacingOccurrences(of: "▶", with: "▶\u{FE0E}")
-                Text("\(Text(key).font(RCFont.body(DesignTokens.fontSize.caption, bold: true))) \(hint.action)")
-                    .font(RCFont.body(DesignTokens.fontSize.caption))
-                    .foregroundStyle(Palette.textDim)
+                Text("\(Text(key).font(RCFont.body(size, bold: true))) \(hint.action)")
+                    .font(RCFont.body(size))
+                    .foregroundStyle(color)
                     .lineLimit(1)
                     .fixedSize()
             }

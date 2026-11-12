@@ -66,6 +66,33 @@ public enum TVLayout {
         public static let footerContentHeight: CGFloat = 50
         public static let holidayBarWidth: CGFloat = 3
         public static let diamondSize: CGFloat = 9
+        /// Around the transplant diamond in a cell title.
+        public static let diamondBefore: CGFloat = 3
+        public static let diamondAfter: CGFloat = 10
+        /// The "All Channels" tab.
+        public static let tabPaddingV: CGFloat = 8
+        public static let tabPaddingH: CGFloat = 20
+        /// Channel column: side padding, and the gap between number and call sign.
+        public static let channelPaddingH: CGFloat = 20
+        public static let channelNumberGap: CGFloat = 16
+        /// Time bar: the day's left padding, each half hour's 2 pt rule and text inset.
+        public static let dayPaddingLeading: CGFloat = 20
+        public static let timeRule: CGFloat = 2
+        public static let timeInset: CGFloat = 12
+        /// Cell text padding: full cells 6 x 12 (`space.cellPad`); narrow cells 8 left, 4 right.
+        public static let cellPadV: CGFloat = 6
+        public static let narrowPadLeading: CGFloat = 8
+        public static let narrowPadTrailing: CGFloat = 4
+        /// Details panel: the text column's width and the gaps in the badge row.
+        public static let detailsTextWidth: CGFloat = detailsTextRight - TVLayout.safeSide
+        public static let badgeGap: CGFloat = 12
+        public static let synopsisLineSpacing: CGFloat = 6.6
+        /// Footer legends sit 36 apart.
+        public static let footerGap: CGFloat = 36
+        /// The time bar's half-hour labels, x on screen.
+        public static func halfHourLeft(_ index: Int) -> CGFloat {
+            cellsLeft + CGFloat(index) * halfHourWidth
+        }
 
         public static func rowTop(_ index: Int) -> CGFloat {
             firstRowTop + CGFloat(index) * (rowHeight + rowGap)
@@ -124,6 +151,8 @@ public enum TVLayout {
     public enum Motion {
         /// Live <-> guide: the guide fades and the player moves between full screen and the PiP.
         public static let guide: Double = 0.2
+        /// The year picker fades in and out.
+        public static let yearPicker: Double = 0.15
         /// Power on -> Live TV: the picture opens from a 4 pt line.
         public static let tvOn: Double = 0.35
         public static let tvOnLine: CGFloat = 4
@@ -154,6 +183,17 @@ public enum TVLayout {
         public static let yearCellHeight: CGFloat = 96
         public static let yearCellWidth: CGFloat = (leftWidth - CGFloat(columns - 1) * yearCellGap) / CGFloat(columns)
         public static let gridHeight: CGFloat = 4 * yearCellHeight + 3 * yearCellGap
+        /// Left column: kicker, then the date 8 below, the copy 12 below, the grid 40 below.
+        public static let dateGap: CGFloat = 8
+        public static let subGap: CGFloat = 12
+        public static let gridGap: CGFloat = 40
+        /// The ring on the year now playing, inset inside its cell.
+        public static let ringWidth: CGFloat = 3
+        public static let dialRadius: CGFloat = 8
+        public static let dialNumberWidth: CGFloat = 40
+        public static let dialNumberGap: CGFloat = 12
+        public static let dialDivider: CGFloat = 1
+        public static let dialHeight: CGFloat = dialBottom - top
     }
 
     /// Section 7: power on and no signal.

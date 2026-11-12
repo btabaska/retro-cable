@@ -26,13 +26,20 @@ struct RootView: View {
                             GuideView(model: model)
                                 .transition(.opacity)
                         }
-                        let frame = model.screen == .guide ? TVLayout.Guide.pipVideo : TVLayout.screen
+                        // The year picker keeps the player at the PiP's frame, hidden (and stopped),
+                        // so going back to the guide doesn't move it.
+                        let frame = model.screen == .live ? TVLayout.screen : TVLayout.Guide.pipVideo
                         PlayerArea(tuner: model.tuner, player: player)
                             .frame(width: frame.width, height: frame.height)
                             .offset(x: frame.minX, y: frame.minY)
+                            .opacity(model.screen == .yearPicker ? 0 : 1)
                             .allowsHitTesting(false)
                         if model.screen == .live {
                             LiveTVView(model: model)
+                        }
+                        if model.screen == .yearPicker, let picker = model.yearPicker {
+                            YearPickerView(model: model, picker: picker)
+                                .transition(.opacity.animation(.easeInOut(duration: TVLayout.Motion.yearPicker)))
                         }
                     }
                     .animation(.easeInOut(duration: TVLayout.Motion.guide), value: model.screen)
