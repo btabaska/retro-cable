@@ -4,13 +4,16 @@ SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
 
 UV := uv run --project server
+# The Apple TV app needs a Mac with Xcode; these targets are separate from lint and test.
+TVOS_DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
+TVOS_ENV := DEVELOPER_DIR=$(TVOS_DEVELOPER_DIR)
 COMPOSE_TEST := docker compose -f ops/compose.yml -f ops/compose.test.yml
 PY_PATHS := src tests ../tools/fixtures ../ops/tests
 RC_DB ?= $(CURDIR)/data/retro-cable.db
 
 .PHONY: help bootstrap fixtures dev lint lint-server lint-web test test-server test-web \
 	test-tools test-ops e2e e2e-stack api api-check stack-up stack-down \
-	catalog-check catalog-schema ingest scan normalize inventory demo demo-db
+	catalog-check catalog-schema ingest scan normalize inventory demo demo-db tvos test-tvos
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -69,6 +72,15 @@ test-ops: ## Compose, Caddy and deploy script tests
 
 test-web: ## Vitest unit tests
 	cd web && npm test
+
+tvos: ## Apple TV app: XcodeGen, then build app and test bundles for the tvOS Simulator, unsigned
+	cd tvos && xcodegen generate --quiet
+	cd tvos && $(TVOS_ENV) xcodebuild build-for-testing -project RetroCable.xcodeproj -scheme RetroCable \
+		-sdk appletvsimulator -destination 'generic/platform=tvOS Simulator' \
+		-derivedDataPath build CODE_SIGNING_ALLOWED=NO -quiet
+
+test-tvos: ## Apple TV logic: RetroCableKit unit tests on macOS (swift test)
+	cd tvos/RetroCableKit && $(TVOS_ENV) swift test
 
 e2e: ## Playwright against a local API and production web build
 	cd web && npx playwright test --project=chromium --project=admin-chromium
