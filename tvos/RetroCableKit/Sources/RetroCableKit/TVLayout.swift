@@ -57,6 +57,13 @@ public enum TVLayout {
         public static let pipBorder: CGFloat = 3
         public static let pipVideo = CGRect(x: 1517, y: 146, width: 320, height: 240)
         public static let pipFrame = pipVideo.insetBy(dx: -pipBorder, dy: -pipBorder)
+        /// Header: wordmark tracking, the 40 pt gaps, the year badge's padding.
+        public static let wordmarkTracking: CGFloat = 3
+        public static let headerGap: CGFloat = 40
+        public static let yearBadgePaddingV: CGFloat = 8
+        public static let yearBadgePaddingH: CGFloat = 24
+        /// Footer content sits in y 970...1020.
+        public static let footerContentHeight: CGFloat = 50
         public static let holidayBarWidth: CGFloat = 3
         public static let diamondSize: CGFloat = 9
 
@@ -81,8 +88,45 @@ public enum TVLayout {
         public static let numberSize: CGFloat = 88
         public static let titleSize: CGFloat = 50
         public static let progressHeight: CGFloat = 10
+        /// Between the title and the episode label and badges.
+        public static let titleGap: CGFloat = 20
+        /// 2-line description at line height 1.3 of 22 pt.
+        public static let descriptionLineSpacing: CGFloat = 6.6
+        /// Between the progress times and the track; also the least gap before the hints.
+        public static let progressGap: CGFloat = 16
+        public static let hintGap: CGFloat = 16
+        public static let chipPaddingV: CGFloat = 12
+        public static let chipPaddingH: CGFloat = 28
+        public static let clockPaddingV: CGFloat = 12
+        public static let clockPaddingH: CGFloat = 24
+        /// The banner and the clock box sit this far in from the right edge (1920 - 1824).
+        public static let rightInset: CGFloat = TVLayout.screen.width - right
+        /// The banner's bottom edge is 1016: 64 above the screen's bottom.
+        public static let bottomInset: CGFloat = TVLayout.screen.height - bottom
         /// Real seconds the banner holds after its latest trigger.
         public static let holdSeconds: Double = 4
+        /// Fade in (with a 24 pt slide up) and fade out.
+        public static let fadeIn: Double = 0.2
+        public static let fadeOut: Double = 0.3
+        public static let slide: CGFloat = 24
+    }
+
+    /// Section 5.5: badges in the banner and the details panel.
+    public enum Badge {
+        public static let paddingV: CGFloat = 2
+        public static let paddingH: CGFloat = 10
+        public static let border: CGFloat = 2
+        public static let markStroke: CGFloat = 2
+        public static let markGap: CGFloat = 8
+    }
+
+    /// Section 9: motion.
+    public enum Motion {
+        /// Live <-> guide: the guide fades and the player moves between full screen and the PiP.
+        public static let guide: Double = 0.2
+        /// Power on -> Live TV: the picture opens from a 4 pt line.
+        public static let tvOn: Double = 0.35
+        public static let tvOnLine: CGFloat = 4
     }
 
     /// Section 6: the year picker.

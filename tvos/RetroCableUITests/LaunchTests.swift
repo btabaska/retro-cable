@@ -7,6 +7,7 @@ final class LaunchTests: XCTestCase {
     func launch() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments += ["-RCNoWatch"]
         if let server = ProcessInfo.processInfo.environment["RC_SERVER_URL"] {
             app.launchArguments += ["-RCServerURL", server]
         }
@@ -16,10 +17,10 @@ final class LaunchTests: XCTestCase {
 
     func testColdLaunchShowsPowerOn() {
         let app = launch()
-        XCTAssertTrue(app.otherElements["power-on"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["RETRO CABLE"].exists)
-        XCTAssertTrue(app.staticTexts["Press SELECT to turn on the TV"].exists)
-        let server = app.staticTexts["server-version"]
+        XCTAssertTrue(any(app, "power-on").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(labelled(app, "RETRO CABLE").exists, app.debugDescription)
+        XCTAssertTrue(labelled(app, "Press SELECT to turn on the TV").exists, app.debugDescription)
+        let server = any(app, "server-version")
         XCTAssertTrue(server.waitForExistence(timeout: 10))
         let answered = NSPredicate(format: "label BEGINSWITH 'Server v' OR label == 'No signal'")
         expectation(for: answered, evaluatedWith: server)
@@ -28,14 +29,22 @@ final class LaunchTests: XCTestCase {
 
     func testSelectTurnsTheTVOn() {
         let app = launch()
-        XCTAssertTrue(app.otherElements["power-on"].waitForExistence(timeout: 10))
+        XCTAssertTrue(any(app, "power-on").waitForExistence(timeout: 10), app.debugDescription)
         XCUIRemote.shared.press(.select)
-        let live = app.otherElements["live"]
-        let noSignal = app.otherElements["no-signal"]
+        let live = any(app, "live")
+        let noSignal = any(app, "no-signal")
         let deadline = Date().addingTimeInterval(15)
         while Date() < deadline, !live.exists, !noSignal.exists {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         XCTAssertTrue(live.exists || noSignal.exists)
+    }
+
+    func any(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        app.descendants(matching: .any)[id].firstMatch
+    }
+
+    func labelled(_ app: XCUIApplication, _ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
     }
 }

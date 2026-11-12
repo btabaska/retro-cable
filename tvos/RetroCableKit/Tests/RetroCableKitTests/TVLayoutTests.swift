@@ -63,4 +63,16 @@ import Testing
         // 12 rows of 56 under the title fit the dial panel.
         #expect(Y.dialTitleHeight + 12 + 12 * Y.dialRowHeight <= Y.dialBottom - Y.top - 2 * Y.dialPadding)
     }
+
+    /// Design 4.2: the banner and clock box sit 96 in from the right, the banner's bottom at 1016.
+    @Test func bannerInsets() {
+        #expect(TVLayout.Banner.rightInset == 96)
+        #expect(TVLayout.Banner.left == TVLayout.Banner.rightInset)
+        #expect(TVLayout.Banner.bottomInset == 64)
+        #expect(TVLayout.Banner.bottom <= TVLayout.safe.maxY)
+        #expect(TVLayout.Banner.clockTop == TVLayout.safeTop)
+        #expect(TVLayout.Banner.holdSeconds == 4)
+        #expect(TVLayout.Banner.fadeIn == 0.2)
+        #expect(TVLayout.Banner.fadeOut == 0.3)
+    }
 }

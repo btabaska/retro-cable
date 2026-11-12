@@ -57,6 +57,7 @@ struct PowerOnView: View {
             }
             .monospacedDigit()
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("power-on")
         .onPlayPauseCommand { model.pressPower() }
         .onAppear { buttonFocused = true }

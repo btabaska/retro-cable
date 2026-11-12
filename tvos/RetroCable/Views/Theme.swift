@@ -15,6 +15,14 @@ enum Palette {
     static let textDim = Color(rc: DesignTokens.color.textDim)
     static let glow = Color(rc: DesignTokens.color.glow)
     static let black = Color(rc: DesignTokens.color.black)
+    static let channel = Color(rc: DesignTokens.color.channel)
+    static let cell = Color(rc: DesignTokens.color.cell)
+    static let cellPast = Color(rc: DesignTokens.color.cellPast)
+    static let holidayMuted = Color(rc: DesignTokens.color.holidayMuted)
+    static let transplant = Color(rc: DesignTokens.color.transplant)
+    static let track = Color(rc: DesignTokens.color.track)
+    static let divider = Color(rc: DesignTokens.color.divider)
+    static let filler = Color(rc: DesignTokens.color.filler)
 }
 
 /// The bundled faces at fixed sizes (never scaled by Dynamic Type). If a face failed to register,
@@ -53,4 +61,6 @@ enum RCFont {
 extension Logger {
     /// Never log a media URL, its exp or sig, or any token (TV-41).
     static let app = Logger(subsystem: "us.tabaska.retrocable", category: "app")
+    /// Tune times ("tune ktvu 850 ms") and length mismatches: channel ids and titles only.
+    static let playback = Logger(subsystem: "us.tabaska.retrocable", category: "playback")
 }
