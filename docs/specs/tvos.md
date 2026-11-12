@@ -247,7 +247,7 @@ Each criterion names how it is checked: **Unit** (`swift test`, `make test-tvos`
 
 ### Info banner and clock
 
-- **TV-18** The banner shows for 4 s of real time after each tune, power on, year change, return from background and banner press, and each one restarts the 4 s. The clock shows only with the banner. — Unit (timer on an injected clock), UI
+- **TV-18** The banner shows for 4 s of real time after each tune, power on, year change, return from background and banner press, and each one restarts the 4 s. After power on the 4 s count from the end of the TV-on opening, however long it took. The clock shows only with the banner. — Unit (timer on an injected clock), UI
 - **TV-19** The banner shows:
   - The two-digit number, the call sign with network, the title, and the episode line ("Bart Gets Famous · S5 E12", or "1998 · 1h 25m" for a movie).
   - NEW, the holiday name in upper case, and PRETEND PREMIERE, when they apply.

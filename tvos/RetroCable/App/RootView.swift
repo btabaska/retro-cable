@@ -22,7 +22,10 @@ struct RootView: View {
             case .noSignal:
                 NoSignalView()
             case .live, .guide, .yearPicker:
-                TVOn(onOpened: { tvOpened = true }) {
+                TVOn(onOpened: {
+                    tvOpened = true
+                    model.tvOnOpened()
+                }) {
                     ZStack(alignment: .topLeading) {
                         if model.screen == .guide {
                             GuideView(model: model)

@@ -26,7 +26,7 @@ All on a Mac with Xcode at `/Applications/Xcode.app` (the Makefile sets `DEVELOP
 
 | Command | What it does | Needs |
 | --- | --- | --- |
-| `make test-tvos` | `swift test` of `tvos/RetroCableKit` on macOS (234 tests, about 1 s) | Xcode or the Swift toolchain |
+| `make test-tvos` | `swift test` of `tvos/RetroCableKit` on macOS (236 tests, about 1 s) | Xcode or the Swift toolchain |
 | `make tvos` | `xcodegen generate`, then `xcodebuild build-for-testing` for the tvOS Simulator with `CODE_SIGNING_ALLOWED=NO`: the app plus both test bundles | XcodeGen 2.46, Xcode with the tvOS SDK |
 | `make test-tvos-ui` | `xcodebuild test` in the "RC Apple TV" simulator: `RetroCableTests` (fonts load) and `RetroCableUITests` (power on, no signal, Live TV remote, background, guide, year picker). Saves screenshots to `tvos/build/screens/`. About 5 minutes. One class: add `-only-testing:RetroCableUITests/GuideTests` to the `xcodebuild test` line | The simulator below; the homelab server reachable |
 | `RC_FLIPS=1 make test-tvos-ui` | Also runs the opt-in 20-flip test for TV-40; read the times from the log (below) | as above |
@@ -278,6 +278,29 @@ Milestone 3 and 4 decisions:
 Simulator runs on Nov 12: `make test-tvos-ui` against the homelab, 15 tests (14 passed, the opt-in
 flips test skipped). Recordings and frames of real media stayed in the session scratchpad, never
 in the repo.
+
+## Ship (Nov 12 2026)
+
+Results before opening the PR, on this Mac (Xcode 27.2, "RC Apple TV" simulator, homelab `c8e0e3d`):
+
+| Command | Result |
+| --- | --- |
+| `make lint` | Clean (ruff, mypy --strict, tsc, eslint) |
+| `make test` | Green: server 719 passed; tools 9 passed; ops 75 passed, 1 skipped; web 98 passed (17 files); Playwright 10 passed |
+| `make test-tvos` | 236 tests in 26 suites passed |
+| `make tvos` | Built (app and both test bundles, unsigned) |
+| `make test-tvos-ui` | 15 tests: 14 passed, the opt-in 20-flip test skipped |
+
+The first `make test-tvos-ui` run, on a simulator that started shut down, failed one test
+(`GuideTests.testAllYearsIsBelowTheGrid`, the first to run): its recording showed the TV-on white
+line held on screen for about 8 s on the cold first launch, so the banner's 4 s (started at power
+on) ran out before the opening finished and no banner showed. A real bug, not only a test one: a
+slow opening on the Apple TV would have hidden the turn-on banner the same way. Fix: the view
+calls `AppModel.tvOnOpened()` when the opening finishes, which restarts the 4 s on Live TV
+(`LiveModelTests.theBannerHoldsFourSecondsAfterTheOpeningFinishes`,
+`theOpeningFinishingOffLiveTVShowsNoBanner`; TV-18 in the spec says so now). The rerun, again from a
+shut-down simulator, passed. Then by hand: installed and launched with `simctl` (`-RCNoWatch`),
+rewrote `sim-power-on.png` and `sim-home-icon.png`, and shut the simulator down.
 
 ## Screenshots (milestone 2)
 

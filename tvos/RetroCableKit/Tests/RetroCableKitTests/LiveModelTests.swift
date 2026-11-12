@@ -119,6 +119,34 @@ final class LiveRig {
         #expect(!rig.app.bannerVisible)
     }
 
+    /// TV-4, design 9: the banner's 4 s start when the TV-on opening finishes, however long the
+    /// opening took (a slow first launch once held the line past the whole 4 s, and no banner showed).
+    @Test func theBannerHoldsFourSecondsAfterTheOpeningFinishes() async {
+        let rig = LiveRig()
+        await rig.turnedOn()
+        rig.clock.advance(5)
+        #expect(!rig.app.bannerVisible)
+        rig.app.tvOnOpened()
+        #expect(rig.app.bannerVisible)
+        rig.clock.advance(3.9)
+        #expect(rig.app.bannerVisible)
+        rig.clock.advance(0.2)
+        #expect(!rig.app.bannerVisible)
+    }
+
+    /// Design 9: an opening that finishes after the guide opened doesn't restart the banner.
+    @Test func theOpeningFinishingOffLiveTVShowsNoBanner() async {
+        let rig = LiveRig()
+        await rig.turnedOn()
+        rig.app.pressSelect()
+        #expect(rig.app.screen == .guide)
+        rig.clock.advance(5)
+        rig.app.tvOnOpened()
+        rig.app.pressBack()
+        #expect(rig.app.screen == .live)
+        #expect(!rig.app.bannerVisible)
+    }
+
     /// TV-18: every trigger restarts the 4 s.
     @Test func eachTriggerRestartsTheBanner() async {
         let rig = LiveRig()

@@ -480,6 +480,13 @@ public final class AppModel {
     }
 
     /// Show the banner and clock for 4 s of real time, restarting the 4 s (TV-18).
+    /// The TV-on opening finished (design 9). On Live TV the banner shows for its full 4 s from
+    /// now, however long the opening took: the view hides the banner until then, and a slow first
+    /// launch once held the opening past the banner's whole 4 s (TV-4).
+    public func tvOnOpened() {
+        if screen == .live { showBanner() }
+    }
+
     public func showBanner() {
         bannerVisible = true
         bannerTimer?.cancel()
