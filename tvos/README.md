@@ -53,9 +53,22 @@ Check it works: from the repo root, `make test-tvos` (the logic tests, about a s
 You should see the power-on screen: RETRO CABLE, "Mountain View, CA · 1998", the server line
 ("Server v0.0.0 · c8e0e3d") and the app version. Press the clickpad (SELECT) to turn the TV on.
 
-The team is not saved in the repo (`DEVELOPMENT_TEAM` is empty in `tvos/project.yml` on purpose), so
-every `make tvos` resets it: choose the Personal Team again after each one. Between code changes
-you can keep the project open and just press Run.
+The team id is not in the repo, and `make tvos` regenerates the project, which clears a team
+picked in Xcode. To set it once for good:
+
+1. After step 3, find your team id: Xcode > Settings > Accounts, select the Apple ID, then the
+   Personal Team (a 10-character id such as `ABCDE12345`). It also shows in the target's Build
+   Settings under Development Team once you have picked the team.
+2. Create `tvos/Local.xcconfig` (gitignored) with that one line:
+
+   ```sh
+   echo 'DEVELOPMENT_TEAM = ABCDE12345' > tvos/Local.xcconfig
+   ```
+
+3. Run `make tvos` again. `tvos/Signing.xcconfig` includes `Local.xcconfig`, so every later
+   regeneration keeps the team and the device build signs with no clicks.
+
+Between code changes you can keep the project open and just press Run.
 
 If tvOS asks to let Retro Cable find devices on the local network, allow it: the server is on the
 home network.
@@ -110,8 +123,9 @@ Xcode, last 90 days per build and update itself, as `docs/plan.md` planned for P
    appears next to the Personal Team.
 2. In App Store Connect, create the app record for `us.tabaska.retrocable` (platform tvOS) and an
    App Store Connect API key for automated uploads.
-3. Set `DEVELOPMENT_TEAM` to the paid team id in `tvos/project.yml` and add the app icon and Top
-   Shelf image (TestFlight requires them; sideloading doesn't).
+3. Put the paid team id in `tvos/Local.xcconfig` (or, for CI, in `tvos/Signing.xcconfig` through
+   a build setting the runner passes). The app icon and a placeholder Top Shelf image are already
+   in the asset catalog; a real Top Shelf image or extension is optional.
 4. First upload by hand: Product > Archive, then Distribute App > TestFlight. Install the TestFlight
    app on the Apple TV and accept the internal tester invite.
 5. Then the plan's automation: fastlane on the Mac runner signs and uploads on every merge to

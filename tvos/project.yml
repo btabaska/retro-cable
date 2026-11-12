@@ -7,12 +7,15 @@ options:
     tvOS: "18.0"
   createIntermediateGroups: true
   developmentLanguage: en
+# Signing.xcconfig sets DEVELOPMENT_TEAM empty, then includes the gitignored Local.xcconfig if it
+# exists, so a team set there once survives every `make tvos` (tvos/README.md, section 3).
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
 settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    # Left empty: Brandon picks his Personal Team in Xcode (Signing & Capabilities).
-    DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
@@ -55,6 +58,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: us.tabaska.retrocable
         PRODUCT_NAME: RetroCable
         GENERATE_INFOPLIST_FILE: NO
+        # The two-layer RC icon and a plain Top Shelf image (tvos/tools/make-app-icon.swift).
+        ASSETCATALOG_COMPILER_APPICON_NAME: App Icon & Top Shelf Image
   RetroCableTests:
     type: bundle.unit-test
     platform: tvOS

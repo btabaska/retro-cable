@@ -438,7 +438,9 @@ The 4 s banner timer runs on the real clock, never simulated time.
   The banner is one element read on appearance.
 - App icon (optional for sideloading; Top Shelf is out of scope): a two-layer tvOS icon, back layer
   the power-on gradient, front layer "RC" in Archivo Narrow Bold white with the gold 5 pt rule
-  under it. 400 x 240 @1x / 800 x 480 @2x.
+  under it. 400 x 240 @1x / 800 x 480 @2x, plus the 1280 x 768 App Store stack. Built: drawn by
+  `tvos/tools/make-app-icon.swift` from the tokens and the bundled font; the Top Shelf images are
+  plain placeholders (header color, "RETRO CABLE", gold rule) so the brand-asset set compiles.
 
 ## Design acceptance points
 

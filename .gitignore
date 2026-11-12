@@ -26,4 +26,6 @@ tvos/RetroCable/Info.plist
 tvos/build/
 tvos/RetroCableKit/.build/
 tvos/RetroCableKit/.swiftpm/
+# The Personal Team id for signing (tvos/Signing.xcconfig includes it).
+tvos/Local.xcconfig
 xcuserdata/
