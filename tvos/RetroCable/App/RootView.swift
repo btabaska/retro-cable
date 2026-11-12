@@ -10,6 +10,8 @@ struct RootView: View {
     let model: AppModel
     let player: AVPlayer
     @Environment(\.scenePhase) private var scenePhase
+    /// The TV-on opening has finished since the last power on or no signal.
+    @State private var tvOpened = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -20,7 +22,7 @@ struct RootView: View {
             case .noSignal:
                 NoSignalView()
             case .live, .guide, .yearPicker:
-                TVOn {
+                TVOn(onOpened: { tvOpened = true }) {
                     ZStack(alignment: .topLeading) {
                         if model.screen == .guide {
                             GuideView(model: model)
@@ -35,7 +37,8 @@ struct RootView: View {
                             .opacity(model.screen == .yearPicker ? 0 : 1)
                             .allowsHitTesting(false)
                         if model.screen == .live {
-                            LiveTVView(model: model)
+                            // The banner waits for the TV-on opening to finish (design 9).
+                            LiveTVView(model: model, bannerAllowed: tvOpened)
                         }
                         if model.screen == .yearPicker, let picker = model.yearPicker {
                             YearPickerView(model: model, picker: picker)
@@ -50,6 +53,9 @@ struct RootView: View {
         .ignoresSafeArea()
         .preferredColorScheme(.dark)
         .tint(Palette.focus)
+        .onChange(of: model.screen) { _, screen in
+            if screen == .powerOn || screen == .noSignal { tvOpened = false }
+        }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background: model.enterBackground()
@@ -64,22 +70,44 @@ struct RootView: View {
     }
 }
 
-/// Turning the TV on: the picture opens from a thin line at mid-screen to full height (design 9).
+/// Turning the TV on (design 9): a 4 pt white line at mid-screen opens to the full picture over
+/// 0.35 s ease-out, the white fading as it opens; then `onOpened` (the banner may show). With
+/// Reduce Motion it is a 0.2 s fade.
 private struct TVOn<Content: View>: View {
+    let onOpened: () -> Void
     @ViewBuilder let content: Content
     @State private var open = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let band = open || reduceMotion ? TVLayout.screen.height : TVLayout.Motion.tvOnLine
         content
             .mask {
                 Rectangle()
-                    .frame(height: open || reduceMotion ? TVLayout.screen.height : TVLayout.Motion.tvOnLine)
+                    .frame(height: band)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .overlay {
+                if !reduceMotion {
+                    // The line itself: color.text over the opening band, gone by the time it is open.
+                    Rectangle()
+                        .fill(Palette.text)
+                        .frame(height: band)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .opacity(open ? 0 : 1)
+                        .allowsHitTesting(false)
+                }
             }
             .opacity(reduceMotion && !open ? 0 : 1)
             .onAppear {
-                withAnimation(.easeOut(duration: TVLayout.Motion.tvOn)) { open = true }
+                let animation: Animation = reduceMotion
+                    ? .easeInOut(duration: TVLayout.Motion.tvOnReduced)
+                    : .easeOut(duration: TVLayout.Motion.tvOn)
+                withAnimation(animation, completionCriteria: .logicallyComplete) {
+                    open = true
+                } completion: {
+                    onOpened()
+                }
             }
     }
 }

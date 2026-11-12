@@ -5,12 +5,14 @@ import SwiftUI
 /// banner shows, and the Siri Remote mapping (TV-13 to TV-17). It takes no visible focus.
 struct LiveTVView: View {
     let model: AppModel
+    /// False while the TV-on opening runs: the banner appears after it (design 9).
+    var bannerAllowed = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             Color.clear
-            if model.bannerVisible {
+            if model.bannerVisible && bannerAllowed {
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     ZStack {
                         ClockBox(text: model.clockText())
