@@ -202,18 +202,18 @@ The app reports what is watched the way the browser does (`web.md`, M5; `api.md`
 | Layer | What | Runs |
 | --- | --- | --- |
 | Unit (`swift test`, RetroCableKit on macOS) | Simulated clock, time formatting, guide layout and focus, channel stepping, the tune queue and advance, banner and details text, year picker focus and lineup retry, persisted state, the watch reporter, the API client and its decoding on recorded JSON, retries with an injected clock | `make test-tvos`, any Mac, today |
-| Build | XcodeGen, then `xcodebuild build -sdk appletvsimulator CODE_SIGNING_ALLOWED=NO` | `make tvos`, today |
-| UI (XCUITest) | The browser's flow: launch → banner → guide → tune → change year, plus the remote mappings above, against the homelab server or the Docker test stack (`RC_SERVER_URL`) | `make test-tvos-ui`: the "RC Apple TV" tvOS Simulator (Apple TV 4K, 2nd gen); screenshots to `tvos/build/screens/` |
-| Hands-on | On the Apple TV: the latency target, picture, sound, sideload, background return | Brandon |
+| Build | XcodeGen, then `xcodebuild build-for-testing` for the tvOS Simulator with `CODE_SIGNING_ALLOWED=NO` (the app and both test bundles) | `make tvos`, any Mac with Xcode |
+| UI (XCUITest) | The browser's flow: launch → banner → guide → tune → change year, plus the remote mappings above, no signal (a closed local port) and the background round trip, against the homelab server or the Docker test stack (`RC_SERVER_URL`) | `make test-tvos-ui`: the "RC Apple TV" tvOS Simulator (Apple TV 4K, 2nd gen); screenshots to `tvos/build/screens/` |
+| Hands-on | On the Apple TV: the latency target, picture, sound, sideload, background return | Brandon, following `tvos/README.md` |
 
-- **Accessibility identifiers** mirror the browser's test ids: `power-on`, `server-version`, `no-signal`, `live`, `player`, `player-filler`, `bumper-slate`, `info-banner`, `banner-number`, `banner-title`, `banner-description`, `clock`, `guide`, `guide-details`, `details-title`, `details-synopsis`, `year-badge`, `year-picker`, `year-date`, `year-dial`.
+- **Accessibility identifiers** mirror the browser's test ids: `power-on`, `power-button`, `server-version`, `app-version`, `no-signal`, `live`, `player`, `player-filler`, `bumper-slate`, `player-slate` (the demo title slate), `info-banner`, `banner-number`, `banner-title`, `banner-description`, `clock`, `guide`, `guide-row-<channel id>`, `guide-details`, `details-title`, `details-synopsis`, `year-badge`, `year-picker`, `year-<year>` (a grid cell, `year-0` for All Years), `year-date`, `year-dial`.
 - No real video, audio or copyrighted media in tests; decoding tests use small recorded JSON with made-up titles, and playback tests use fakes.
 - UI tests and simulator sessions launch the app with `-RCNoWatch` (or `RC_NO_WATCH=1`), which drops watch reports, so test runs against the homelab never reach the station manager's data. Builds Brandon installs never pass it.
 - `make lint` and `make test` stay Linux-only and green; tvOS has its own targets.
 
 ## Acceptance criteria
 
-Each criterion names how it is checked: **Unit** (`swift test` today), **UI** (XCUITest once the simulator exists), **Hands-on** (Brandon on the Apple TV).
+Each criterion names how it is checked: **Unit** (`swift test`, `make test-tvos`), **UI** (XCUITest in the tvOS Simulator, `make test-tvos-ui`), **Hands-on** (Brandon on the Apple TV). Which are met so far is tracked in `tvos/HANDOFF.md`.
 
 ### Build and install
 

@@ -28,6 +28,12 @@ with Playwright, every `/media/` request blocked so no video frame is in the rep
 | `tvos/web-year-picker.png` | Year picker: 1998 focused and current; the dial overflows (24 channels) |
 | `tvos/web-no-signal.png` | No signal card (API blocked) |
 
+The tvOS counterparts come from the "RC Apple TV" simulator at 1920x1080 points: `make
+test-tvos-ui` writes `tv-power-on.png`, `tv-live-banner.png`, `tv-guide.png`, `tv-guide-moved.png`,
+`tv-year-picker.png` and `tv-no-signal.png` (plus `tv-live.png`, `tv-guide-pip.png` and
+`tv-year-picker-all-years.png`) to `tvos/build/screens/`. That folder is gitignored because the
+frames hold real video; it is never committed.
+
 Visible web defects that tvOS must not copy: the browser's white `:focus` ring around the focused
 year cell, and the year picker's dial running off the bottom of the screen.
 

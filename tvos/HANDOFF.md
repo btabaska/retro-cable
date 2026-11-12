@@ -6,15 +6,16 @@ Owner: engineer. Product spec: `docs/specs/tvos.md` (TV-1 ... TV-44). Design spe
 
 ## Status
 
-Milestones 1 (foundation), 2 (Live TV), 3 (guide) and 4 (year picker) are done. Long runs, the
-D-14 comparison and the hands-on checks are left (see "What is left").
+Milestones 1 (foundation), 2 (Live TV), 3 (guide) and 4 (year picker, UI tests, screenshots,
+Brandon's sideload guide `tvos/README.md`) are done. Long runs, the D-14 pixel overlay and the
+hands-on checks are left (see "What is left").
 
 | Milestone | Scope | State |
 | --- | --- | --- |
 | 1 Foundation | Toolchain, XcodeGen project, RetroCableKit (models, client, contract test, tokens, layout, logic ports), power on, no signal, make targets | Done |
 | 2 Live TV | One AVPlayer + AVPlayerLayer, tune queue and advance, banner and clock, channel up/down, last channel, rapid flipping, media failure retune, bumper slate, filler card, demo slate, duration-mismatch log, tune latency log, persisted year and channel, watch reporting wired to playback, background and foreground, simulated midnight, screensaver, Siri Remote mapping, simulator UI tests | Done |
 | 3 Guide | `GuideGrid` (window, row + time-anchor focus, half-hour scrolling, 12 h limit), cell text by width class, details panel, /guide fetch with the 5 s retry, Select tunes, Play/Pause opens the year picker, stale guide reopens after the background; `GuideView` grid, details, PiP border, time bar, footer | Done |
-| 4 Year picker | `YearGrid` focus, `YearPickerModel` (lineup cache, 120 ms delay, 1-5 s retry), `YearPanel` text, `DialColumns` (two columns of 12), Select sets the year and retunes, Back returns to the guide as it was, picture hidden and silent while it shows; `YearPickerView` | Done |
+| 4 Year picker and finish | `YearGrid` focus, `YearPickerModel` (lineup cache, 120 ms delay, 1-5 s retry), `YearPanel` text, `DialColumns` (two columns of 12), Select sets the year and retunes, Back returns to the guide as it was, picture hidden and silent while it shows; `YearPickerView`. XCUITests for every screen (incl. no signal), simulator screenshots of every screen, `tvos/README.md`, STATUS and specs | Done |
 | 5 Long runs | Overnight run, D-14 side-by-side, hands-on checks | |
 
 ## How to build and test
@@ -25,7 +26,7 @@ All on a Mac with Xcode at `/Applications/Xcode.app` (the Makefile sets `DEVELOP
 | --- | --- | --- |
 | `make test-tvos` | `swift test` of `tvos/RetroCableKit` on macOS (221 tests, about 1 s) | Xcode or the Swift toolchain |
 | `make tvos` | `xcodegen generate`, then `xcodebuild build-for-testing` for the tvOS Simulator with `CODE_SIGNING_ALLOWED=NO`: the app plus both test bundles | XcodeGen 2.46, Xcode with the tvOS SDK |
-| `make test-tvos-ui` | `xcodebuild test` in the "RC Apple TV" simulator: `RetroCableTests` (fonts load) and `RetroCableUITests` (power on, Live TV remote, background, guide, year picker). Saves screenshots to `tvos/build/screens/`. About 5 minutes. One class: add `-only-testing:RetroCableUITests/GuideTests` to the `xcodebuild test` line | The simulator below; the homelab server reachable |
+| `make test-tvos-ui` | `xcodebuild test` in the "RC Apple TV" simulator: `RetroCableTests` (fonts load) and `RetroCableUITests` (power on, no signal, Live TV remote, background, guide, year picker). Saves screenshots to `tvos/build/screens/`. About 5 minutes. One class: add `-only-testing:RetroCableUITests/GuideTests` to the `xcodebuild test` line | The simulator below; the homelab server reachable |
 | `RC_FLIPS=1 make test-tvos-ui` | Also runs the opt-in 20-flip test for TV-40; read the times from the log (below) | as above |
 | `RC_SERVER_URL=http://127.0.0.1:8080 make test-tvos-ui` | UI tests against the Docker test stack instead of the homelab | `make stack-up` |
 | `make lint`, `make test` | Unchanged, Linux-only, no tvOS in them | as before |
@@ -52,14 +53,10 @@ The tvOS targets are outside `make lint` and `make test`, so Linux CI never need
 
 ### Sideloading (Brandon)
 
-1. `make tvos` once (it generates `tvos/RetroCable.xcodeproj`), then open that project in Xcode.
-2. Target RetroCable > Signing & Capabilities: tick "Automatically manage signing" and pick your
-   Personal Team. The bundle id is `us.tabaska.retrocable`; `DEVELOPMENT_TEAM` is left empty in
-   `project.yml` on purpose, so regenerating the project clears the team: pick it again after
-   each `make tvos`, or set it once in Xcode and avoid regenerating.
-3. Pair the Apple TV (Settings > Remotes and Devices > Remote App and Devices on the TV; Xcode >
-   Window > Devices and Simulators), choose it as the run destination and press Run.
-4. A free Apple ID's provisioning lasts 7 days: run from Xcode again to renew.
+`tvos/README.md` is the step-by-step guide: Xcode first launch, signing in with the Apple ID,
+pairing the Apple TV, `make tvos`, choosing the Personal Team (again after each `make tvos`, since
+`DEVELOPMENT_TEAM` is empty in `project.yml` on purpose), running on the TV, the 7-day expiry and
+the later move to TestFlight.
 
 ## Layout
 
@@ -70,7 +67,7 @@ The tvOS targets are outside `make lint` and `make test`, so Linux CI never need
 | `tvos/RetroCable/App/` | `RetroCableApp` (entry point, audio session, `-RCNoWatch`) and `RootView` (screens, the one player moving between full screen and the PiP, TV-on reveal, scene phase, screensaver) |
 | `tvos/RetroCable/Playback/` | `AVPlaybackEngine`: the app's one `AVPlayer`, implementing the kit's `PlaybackEngine` |
 | `tvos/RetroCable/Views/` | Thin SwiftUI views: `PowerOnView`, `NoSignalView`, `LiveTVView` (banner, clock, remote), `InfoBannerView` (banner, badges, diamond, clock box, hints), `PlayerView` (AVPlayerLayer, bumper slate, filler card, demo slate), `GuideView` (header, details panel, PiP border, time bar, rows and cells, footer), `YearPickerView` (year grid, date panel, two-column dial), `Theme` (palette and fonts) |
-| `tvos/RetroCableUITests/` | `RCUITestCase` (shared launch, wait and screenshot helpers), `LaunchTests`, `LiveTVTests`, `GuideTests` |
+| `tvos/RetroCableUITests/` | `RCUITestCase` (shared launch, wait and screenshot helpers), `LaunchTests`, `NoSignalTests` (a closed local port as the server), `LiveTVTests`, `GuideTests`. They compile in `make tvos` (`build-for-testing`) and run in `make test-tvos-ui` |
 | `tvos/RetroCable/Resources/` | Fonts with their OFL licenses, `Assets.xcassets` (launch color) |
 | Generated, gitignored | `tvos/RetroCable.xcodeproj/`, `tvos/RetroCable/Info.plist`, `tvos/build/`, `tvos/RetroCableKit/.build/` |
 
@@ -142,7 +139,7 @@ any order (`LiveFakes.swift`). So rapid flipping, slot ends, the 5 s overrun, 60
 | TV-2 | Ready for hands-on: bundle id, tvOS 18.0, empty team, `RCServerURL`, no ATS keys (tested); the simulator reaches `https://tv.home.tabaska.us` with no ATS exception |
 | TV-3 | Done (unit; UI test passes in the simulator) |
 | TV-4 | Done (unit; UI test: Select turns on to Live TV on 02 with the banner) |
-| TV-5 | Done in the model (5 s retries, automatic switch, unit-tested); hands-on left |
+| TV-5 | Done in the model (5 s retries, automatic switch, unit-tested); UI test: "No signal" on power on and the card after Select with no server; hands-on left |
 | TV-6 | Done in the simulator: AVPlayerLayer aspect-fit on black, 4:3 pillarboxed (screenshot), no system UI for any press in the UI tests. Hands-on left |
 | TV-7 | Offset math unit-tested; in the simulator the picture matched the schedule. Hands-on parity with the browser left |
 | TV-8 | Unit: advance at slot end, 5 s overrun, refill without restart, 12 slots back to back. Hands-on evening left |
@@ -169,7 +166,7 @@ any order (`LiveFakes.swift`). So rapid flipping, slot ends, the 5 s overrun, 60
 | TV-44, D-1, D-3, D-13 | Done: tokens test, five fonts with hashes and UIAppFonts, new tokens in `tokens.json` |
 | D-2 | View code uses `DesignTokens` / `TVLayout`; the SMPTE bar colors are the one literal set |
 | D-5, D-6 | Done in the simulator (screenshots): pillarbox, cut to black then picture, banner geometry and motion |
-| D-11 | Power on and no signal use the radial gradient; launch screen is the `header` token (tested) |
+| D-11 | Power on and no signal use the radial gradient (`tv-power-on.png`, `tv-no-signal.png`); launch screen is the `header` token (tested) |
 | D-12 | Banner hints: "▲▼ Channel  SELECT Guide  ▶❚❚ Last channel"; guide footer "SELECT Watch  ▶❚❚ Change year  BACK Live TV"; year picker "BACK Guide" (tested) |
 | D-7, D-8 | Done in the simulator (`tv-guide.png`): header, details, PiP at 1517,146, 7 rows, 1494 pt cell area at 16.6 pt a minute (tested), width classes, drawn diamond, holiday bar, tuned bar |
 | D-9 | Focus is model state drawn as a gold fill; one focusable view per screen with `.focusEffectDisabled()`; moves snap |
@@ -276,6 +273,22 @@ Milestones 3 and 4 (Nov 11 2026, same simulator and server), from `GuideTests`:
 
 Against `web-guide.png`, `web-guide-moved.png` and `web-year-picker.png` they line up apart from
 the documented changes (80 pt sides, so 1494 pt of cells; the two-column dial; remote legends).
+
+Milestone 4 finish (Nov 11 2026, 21:20-21:25 ET): a full `make test-tvos-ui` run passed (15 tests:
+14 passed, the opt-in 20-flip test skipped) and rewrote every file above. New:
+
+| File | Shows |
+| --- | --- |
+| `tv-no-signal.png` | `NoSignalTests`: NO SIGNAL card and "Can't reach the cable box server. Retrying…" on the radial gradient; matches `web-no-signal.png` |
+| `sim-power-on.png` | Taken with `xcrun simctl io "RC Apple TV" screenshot` after installing and launching the app by hand against the homelab: "Server v0.0.0 · c8e0e3d", "App 1.0 (1)" |
+
+All in `tvos/build/screens/` (absolute: `/Users/brandontabaska/GitHub/retro-cable/.claude/worktrees/m9-tvos/tvos/build/screens/`).
+In `tv-guide.png` the PiP is still black: the test opens the guide right after turning on, before
+the first frame; `tv-guide-pip.png` (taken a few seconds into Live TV) shows the PiP playing.
+
+Note: another tvOS simulator ("Apple TV 4K (4th generation)") was booted on this Mac by someone
+else during this work; it was left alone. With two booted, `simctl ... booted` is ambiguous, so the
+commands here name "RC Apple TV".
 
 ## What is left
 
