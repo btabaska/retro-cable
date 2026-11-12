@@ -312,12 +312,17 @@ Background `background` behind everything.
   " · MOVIE" in `textMuted`); line 2 title 26.
 - Width classes (thresholds in points of the 1494 cell area, same numbers as web `CELLS_PX` logic):
   - **full** (>= 120 pt, about 7 min): both lines.
-  - **narrow** (40...120 pt): title only, padding 8 left / 4 right, tail truncation ("T…").
+  - **narrow** (40...120 pt): title only, padding 8 left / 4 right, tail truncation ("T…"). A
+    narrow cell whose text room (width less the 4 pt gap, the padding and any diamond) is under
+    42 pt draws no title, since a capital and the ellipsis don't fit at 26 pt ("W…" is 40.3 pt)
+    and SwiftUI would show a lone "…"; its accessibility label keeps the title. Below about 58 pt
+    (3.5 min) that means no text.
   - **sliver** (< 40 pt, about 2.4 min): no text, padding 0; its accessibility label is the title.
 - **Holiday**: a 3 pt `holidayMuted` bar inside the cell's left edge (`onFocus` when focused). The
   holiday name appears only in the details panel and banner badges, never as a cell kicker.
 - **Transplant mark**: a 9 x 9 pt square with a 2 pt stroke, rotated 45°, `transplant` color
-  (`onFocus` when focused), 3 pt before and 10 pt after, vertically centered on the title. Draw it
+  (`onFocus` when focused), 3 pt before and 10 pt after, vertically centered on the title. The
+  turned square is 12.7 pt across, so the mark's frame is 12.7 pt and those gaps are visible gaps. Draw it
   as a SwiftUI shape, never the "◇" glyph. Footer right shows the same mark + "Pretend premiere".
 - **NEW**: in cells, the gold " · NEW" kicker word; in the details panel and banner, the NEW badge
   (5.5). Always text, never color alone.

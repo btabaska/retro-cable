@@ -66,9 +66,17 @@ public enum TVLayout {
         public static let footerContentHeight: CGFloat = 50
         public static let holidayBarWidth: CGFloat = 3
         public static let diamondSize: CGFloat = 9
+        /// The square turned 45° is this wide and tall (9 x √2); the mark's frame takes it, so the
+        /// gaps around it are the visible gaps.
+        public static let diamondExtent: CGFloat = diamondSize * 2.0.squareRoot()
         /// Around the transplant diamond in a cell title.
         public static let diamondBefore: CGFloat = 3
         public static let diamondAfter: CGFloat = 10
+        /// What the diamond takes from a cell title's room.
+        public static let diamondRoom: CGFloat = diamondBefore + diamondExtent + diamondAfter
+        /// The least text room a narrow cell title needs: a capital and the ellipsis in Archivo
+        /// Narrow 26 ("W…" is 40.3 pt). Less draws no title, never a lone "…".
+        public static let minTitleRoom: CGFloat = 42
         /// The "All Channels" tab.
         public static let tabPaddingV: CGFloat = 8
         public static let tabPaddingH: CGFloat = 20
@@ -155,6 +163,8 @@ public enum TVLayout {
         public static let yearPicker: Double = 0.15
         /// Power on -> Live TV: the picture opens from a 4 pt line.
         public static let tvOn: Double = 0.35
+        /// With Reduce Motion, TV on is a plain fade this long.
+        public static let tvOnReduced: Double = guide
         public static let tvOnLine: CGFloat = 4
     }
 

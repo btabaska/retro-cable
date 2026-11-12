@@ -257,6 +257,33 @@ import Testing
         #expect(sliver.accessibilityLabel == "Sliver Show, 8:58 to 9:28")
     }
 
+    /// D-8: a narrow cell near the 40 pt floor (43 pt: 27 pt of text room) can't fit a letter and
+    /// the ellipsis at 26 pt, so it draws no title rather than a lone "…"; VoiceOver keeps it.
+    @Test func narrowCellsTooSmallForALetterDrawNoTitle() {
+        func content(_ title: String, seconds: Int, transplant: Bool = false) -> GuideCellContent {
+            let slot = Make.slot(title, at: 0, seconds: seconds, transplant: transplant).slot
+            return GuideCellContent.make(
+                GuideLayout.row([slot], from: Self.base, to: Self.at(90))[0], focused: false, now: Self.at(5),
+                zone: Self.zone
+            )
+        }
+        let tiny = content("Tiny Show", seconds: 155)
+        #expect(abs(GuideLayout.points(155.0 / 5400) - 42.9) < 0.1)
+        #expect(tiny.size == .narrow)
+        #expect(tiny.title == nil)
+        #expect(tiny.accessibilityLabel == "Tiny Show, 7:30 to 7:32")
+        // 60 pt leaves 44 pt: room for "W…" (40.3 pt in Archivo Narrow 26).
+        let small = content("Small Show", seconds: 217)
+        #expect(small.title == "Small Show")
+        // The diamond takes 3 + 12.7 + 10 pt of the room.
+        let moved = content("Moved Show", seconds: 253, transplant: true)
+        #expect(moved.size == .narrow)
+        #expect(moved.title == nil)
+        #expect(moved.transplant)
+        #expect(content("Moved Show", seconds: 330, transplant: true).title == "Moved Show")
+        #expect(abs(GuideLayout.titleRoom(width: 1, transplant: false) - (1494 - 4 - 8 - 4)) < 0.001)
+    }
+
     @Test func clippedCellsReadFromTheirStart() {
         let slot = Make.slot("Early Show", at: -8, seconds: 30 * 60).slot
         let cell = GuideLayout.row([slot], from: Self.base, to: Self.at(90))[0]

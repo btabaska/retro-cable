@@ -196,7 +196,8 @@ struct BadgeView: View {
 }
 
 /// The hollow diamond for pretend premieres: a 9 pt square, 2 pt stroke, turned 45°. Drawn, never
-/// the "◇" glyph.
+/// the "◇" glyph. Rotation doesn't change a view's layout box, so the mark is framed at its turned
+/// size (12.7 pt) and the gaps around it are the visible gaps.
 struct TransplantMark: View {
     let color: Color
 
@@ -205,6 +206,7 @@ struct TransplantMark: View {
             .strokeBorder(color, lineWidth: TVLayout.Badge.markStroke)
             .frame(width: TVLayout.Guide.diamondSize, height: TVLayout.Guide.diamondSize)
             .rotationEffect(.degrees(45))
+            .frame(width: TVLayout.Guide.diamondExtent, height: TVLayout.Guide.diamondExtent)
             .accessibilityHidden(true)
     }
 }

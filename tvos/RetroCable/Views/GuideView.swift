@@ -317,11 +317,15 @@ private struct ProgramCell: View {
                     .padding(.leading, G.diamondBefore)
                     .padding(.trailing, G.diamondAfter)
             }
-            Text(content.title ?? "")
-                .font(RCFont.grid(DesignTokens.fontSize.body, bold: content.focused))
-                .foregroundStyle(content.focused ? Palette.onFocus : Palette.text)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            // Nil when a letter and the ellipsis don't fit (the kit decides): no lone "…".
+            if let title = content.title {
+                Text(title)
+                    .font(RCFont.grid(DesignTokens.fontSize.body, bold: content.focused))
+                    .foregroundStyle(content.focused ? Palette.onFocus : Palette.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .allowsTightening(true)
+            }
         }
     }
 }

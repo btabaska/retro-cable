@@ -156,7 +156,8 @@ public struct GuideCellContent: Equatable, Sendable {
     /// "7:33" or "from 7:22"; nil unless the cell is full width.
     public let time: String?
     public let kicker: [KickerPart]
-    /// Nil for a sliver, whose accessibility label carries the title.
+    /// Nil for a sliver, or a narrow cell with no room for a letter and the ellipsis; the
+    /// accessibility label carries the title.
     public let title: String?
     public let transplant: Bool
     public let holiday: Bool
@@ -181,13 +182,24 @@ public struct GuideCellContent: Equatable, Sendable {
             size: size,
             time: size == .full ? (cell.clippedStart ? "from \(start)" : start) : nil,
             kicker: size == .full ? Program.kicker(slot) : [],
-            title: size == .sliver ? nil : slot.title,
+            title: hasTitle(size, cell: cell) ? slot.title : nil,
             transplant: slot.transplant,
             holiday: slot.holiday != nil,
             past: cell.end <= now,
             focused: focused,
             accessibilityLabel: spoken.joined(separator: ", ")
         )
+    }
+}
+
+extension GuideCellContent {
+    /// Slivers never draw a title; narrow cells only when a letter and the ellipsis fit (D-8).
+    static func hasTitle(_ size: CellSize, cell: GuideCell) -> Bool {
+        switch size {
+        case .full: true
+        case .narrow: GuideLayout.titleRoom(width: cell.width, transplant: cell.slot.transplant) >= TVLayout.Guide.minTitleRoom
+        case .sliver: false
+        }
     }
 }
 

@@ -85,6 +85,20 @@ import Testing
         #expect(L.Guide.rowTop(L.Guide.visibleRows - 1) + L.Guide.rowHeight <= L.Guide.footerTop)
     }
 
+    /// Design 5.3: the 9 pt square turned 45° is 12.7 pt across, so its frame is that wide and the
+    /// visible gaps come out at 3 and 10 pt.
+    @Test func transplantMarkTakesItsRotatedWidth() {
+        #expect(abs(L.Guide.diamondExtent - 12.728) < 0.001)
+        #expect(abs(L.Guide.diamondRoom - (3 + 12.728 + 10)) < 0.001)
+    }
+
+    /// Design 9: TV on opens over 0.35 s; with Reduce Motion it is a 0.2 s fade.
+    @Test func tvOnTimings() {
+        #expect(L.Motion.tvOn == 0.35)
+        #expect(L.Motion.tvOnReduced == 0.2)
+        #expect(L.Motion.tvOnLine == 4)
+    }
+
     /// Design 6: the year grid starts about y 399 and ends about y 831, inside the safe area; the
     /// dial's list is 734 pt tall.
     @Test func yearPickerColumns() {

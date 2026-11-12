@@ -68,9 +68,22 @@ public enum GuideLayout {
         Date(timeIntervalSince1970: (t.timeIntervalSince1970 / halfHour).rounded(.down) * halfHour)
     }
 
+    /// A cell's width in points of the cell area.
+    public static func points(_ width: Double, cellsWidth: CGFloat = TVLayout.Guide.cellsWidth) -> CGFloat {
+        CGFloat(width) * cellsWidth
+    }
+
+    /// The room a narrow cell's title has: its width less the 4 pt gap, its 8 + 4 pt padding and
+    /// the transplant diamond.
+    public static func titleRoom(width: Double, transplant: Bool) -> CGFloat {
+        let G = TVLayout.Guide.self
+        return points(width) - DesignTokens.space.cellGap - G.narrowPadLeading - G.narrowPadTrailing
+            - (transplant ? G.diamondRoom : 0)
+    }
+
     /// How much text a cell of `width` (a fraction of the window) has room for.
     public static func cellSize(_ width: Double, cellsWidth: CGFloat = TVLayout.Guide.cellsWidth) -> CellSize {
-        let points = CGFloat(width) * cellsWidth
+        let points = points(width, cellsWidth: cellsWidth)
         if points < sliverPoints { return .sliver }
         if points < narrowPoints { return .narrow }
         return .full
