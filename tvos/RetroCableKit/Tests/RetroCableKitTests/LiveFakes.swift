@@ -278,3 +278,18 @@ func until(_ condition: () -> Bool) async {
         await Task.yield()
     }
 }
+
+/// A value behind a lock, for test switches the transport reads off the main actor.
+final class LockedValue<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T
+
+    init(_ value: T) {
+        stored = value
+    }
+
+    var value: T {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+}

@@ -90,9 +90,9 @@ The app opens here on a cold launch, like the browser.
   - Badges: "S5 · E12", NEW, MOVIE, the holiday, PRETEND PREMIERE.
   - "Rerun · first aired Thu, Feb 3, 1994" ("New" for a new episode, "(pretend)" after the date for a transplant). Filler reads "No programming scheduled" with no synopsis.
   - The synopsis, at most two lines: the description, else the episode line, else the title.
-  - "Loading the guide…" while loading. "No signal" when the request fails, retried every 5 s.
+  - "Loading the guide…" while loading. "No signal" when the request fails, retried every 5 s while the guide shows. Select does nothing until the guide has loaded; Back always works.
 - **Live picture-in-picture**: the tuned channel keeps playing, with sound, in the PiP box. It is the same playback as Live TV (opening the guide doesn't retune or rebuffer), and it auto-advances the same way.
-- **Footer hints**: "SELECT Watch · ⏯ Change year · BACK Back", and the pretend-premiere key on the right.
+- **Footer hints**: "SELECT Watch · ▶❚❚ Change year · BACK Live TV" (the design's wording), and the pretend-premiere key on the right.
 
 ### Year picker
 
@@ -164,7 +164,7 @@ The app reports what is watched the way the browser does (`web.md`, M5; `api.md`
 ## Background, foreground and long runs
 
 - **Going to the background** (TV button, Home, another app) stops playback and ends the watch session with `power_off`. The banner timer and retries stop.
-- **Coming back**: the app fetches the lineup again (the simulated date may have changed) and tunes again at the live position, so the picture is what airs now, never the frame it left. The screen it was on is kept, and Live TV shows the banner. A guide whose window opened more than 30 minutes before simulated now reopens at the current half hour, with focus on the tuned channel's program now. A cold launch (the system ended the app) starts at power on.
+- **Coming back**: the app fetches the lineup again (the simulated date may have changed) and tunes again at the live position, so the picture is what airs now, never the frame it left. The screen it was on is kept, and Live TV shows the banner. A guide whose window opened more than 30 minutes before simulated now reopens at the current half hour, with focus on the tuned channel's program now; the check runs on return and again against the `now` of the lineup fetched on return, since the monotonic clock may not have run while the Apple TV slept. The year picker stays up with the picture off; leaving it retunes. A cold launch (the system ended the app) starts at power on.
 - **Simulated midnight.** When the simulated date changes, the app fetches the lineup again, so a channel that launches that day (Adult Swim on Sep 2, 2001) joins the dial.
 - **Screensaver.** It doesn't start while Live TV or the guide's PiP is playing.
 

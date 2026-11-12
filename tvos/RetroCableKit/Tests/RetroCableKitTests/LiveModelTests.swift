@@ -12,6 +12,8 @@ final class LiveRig {
     let server = TuneServer()
     let transport: StubTransport
     let guideFeed = GuideFeed()
+    /// Overrides the lineup's `now` (ISO 8601), as after a sleep the monotonic clock didn't see.
+    let lineupNow = LockedValue<String?>(nil)
     let store: UserDefaults
     var reports: [WatchReport] = []
     var logs: [String] = []
@@ -35,6 +37,7 @@ final class LiveRig {
         if let year { store.set(year, forKey: Settings.yearKey) }
         if let channel { store.set(channel, forKey: Settings.channelKey) }
         let feed = guideFeed
+        let now = lineupNow
         transport = StubTransport { request in
             let url = request.url!
             switch url.path {
@@ -42,16 +45,17 @@ final class LiveRig {
             case "/api/channels":
                 let year = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
                     .first { $0.name == "year" }?.value.flatMap(Int.init) ?? 1998
-                return (200, try LiveRig.lineup(year: year, onAir: lineups[year] ?? [:]))
+                return (200, try LiveRig.lineup(year: year, onAir: lineups[year] ?? [:], now: now.value))
             case "/api/version": return (200, try RepoFiles.fixture("version.json"))
             default: return (404, Data())
             }
         }
     }
 
-    nonisolated static func lineup(year: Int, onAir: [String: Bool]) throws -> Data {
+    nonisolated static func lineup(year: Int, onAir: [String: Bool], now: String? = nil) throws -> Data {
         var json = try JSONSerialization.jsonObject(with: RepoFiles.fixture("channels.json")) as! [String: Any]
         json["year"] = year
+        if let now { json["now"] = now }
         var channels = json["channels"] as! [[String: Any]]
         for i in channels.indices {
             if let value = onAir[channels[i]["id"] as! String] { channels[i]["on_air"] = value }

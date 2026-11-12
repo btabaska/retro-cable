@@ -383,8 +383,8 @@ public final class AppModel {
         showBanner()
     }
 
-    private func startGuide() {
-        guide = GuideGrid(now: simNow())
+    private func startGuide(now: Date? = nil) {
+        guide = GuideGrid(now: now ?? simNow())
         guideStatus = .loading
         loadGuide()
     }
@@ -570,9 +570,20 @@ public final class AppModel {
             await self.refreshLineup()
             guard !self.backgrounded else { return }
             if self.midnightTimer == nil { self.scheduleMidnight() }
+            // The monotonic clock may have stopped while the Apple TV slept: check the guide
+            // again against the server's now from the fresh lineup.
+            let now = self.latestNow()
+            if self.screen == .guide, let guide = self.guide, guide.isStale(now: now) { self.startGuide(now: now) }
             // The year picker keeps the picture off; leaving it retunes.
             if self.screen != .yearPicker { self.retune() }
         }
+    }
+
+    /// Simulated now from whichever server answer (/tune or /channels) arrived last.
+    private func latestNow() -> Date {
+        let times = [tuner.simTime, lineupTime].compactMap { $0 }
+        guard let latest = times.max(by: { $0.receivedAt < $1.receivedAt }) else { return simNow() }
+        return latest.now(at: clock.seconds())
     }
 
     /// Fetch this year's lineup again, keeping the channel when it is still on the dial.

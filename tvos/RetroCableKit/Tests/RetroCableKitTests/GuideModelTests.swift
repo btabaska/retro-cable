@@ -260,6 +260,26 @@ import Testing
         #expect(guideRequests(rig).count == 1)
     }
 
+    /// The monotonic clock stops while the Apple TV sleeps; the lineup fetched on the way back
+    /// carries the server's now, and a guide that is stale by it reopens too.
+    @Test func aGuideStaleByTheServersNowReopens() async {
+        let rig = LiveRig()
+        await inTheGuide(rig)
+        rig.app.enterBackground()
+        // A second passes on the monotonic clock; an hour and a half on the server's.
+        rig.clock.advance(1)
+        rig.lineupNow.value = "1998-11-11T21:10:00-05:00"
+        let lineups = rig.channelRequests
+        rig.app.enterForeground()
+        #expect(rig.app.guide?.opened == Make.base)
+        await rig.waitForChannels(lineups + 1)
+        await until { rig.app.guide?.opened != Make.base }
+        // 9:10 PM: the guide opens again at 9:00.
+        #expect(rig.app.guide?.opened == Make.base.addingTimeInterval(90 * 60))
+        await until { rig.app.guideStatus == .loaded }
+        #expect(guideRequests(rig).last?.queryItems?.contains(URLQueryItem(name: "start", value: "21:00")) == true)
+    }
+
     @Test func theYearPickerStaysHiddenAndSilentAfterTheBackground() async {
         let rig = LiveRig()
         await inTheGuide(rig)
