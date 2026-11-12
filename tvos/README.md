@@ -29,8 +29,11 @@ Check it works: from the repo root, `make test-tvos` (the logic tests, about a s
 1. Put the Mac and the Apple TV on the same network.
 2. On the Apple TV: Settings > Remotes and Devices > Remote App and Devices. Leave this screen open;
    the Apple TV is now discoverable.
-3. On the Mac: Xcode > Window > Devices and Simulators > Devices. The Apple TV appears under
-   Discovered. Select it and click Pair, then type the code the TV shows.
+3. On the Mac: Xcode 27 lists Devices and Simulators in the Window menu only while a project is
+   open, so run `make tvos` and `open tvos/RetroCable.xcodeproj` first. Then Window > Devices and
+   Simulators > Devices: the Apple TV appears under Discovered. Select it and click Pair, then type
+   the code the TV shows. Without Xcode's window, `xcrun devicectl list devices` shows the TV's
+   name and `xcrun devicectl manage pair --device "<name>"` pairs it from Terminal.
 4. Xcode then prepares the device (copies debug symbols for its tvOS version). The first time takes
    several minutes; wait until the device shows no warning.
 5. If the Apple TV asks you to turn on Developer Mode (Settings > Privacy & Security > Developer
