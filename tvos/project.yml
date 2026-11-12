@@ -37,6 +37,8 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # The cable box server. Tests override it with -RCServerURL or RC_SERVER_URL.
         RCServerURL: https://tv.home.tabaska.us
+        # The server is on the home LAN; shown if tvOS asks for local network access.
+        NSLocalNetworkUsageDescription: Retro Cable plays TV from the cable box server on your home network.
         UIAppFonts:
           - Arimo-Regular.ttf
           - Arimo-Bold.ttf
