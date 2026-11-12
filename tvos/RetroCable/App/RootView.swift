@@ -14,7 +14,7 @@ struct RootView: View {
                 PowerOnView(model: model)
             case .noSignal:
                 NoSignalView()
-            case .live:
+            case .live, .guide:
                 LiveTVView(model: model)
             }
         }
