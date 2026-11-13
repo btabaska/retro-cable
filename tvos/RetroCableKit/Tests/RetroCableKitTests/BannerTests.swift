@@ -109,11 +109,18 @@ import Testing
 
     /// D-12: Siri Remote controls, never keyboard keys.
     @Test func remoteHintsNameSiriRemoteControls() {
-        #expect(BannerContent.hints.map(\.key) == ["▲▼", "SELECT", "▶❚❚"])
-        #expect(BannerContent.hints.map(\.action) == ["Channel", "Guide", "Last channel"])
-        for hint in BannerContent.hints {
-            for key in ["ENTER", "SPACE", "ESC", "Y"] { #expect(hint.key != key) }
+        for choice in [BannerChoice.guide, .year] {
+            #expect(BannerContent.hints(choice).map(\.key) == ["▲▼", "◀▶", "SELECT", "▶❚❚"])
+            for hint in BannerContent.hints(choice) {
+                for key in ["ENTER", "SPACE", "ESC", "Y"] { #expect(hint.key != key) }
+            }
         }
+    }
+
+    /// TV-45: the hints follow the highlighted chip: ◀▶ names the other one, SELECT this one.
+    @Test func remoteHintsFollowTheBannerChoice() {
+        #expect(BannerContent.hints(.guide).map(\.action) == ["Channel", "Year", "Guide", "Last channel"])
+        #expect(BannerContent.hints(.year).map(\.action) == ["Channel", "Guide", "Year", "Last channel"])
     }
 
     /// TV-21: the clock from simulated time in the server's zone.

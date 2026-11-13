@@ -70,7 +70,8 @@ The app opens here on a cold launch, like the browser.
   - Progress bar from simulated now between start and end, with the start and end times ("7:33", "7:56").
   - "Next 7:56 The Simpsons": the next program, skipping bumpers. Nothing when there is no next program.
   - The year: "Year 1998", or "All Years".
-  - Remote hints: "▲▼ Channel · SELECT Guide · ⏯ Last channel".
+  - Two chips, "Guide" over "Year 1998", with the highlighted one in gold and the other on `rule`. Guide is highlighted each time the banner appears and after each tune. While the banner shows, left/right move the highlight and keep the banner up, and Select opens the highlighted chip: the guide, or the year picker.
+  - Remote hints: "▲▼ Channel · ◀▶ Year · SELECT Guide · ⏯ Last channel". ◀▶ names the other chip and SELECT the highlighted one ("◀▶ Guide · SELECT Year" while Year is highlighted).
 - The clock reads "7:34 PM" over "Wednesday, Nov 11, 1998", in the server's time zone.
 
 ### Guide
@@ -97,7 +98,7 @@ The app opens here on a cold launch, like the browser.
 
 ### Year picker
 
-- Opened with Play/Pause from the guide. "SET YOUR YEAR" header.
+- Opened with Play/Pause from the guide, or with Select on the banner's Year chip. "SET YOUR YEAR" header.
 - **Grid**: 1990–2010 in three rows of seven; "All Years" alone on a fourth row. Focus starts on the current year, and the current year is marked differently from focus.
 - **Moving**: arrows clamp at the edges (no wrap). Down from the third row reaches All Years; Up from All Years returns to the third row.
 - **Left panel**: "Today on your TV is" and the focused year's date from `/channels` ("Wednesday, November 11, 1998"; the year label while it loads). Under it, "Each channel plays what had aired by this date, new episodes and reruns mixed." For All Years, today's real date and "All Years: every channel on, airing every season of every show, whenever it first aired."
@@ -108,7 +109,7 @@ The app opens here on a cold launch, like the browser.
   - "Hidden until 2001" (dimmed) for channels not yet launched
 - **Fetching**: each year's lineup is fetched 120 ms after focus lands on it and kept while the picker is open. A failed request is retried after 1 s, 2 s and so on up to 5 s, so the dial never stays empty.
 - **Select** sets the year, saves it, returns to Live TV, retunes (the stored channel if it is on the new dial, else the lowest-numbered one) and shows the banner.
-- **Back** returns to the guide, with its window and focus as they were, and changes nothing.
+- **Back** returns to where the picker was opened and changes nothing: the guide, with its window and focus as they were, or Live TV with the banner (Guide highlighted).
 - The picker hides and silences the picture. Returning to Live TV or the guide always shows the channel at its live position, never a paused frame.
 
 ## Siri Remote
@@ -117,11 +118,11 @@ The app opens here on a cold launch, like the browser.
 | --- | --- | --- | --- | --- | --- |
 | Swipe or click up | — | Channel up (next higher number on the dial; wraps from the highest to the lowest) | Row up (keeps the time; stops at the first row) | Move up | — |
 | Swipe or click down | — | Channel down (wraps) | Row down (stops at the last row) | Move down | — |
-| Swipe or click left / right | — | Show the banner | Previous / next cell; the window scrolls by half hours to reveal it, never before the opening window and never more than 12 h ahead | Move left / right | — |
-| Select (click) | Turn on | Open the guide | Tune the focused row's channel to what airs now, back to Live TV | Set the year and retune | — |
+| Swipe or click left / right | — | Show the banner; while it shows, move between its Guide and Year chips | Previous / next cell; the window scrolls by half hours to reveal it, never before the opening window and never more than 12 h ahead | Move left / right | — |
+| Select (click) | Turn on | Open the banner's highlighted chip: the guide (the default), or the year picker | Tune the focused row's channel to what airs now, back to Live TV | Set the year and retune | — |
 | Hold Select | — | Nothing in this build (reserved for "like"; never opens the guide) | — | — | — |
 | Play/Pause | Turn on | Last channel | Open the year picker | — | — |
-| Back | Leave the app | Show the banner when hidden; leave the app when it shows | Back to Live TV, same channel, no retune | Back to the guide | Leave the app |
+| Back | Leave the app | Show the banner when hidden; leave the app when it shows | Back to Live TV, same channel, no retune | Back to where it was opened (the guide, or Live TV) | Leave the app |
 | TV button | System (Home) | System | System | System | System |
 
 - One click, or one swipe step, moves one channel, row or cell. Swipes move cell by cell; they never skip a cell without the details panel showing it.
@@ -185,8 +186,8 @@ The app reports what is watched the way the browser does (`web.md`, M5; `api.md`
 
 | Topic | Browser / plan | tvOS | Why |
 | --- | --- | --- | --- |
-| Opening the year picker | Y key, or the banner's Year button | Play/Pause in the guide (the plan's mapping); the banner isn't focusable | The Siri Remote has no Y key, and Select on Live TV opens the guide |
-| Back from the year picker | Returns to Live TV | Returns to the guide, as it was | The guide is where it was opened |
+| Opening the year picker | Y key, or the banner's Year button | Play/Pause in the guide (the plan's mapping), or the banner's Year chip: left/right highlight it, Select opens it | The Siri Remote has no Y key, and up/down must keep changing channel while the banner shows (it shows on every tune), so the chips move with left/right |
+| Back from the year picker | Returns to Live TV | Returns to where it was opened: the guide as it was, or Live TV | Back goes to where you came from |
 | Hold Select = like (plan) | Not built | Reserved, does nothing | No likes API yet; adding one is a server change out of scope here |
 | Number entry | Digits tune by number | None | No digits on the Siri Remote |
 | Guide load failure | "No signal" until reopened | Retried every 5 s | A TV has nobody to press reload |
@@ -242,8 +243,8 @@ Each criterion names how it is checked: **Unit** (`swift test`, `make test-tvos`
 - **TV-13** Swipe or click up tunes the next higher channel on the dial, and down the next lower. Both wrap at the ends and skip channels that aren't on the air. One press moves one channel. — Unit (stepping), UI
 - **TV-14** Pressing up five times quickly ends on the fifth channel. Only that channel plays, answers for earlier channels are dropped, and the old channel's sound stops on the first press. — Unit, UI
 - **TV-15** Play/Pause toggles to the previously tuned channel and back. It does nothing when there is no previous channel, or when that channel isn't on the current dial. — Unit, UI
-- **TV-16** Select opens the guide. Holding Select (0.5 s or more) does nothing and doesn't open the guide. — UI
-- **TV-17** Swipe or click left or right shows the banner. Back shows the banner when it is hidden; Back while the banner shows leaves the app. — UI
+- **TV-16** Select opens the guide (with the banner hidden, or with its Guide chip highlighted). Holding Select (0.5 s or more) does nothing and doesn't open the guide. — Unit, UI
+- **TV-17** Swipe or click left or right shows the banner (and, while it shows, moves between its chips, TV-45). Back shows the banner when it is hidden; Back while the banner shows leaves the app. — UI
 
 ### Info banner and clock
 
@@ -288,7 +289,7 @@ Each criterion names how it is checked: **Unit** (`swift test`, `make test-tvos`
   - "On the dial in <year>": every channel with number, name and its note ("On air", "Always on (classics)", "Your playlist", or "Hidden until 2001", dimmed).
 
   Lineups are fetched 120 ms after focus and cached while open; failures retry after 1 s, 2 s … up to 5 s. — Unit, UI
-- **TV-31** Select saves the year, returns to Live TV, retunes (the stored channel if it is on the new dial, else the lowest-numbered) and shows the banner. Back returns to the guide unchanged. While the picker shows, the picture is hidden and silent; leaving it shows the live position. — Unit, UI
+- **TV-31** Select saves the year, returns to Live TV, retunes (the stored channel if it is on the new dial, else the lowest-numbered) and shows the banner. Back returns unchanged to where the picker was opened (the guide, or Live TV with the banner). While the picker shows, the picture is hidden and silent; leaving it shows the live position. — Unit, UI
 
 ### Persistence
 
@@ -314,3 +315,4 @@ Each criterion names how it is checked: **Unit** (`swift test`, `make test-tvos`
 - **TV-42** The browser's flow passes as an XCUITest against the test stack: launch → banner → guide → tune → change year. It finds screens by the accessibility identifiers listed under Testing. — UI
 - **TV-43** On the couch, the Apple TV and the browser on the same channel and year show the same program at the same moment, and the guide matches what plays: Phase 9's "done when". — Hands-on
 - **TV-44** Colors, type sizes and spacing come from `design/tokens.json` through generated Swift constants, and a unit test fails when the constants are stale. Arimo and Archivo Narrow are bundled with the app, which makes no font or other external network calls. — Unit
+- **TV-45** The banner's Guide and Year chips (Brandon, Nov 13: up/down change channel, so the year couldn't be reached from the banner). Guide is highlighted when the banner appears and after each tune. While the banner shows, left/right move the gold highlight and restart its 4 s; Select opens the highlighted chip. Year opens the year picker from Live TV, and Back from it returns to Live TV with the banner. The remote hints follow the highlight. — Unit, UI

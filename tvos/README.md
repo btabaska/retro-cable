@@ -87,10 +87,10 @@ home network.
 | Press | Live TV | Guide | Year picker |
 | --- | --- | --- | --- |
 | Swipe or click up/down | Channel up/down | Move one row | Move in the grid |
-| Swipe or click left/right | Show the banner | Move one program, scroll by half hours | Move in the grid |
-| Click (SELECT) | Open the guide | Watch the focused channel | Choose the year |
+| Swipe or click left/right | Show the banner; while it shows, choose Guide or Year | Move one program, scroll by half hours | Move in the grid |
+| Click (SELECT) | Open the highlighted chip (Guide, or Year) | Watch the focused channel | Choose the year |
 | Play/Pause | Last channel | Open the year picker | |
-| Back | Show the banner; leave the app when it shows | Back to Live TV | Back to the guide |
+| Back | Show the banner; leave the app when it shows | Back to Live TV | Back to where it was opened |
 
 Holding SELECT does nothing yet (it is kept for likes).
 

@@ -54,6 +54,27 @@ final class LiveTVTests: RCUITestCase {
         XCTAssertEqual(app.state, .runningForeground)
     }
 
+    /// TV-45: with the banner up, right highlights the Year chip and Select opens the year
+    /// picker; Back returns to Live TV with the banner, Guide highlighted again.
+    func testTheBannersYearChipOpensTheYearPicker() {
+        let app = launch()
+        remote.press(.select)
+        XCTAssertTrue(element(app, "info-banner").waitForExistence(timeout: 15))
+        XCTAssertTrue(element(app, "banner-guide").isSelected)
+        remote.press(.right)
+        XCTAssertTrue(waitFor(self.element(app, "banner-year").isSelected, timeout: 2))
+        XCTAssertFalse(element(app, "banner-guide").isSelected)
+        snap("tv-live-banner-year")
+        remote.press(.select)
+        XCTAssertTrue(element(app, "year-picker").waitForExistence(timeout: 5))
+        XCTAssertFalse(element(app, "guide").exists)
+        remote.press(.menu)
+        XCTAssertTrue(waitFor(!self.element(app, "year-picker").exists, timeout: 5))
+        XCTAssertTrue(element(app, "info-banner").waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, "banner-guide").isSelected)
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
     /// TV-14: five quick presses land five channels up.
     func testRapidFlippingLandsOnTheFifthChannel() {
         let app = launch()

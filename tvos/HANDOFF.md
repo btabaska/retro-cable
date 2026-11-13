@@ -179,10 +179,11 @@ any order (`LiveFakes.swift`). So rapid flipping, slot ends, the 5 s overrun, 60
 | TV-40 | Tunes start on the press (unit); latency logged per tune (unit, log). Simulator, 20 spaced flips against the homelab: median 520 ms, revisits ~330 ms, slowest 1.95 s and 1.99 s (cold files with software decode). Device p95 is hands-on |
 | TV-41 | Signed paths never print (tested); tuner logs carry no path, `exp`, `sig` or host (tested); fixtures carry none (tested) |
 | TV-44, D-1, D-3, D-13 | Done: tokens test, five fonts with hashes and UIAppFonts, new tokens in `tokens.json` |
+| TV-45 | Done (unit and UI): left/right move the banner's highlight between Guide and Year, Select opens it; Year opens the year picker from Live TV and Back returns there (Brandon's report, Nov 13) |
 | D-2 | View code uses `DesignTokens` / `TVLayout`; the SMPTE bar colors are the one literal set |
 | D-5, D-6 | Done in the simulator (screenshots): pillarbox, cut to black then picture, banner geometry and motion |
 | D-11 | Power on and no signal use the radial gradient (`tv-power-on.png`, `tv-no-signal.png`); launch screen is the `header` token (tested). TV on: a 4 pt white line at mid-screen opens to full height over 0.35 s ease-out, then the banner (seen in a simulator recording); Reduce Motion fades over 0.2 s |
-| D-12 | Banner hints: "▲▼ Channel  SELECT Guide  ▶❚❚ Last channel"; guide footer "SELECT Watch  ▶❚❚ Change year  BACK Live TV"; year picker "BACK Guide" (tested) |
+| D-12 | Banner hints: "▲▼ Channel  ◀▶ Year  SELECT Guide  ▶❚❚ Last channel" (◀▶ and SELECT follow the highlighted chip, TV-45); guide footer "SELECT Watch  ▶❚❚ Change year  BACK Live TV"; year picker "BACK Guide", or "BACK Live TV" when the banner opened it (TV-45, tested) |
 | D-7, D-8 | Done in the simulator (`tv-guide.png`): header, details, PiP at 1517,146, 7 rows, 1494 pt cell area at 16.6 pt a minute (tested), width classes (narrow cells without room for a letter and "…" draw no title), drawn diamond framed at 12.7 pt so its gaps are 3 and 10 pt, holiday bar, tuned bar |
 | D-9 | Focus is model state drawn as a gold fill; one focusable view per screen with `.focusEffectDisabled()`; moves snap |
 | D-10 | Done (`tv-year-picker.png`): 7x3 grid, full-width All Years, ring on the current year, 24 channels in two columns with off-air dimmed |

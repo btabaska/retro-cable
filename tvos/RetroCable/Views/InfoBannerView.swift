@@ -2,9 +2,11 @@ import RetroCableKit
 import SwiftUI
 
 /// The info banner (design 4.2): x 96...1824, bottom edge 1016, a 5 pt gold top rule, channel,
-/// title row, description, progress and next. A status display: nothing in it takes focus.
+/// title row, description, progress and next. Nothing in it takes focus: left/right move the gold
+/// highlight between the Guide and Year chips, and Select opens the highlighted one (TV-45).
 struct InfoBannerView: View {
     let content: BannerContent
+    var choice: BannerChoice = .guide
 
     private typealias L = TVLayout.Banner
 
@@ -90,7 +92,7 @@ struct InfoBannerView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: L.progressGap)
-                RemoteHints(hints: BannerContent.hints)
+                RemoteHints(hints: BannerContent.hints(choice))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -98,8 +100,10 @@ struct InfoBannerView: View {
 
     private var chips: some View {
         VStack(spacing: L.rowGap) {
-            Chip(text: "Guide", fill: Palette.rule, color: Palette.text)
-            Chip(text: content.year, fill: Palette.focus, color: Palette.onFocus)
+            Chip(text: "Guide", highlighted: choice == .guide)
+                .accessibilityIdentifier("banner-guide")
+            Chip(text: content.year, highlighted: choice == .year)
+                .accessibilityIdentifier("banner-year")
         }
         .fixedSize()
     }
@@ -120,20 +124,20 @@ struct ProgressTrack: View {
     }
 }
 
-/// "Guide" and "Year 1998": labels, not buttons.
+/// "Guide" and "Year 1998": the highlighted one in gold, the other on `rule` (TV-45).
 struct Chip: View {
     let text: String
-    let fill: Color
-    let color: Color
+    let highlighted: Bool
 
     var body: some View {
         Text(text)
             .font(RCFont.body(DesignTokens.fontSize.small, bold: true))
-            .foregroundStyle(color)
+            .foregroundStyle(highlighted ? Palette.onFocus : Palette.text)
             .padding(.vertical, TVLayout.Banner.chipPaddingV)
             .padding(.horizontal, TVLayout.Banner.chipPaddingH)
             .frame(maxWidth: .infinity)
-            .background(fill, in: RoundedRectangle(cornerRadius: DesignTokens.radius.button))
+            .background(highlighted ? Palette.focus : Palette.rule, in: RoundedRectangle(cornerRadius: DesignTokens.radius.button))
+            .accessibilityAddTraits(highlighted ? .isSelected : [])
     }
 }
 
@@ -149,8 +153,9 @@ struct RemoteHints: View {
         HStack(spacing: spacing) {
             ForEach(hints.indices, id: \.self) { index in
                 let hint = hints[index]
-                // U+FE0E keeps ▶ a text glyph; without it tvOS draws the emoji.
+                // U+FE0E keeps ▶ and ◀ text glyphs; without it tvOS draws the emoji.
                 let key = hint.key.replacingOccurrences(of: "▶", with: "▶\u{FE0E}")
+                    .replacingOccurrences(of: "◀", with: "◀\u{FE0E}")
                 Text("\(Text(key).font(RCFont.body(size, bold: true))) \(hint.action)")
                     .font(RCFont.body(size))
                     .foregroundStyle(color)

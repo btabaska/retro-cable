@@ -59,7 +59,7 @@ struct YearPickerView: View {
                     .foregroundStyle(Palette.text)
                 Spacer(minLength: 0)
                 RemoteHints(
-                    hints: [RemoteHint(key: "BACK", action: "Guide")], size: DesignTokens.fontSize.small,
+                    hints: [RemoteHint(key: "BACK", action: model.yearPickerBack)], size: DesignTokens.fontSize.small,
                     color: Palette.text
                 )
             }

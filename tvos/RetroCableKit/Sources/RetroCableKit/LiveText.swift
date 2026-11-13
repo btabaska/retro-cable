@@ -95,12 +95,16 @@ public struct BannerContent: Equatable, Sendable {
     /// "Year 1998" or "All Years".
     public let year: String
 
-    /// "▲▼ Channel  SELECT Guide  ▶❚❚ Last channel" (D-12: Siri Remote controls only).
-    public static let hints = [
-        RemoteHint(key: "▲▼", action: "Channel"),
-        RemoteHint(key: "SELECT", action: "Guide"),
-        RemoteHint(key: "▶❚❚", action: "Last channel"),
-    ]
+    /// "▲▼ Channel  ◀▶ Year  SELECT Guide  ▶❚❚ Last channel" (D-12: Siri Remote controls only).
+    /// ◀▶ names the chip it moves to, SELECT the highlighted one (TV-45).
+    public static func hints(_ choice: BannerChoice) -> [RemoteHint] {
+        [
+            RemoteHint(key: "▲▼", action: "Channel"),
+            RemoteHint(key: "◀▶", action: choice.other.label),
+            RemoteHint(key: "SELECT", action: choice.label),
+            RemoteHint(key: "▶❚❚", action: "Last channel"),
+        ]
+    }
 
     /// `next` is the next program already skipping bumpers (`Tuner.nextProgram`); a bumper passed
     /// in is skipped too.
@@ -141,4 +145,14 @@ public struct BannerContent: Equatable, Sendable {
             year: year == Years.all ? Years.label(year) : "Year \(year)"
         )
     }
+}
+
+/// The banner's two chips: Select on Live TV opens the highlighted one (TV-45).
+public enum BannerChoice: Equatable, Sendable {
+    case guide
+    case year
+
+    public var other: BannerChoice { self == .guide ? .year : .guide }
+
+    public var label: String { self == .guide ? "Guide" : "Year" }
 }

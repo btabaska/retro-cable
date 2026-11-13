@@ -179,6 +179,7 @@ import Testing
         #expect(rig.app.screen == .yearPicker)
         #expect(rig.app.yearPicker?.focused == 1998)
         #expect(rig.app.yearPicker?.current == 1998)
+        #expect(rig.app.yearPickerBack == "Guide")
         #expect(rig.engine.calls.last == .stop)
         #expect(rig.app.tuner.slot == nil)
         #expect(!rig.app.isPlaying)

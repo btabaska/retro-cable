@@ -20,7 +20,7 @@ struct LiveTVView: View {
                             .padding(.top, TVLayout.Banner.clockTop)
                             .padding(.trailing, TVLayout.Banner.rightInset)
                         if let content = model.bannerContent() {
-                            InfoBannerView(content: content)
+                            InfoBannerView(content: content, choice: model.bannerChoice)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                                 .padding(.bottom, TVLayout.Banner.bottomInset)
                         }

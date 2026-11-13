@@ -447,4 +447,88 @@ final class LiveRig {
         rig.engine.play(duration: 23 * 60)
         #expect(rig.logs == ["tune kfix 500 ms"])
     }
+
+    // MARK: - Banner choice (TV-45)
+
+    /// TV-45: while the banner shows, left/right move between its Guide and Year chips and keep it
+    /// up; Select opens the highlighted one. Up/down still change channel.
+    @Test func leftAndRightChooseBetweenGuideAndYearOnTheBanner() async {
+        let rig = LiveRig()
+        await rig.turnedOn()
+        #expect(rig.app.bannerChoice == .guide)
+        rig.clock.advance(3)
+        rig.app.move(.right)
+        #expect(rig.app.bannerChoice == .year)
+        rig.clock.advance(3)
+        #expect(rig.app.bannerVisible)
+        rig.app.move(.left)
+        #expect(rig.app.bannerChoice == .guide)
+        rig.app.move(.left)
+        #expect(rig.app.bannerChoice == .year)
+        await rig.press { rig.app.move(.up) }
+        #expect(rig.app.channelID == "retro-classics")
+        #expect(rig.app.bannerChoice == .guide)
+    }
+
+    /// TV-45: a hidden banner comes back on Guide; left/right first only show it.
+    @Test func theBannerComesBackOnGuide() async {
+        let rig = LiveRig()
+        await rig.turnedOn()
+        rig.app.move(.right)
+        #expect(rig.app.bannerChoice == .year)
+        rig.clock.advance(4.1)
+        #expect(!rig.app.bannerVisible)
+        #expect(rig.app.bannerChoice == .guide)
+        rig.app.move(.right)
+        #expect(rig.app.bannerVisible)
+        #expect(rig.app.bannerChoice == .guide)
+    }
+
+    /// TV-45: Select on Year opens the year picker from Live TV, picture off; Back returns to Live
+    /// TV on the same channel at its live position, with the banner.
+    @Test func selectOnTheYearChipOpensTheYearPickerAndBackReturnsToLiveTV() async {
+        let rig = LiveRig()
+        await rig.turnedOn()
+        rig.app.move(.right)
+        rig.app.pressSelect()
+        #expect(rig.app.screen == .yearPicker)
+        #expect(rig.app.yearPicker?.focused == 1998)
+        #expect(rig.app.guide == nil)
+        #expect(rig.engine.calls.last == .stop)
+        #expect(!rig.app.backLeavesApp)
+        #expect(rig.app.yearPickerBack == "Live TV")
+        await rig.press { rig.app.pressBack() }
+        #expect(rig.app.screen == .live)
+        #expect(rig.app.yearPicker == nil)
+        #expect(rig.app.guide == nil)
+        #expect(rig.server.requests.last == .init(channel: "kfix", year: 1998))
+        #expect(rig.app.bannerVisible)
+        #expect(rig.app.bannerChoice == .guide)
+    }
+
+    /// TV-45: picking a year from the banner's year picker sets it and retunes, like from the guide.
+    @Test func pickingAYearFromTheBannerRetunes() async {
+        let rig = LiveRig(channel: "late-toons", lineups: [2005: ["late-toons": true]])
+        await rig.turnedOn()
+        rig.app.move(.left)
+        rig.app.pressSelect()
+        rig.app.move(.down)
+        #expect(rig.app.yearPicker?.focused == 2005)
+        rig.app.pressSelect()
+        await rig.app.changingYear?.value
+        await rig.server.waitFor(2)
+        #expect(rig.app.screen == .live)
+        #expect(rig.app.year == 2005)
+        #expect(rig.server.requests.last == .init(channel: "late-toons", year: 2005))
+    }
+
+    /// TV-16: Select on Guide (the default) still opens the guide.
+    @Test func selectOnTheGuideChipOpensTheGuide() async {
+        let rig = LiveRig()
+        await rig.turnedOn()
+        rig.app.move(.right)
+        rig.app.move(.right)
+        rig.app.pressSelect()
+        #expect(rig.app.screen == .guide)
+    }
 }

@@ -65,7 +65,7 @@ public final class AppModel {
         case live
         /// The grid with the live PiP.
         case guide
-        /// Opened from the guide; the picture is hidden and silent while it shows.
+        /// Opened from the guide or the banner; the picture is hidden and silent while it shows.
         case yearPicker
     }
 
@@ -92,6 +92,8 @@ public final class AppModel {
     public private(set) var year: Int
     /// The info banner and clock box (TV-18): 4 s of real time after each trigger.
     public private(set) var bannerVisible = false
+    /// The banner chip Select opens (TV-45); back to Guide on each tune and when the banner hides.
+    public private(set) var bannerChoice: BannerChoice = .guide
     /// The app is in the background: nothing plays, nothing is scheduled.
     public private(set) var backgrounded = false
 
@@ -104,6 +106,11 @@ public final class AppModel {
     public private(set) var guideStatus: GuideStatus = .loading
     /// The year picker while it shows.
     public private(set) var yearPicker: YearPickerModel?
+    /// Where Back from the year picker goes: the guide, or Live TV when the banner opened it.
+    private var yearPickerOpener: Screen = .guide
+
+    /// The year picker's "BACK …" hint: where Back goes.
+    public var yearPickerBack: String { yearPickerOpener == .live ? "Live TV" : "Guide" }
     /// The year change the picker started, if any.
     public private(set) var changingYear: Task<Void, Never>?
 
@@ -287,15 +294,18 @@ public final class AppModel {
 
     // MARK: - Remote
 
-    /// Swipe or click. Live TV: up/down change channel, left/right show the banner. The guide and
-    /// the year picker move their focus.
+    /// Swipe or click. Live TV: up/down change channel; left/right show the banner, or while it
+    /// shows move between its Guide and Year chips (TV-45). The guide and the year picker move
+    /// their focus.
     public func move(_ direction: MoveDirection) {
         switch screen {
         case .live:
             switch direction {
             case .up: step(1)
             case .down: step(-1)
-            case .left, .right: showBanner()
+            case .left, .right:
+                if bannerVisible { bannerChoice = bannerChoice.other }
+                showBanner()
             }
         case .guide: guide?.move(direction)
         case .yearPicker: yearPicker?.move(direction)
@@ -303,12 +313,13 @@ public final class AppModel {
         }
     }
 
-    /// Select (a click, not a hold). Live TV opens the guide; the guide tunes the focused row's
-    /// channel; the year picker sets the year.
+    /// Select (a click, not a hold). Live TV opens the banner's highlighted chip, the guide unless
+    /// Year is highlighted (TV-45); the guide tunes the focused row's channel; the year picker sets
+    /// the year.
     public func pressSelect() {
         switch screen {
         case .powerOn: pressPower()
-        case .live: openGuide()
+        case .live: bannerVisible && bannerChoice == .year ? openYearPicker() : openGuide()
         case .guide: watchFocusedChannel()
         case .yearPicker: pickYear()
         case .noSignal: break
@@ -327,7 +338,7 @@ public final class AppModel {
     }
 
     /// Back, when the app handles it (`backLeavesApp` is false): Live TV shows the banner, the
-    /// guide returns to Live TV without a retune, the year picker returns to the guide.
+    /// guide returns to Live TV without a retune, the year picker returns to where it was opened.
     public func pressBack() {
         switch screen {
         case .live: if !bannerVisible { showBanner() }
@@ -359,6 +370,7 @@ public final class AppModel {
             settings.channel = id
             tuner.tune(target, year: year, pressedAt: clock.seconds())
         }
+        bannerChoice = .guide
         showBanner()
     }
 
@@ -447,10 +459,12 @@ public final class AppModel {
 
     // MARK: - Year picker
 
-    /// Play/Pause in the guide: the year picker, focused on the current year. The picture stops
-    /// (hidden and silent), which ends the watch session with tune_away (TV-31, TV-35).
+    /// Play/Pause in the guide, or Select on the banner's Year chip: the year picker, focused on
+    /// the current year. The picture stops (hidden and silent), which ends the watch session with
+    /// tune_away (TV-31, TV-35, TV-45).
     private func openYearPicker() {
-        guard screen == .guide else { return }
+        guard screen == .guide || screen == .live else { return }
+        yearPickerOpener = screen
         screen = .yearPicker
         stopGuideLoad()
         let picker = YearPickerModel(current: year, timers: timers) { [api] in try await api.channels(year: $0) }
@@ -459,14 +473,19 @@ public final class AppModel {
         tuner.stop()
     }
 
-    /// Back: the guide as it was, the channel again at its live position, nothing changed.
+    /// Back: the guide as it was (or Live TV with the banner, when the banner opened it), the
+    /// channel again at its live position, nothing changed.
     private func closeYearPicker() {
         guard screen == .yearPicker else { return }
         yearPicker?.close()
         yearPicker = nil
-        screen = .guide
-        if guideStatus != .loaded { loadGuide() }
+        screen = yearPickerOpener
+        if screen == .guide && guideStatus != .loaded { loadGuide() }
         retune()
+        if screen == .live {
+            bannerChoice = .guide
+            showBanner()
+        }
     }
 
     /// Select: set the focused year, back to Live TV with a retune and the banner.
@@ -492,6 +511,7 @@ public final class AppModel {
         bannerTimer?.cancel()
         bannerTimer = timers.schedule(after: TVLayout.Banner.holdSeconds) { [weak self] in
             self?.bannerVisible = false
+            self?.bannerChoice = .guide
             self?.bannerTimer = nil
         }
     }
@@ -560,6 +580,7 @@ public final class AppModel {
         heartbeatTimer = nil
         midnightTimer = nil
         bannerVisible = false
+        bannerChoice = .guide
         refreshing?.cancel()
         stopGuideLoad()
         yearPicker?.close()
