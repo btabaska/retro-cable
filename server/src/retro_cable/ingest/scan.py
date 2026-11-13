@@ -166,12 +166,19 @@ REMAKE_YEARS = 5
 
 
 class _Index:
-    def __init__(self, catalog: Catalog, kind: str, more: Mapping[str, str] = {}) -> None:
-        # `more`: id -> title of others carried (the mini's /admin channels); the YAML wins.
+    def __init__(
+        self,
+        catalog: Catalog,
+        kind: str,
+        more: Mapping[str, str] = {},
+        years: Mapping[str, int] = {},
+    ) -> None:
+        # `more`: id -> title of others carried (the mini's /admin channels), `years` their
+        # lineup years; the YAML wins.
         self.exact = {normalize_title(t): i for i, t in more.items()} | _title_index(catalog, kind)
         self.compact = {k.replace(" ", ""): v for k, v in self.exact.items()}
         overrides = catalog.overrides.shows if kind == "show" else []
-        self.years = {o.show: o.year for o in overrides if o.year is not None}
+        self.years = dict(years) | {o.show: o.year for o in overrides if o.year is not None}
 
     def match(self, folder: str) -> str | None:
         for n, key in enumerate(_keys(folder)):
@@ -183,6 +190,15 @@ class _Index:
                     return None
                 return slug
         return None
+
+
+def _mini_carried(extra: Iterable[Mapping[str, Any]], kind: str) -> dict[str, str]:
+    """id -> title of the mini's library items of `kind` that some /admin channel carries."""
+    return {
+        str(i["id"]): str(i.get("title") or i["id"])
+        for i in extra
+        if i.get("id") and i.get("channels") and i.get("kind") == kind
+    }
 
 
 def _titles(catalog: Catalog) -> dict[str, str]:
@@ -489,6 +505,7 @@ def scan_tv(
     *,
     carried_only: bool = False,
     probe: SourceProbe | None = None,
+    extra: Iterable[Mapping[str, Any]] = (),
 ) -> ScanStats:
     """Attach every show's episode files under `root` (one root, or several read as one
     library: see the module docstring). Air dates are left alone.
@@ -500,11 +517,17 @@ def scan_tv(
 
     With `probe`, each new or changed file's length is measured (source_seconds), so the
     scheduler never has to fall back on a runtime class default.
+
+    `extra` is the mini's /api/admin/library items: shows on its /admin channels are carried
+    too, under its ids, with its year for telling a remake apart.
     """
     stats = ScanStats()
-    index, titles = _Index(catalog, "show"), _titles(catalog)
+    extra = list(extra)
+    more = _mini_carried(extra, "show")
+    years = {str(i["id"]): int(i["year"]) for i in extra if i.get("year") and str(i["id"]) in more}
+    index, titles = _Index(catalog, "show", more, years), more | _titles(catalog)
     excluded = _excluded(catalog)
-    carried = {c.show for c in catalog.carriage.carriage}
+    carried = {c.show for c in catalog.carriage.carriage} | set(more)
     seen: set[tuple[str, str]] = set()
     groups: dict[tuple[str, int | None], _Uncarried] = {}
     shows: dict[str, _Carried] = {}
@@ -512,6 +535,10 @@ def scan_tv(
     for rank, top in enumerate(roots):
         for folder in _folders(top):
             slug = index.match(folder.name)
+            if slug is None and (title := show_title(folder.name)) != folder.name:
+                # A release folder (`Show Complete Season 1 720p x265`): by its cleaned title.
+                year = show_year(folder.name, [])
+                slug = index.match(f"{title} ({year})" if year else title)
             if slug is None and (
                 carried_only
                 or any(k in excluded or k.replace(" ", "") in excluded for k in _keys(folder.name))
@@ -627,11 +654,7 @@ def scan_movies(
     (overrides.yaml, or the mini's item) when it has one, else the folder's; the premiere
     date is left alone (the year bounds it, see load_library)."""
     stats = MovieScanStats()
-    more = {
-        str(i["id"]): str(i.get("title") or i["id"])
-        for i in extra
-        if i.get("id") and i.get("channels") and i.get("kind") == "movie"
-    }
+    more = _mini_carried(extra, "movie")
     index, titles = _Index(catalog, "movie", more), more | _titles(catalog)
     lineup = {o.show: o.year for o in catalog.overrides.shows if o.year is not None}
     lineup |= {str(i["id"]): int(i["year"]) for i in extra if i.get("id") and i.get("year")}

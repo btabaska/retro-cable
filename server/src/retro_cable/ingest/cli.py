@@ -208,14 +208,13 @@ def main(argv: list[str]) -> int:
         assert catalog is not None
         out: dict[str, object] = {}
         measure = None if args.no_probe else source_seconds
+        # The mini's /admin channels carry shows and movies too (the channel builder's).
+        mini = _mini_items(args) if args.tv or args.movies else []
         if args.tv:
-            out["tv"] = asdict(
-                scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only, probe=measure)
-            )
+            out["tv"] = asdict(scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only,
+                                       probe=measure, extra=mini))  # fmt: skip
         if args.movies:
-            # The mini's /admin channels carry movies too (the channel builder's).
-            found = scan_movies(db, args.movies, catalog, now, probe=measure,
-                                extra=_mini_items(args))  # fmt: skip
+            found = scan_movies(db, args.movies, catalog, now, probe=measure, extra=mini)
             out["movies"] = asdict(found)
         stats = out
     elif args.job == "acquire":

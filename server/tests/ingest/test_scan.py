@@ -237,6 +237,55 @@ def test_an_uncarried_show_that_becomes_carried_moves_its_files(
     assert rows(db, "SELECT show_id FROM episodes WHERE file_path IS NOT NULL") == [("bravo",)]
 
 
+def test_scan_matches_the_minis_admin_shows(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """Shows on the mini's /admin channels are carried there, not in the YAML. An uncarried
+    id is kept across re-scans only through its files, and normalize deletes the originals:
+    when sonarr-livetv later filled `Pok\u00e9mon (1997)` again, the scan no longer knew its
+    id, gave it `pokemon-1997`, which no channel carries, and 269 episodes sat unconverted
+    (Nov 13 2026, with ten more shows). With the mini's library items they match the mini's
+    id, and its year tells a remake apart as the YAML's does."""
+    root = tmp_path / "tv"
+    touch(root / "Pok\u00e9mon (1997)" / "Season 07" / "Pok\u00e9mon (1997) - S07E01 - Seed.mkv")
+    touch(root / "Doctor Who (1963)" / "Season 01" / "Doctor Who - S01E01.mkv")
+    touch(root / "Nobody Carries Me" / "Season 1" / "Nobody Carries Me - S01E01.mkv")
+    # A release folder matches by its cleaned title, its year still telling a remake apart.
+    release = "Scooby Doo Mystery Incorporated Complete Season 1 720p x265"
+    touch(root / release / "Scooby.Doo.Mystery.Incorporated.S01E01.720p.mkv")
+    touch(root / "Rugrats.2021.S01.720p.WEB-DL" / "Rugrats.2021.S01E01.720p.mkv")
+    mini: list[dict[str, Any]] = [
+        {"id": "scooby-doo-mystery-incorporated", "kind": "show", "year": 2010,
+         "title": "Scooby Doo Mystery Incorporated", "channels": [{"id": "cartoon-network"}]},
+        {"id": "rugrats", "title": "Rugrats", "kind": "show", "year": 1991,
+         "channels": [{"id": "nickelodeon"}]},
+        {"id": "pokemon", "title": "Pok\u00e9mon", "kind": "show", "year": 1998,
+         "channels": [{"id": "cartoon-network"}]},
+        {"id": "doctor-who", "title": "Doctor Who", "kind": "show", "year": 2005,
+         "channels": [{"id": "custom-sci-fi"}]},
+        {"id": "nobody-carries-me", "title": "Nobody Carries Me", "kind": "show",
+         "channels": []},
+        {"id": "the-rugrats-movie", "title": "Nobody Carries Me", "kind": "movie",
+         "channels": [{"id": "custom-nick-flicks"}]},
+    ]  # fmt: skip
+    stats = scan_tv(db, root, load_catalog(make_catalog()), extra=mini)
+    assert stats.shows == 2
+    assert stats.uncarried == [
+        "Doctor Who (1963)", "Nobody Carries Me", "Rugrats.2021.S01.720p.WEB-DL",
+    ]  # fmt: skip
+    assert rows(db, "SELECT id, title FROM shows ORDER BY id") == [
+        ("doctor-who-1963", "Doctor Who (1963)"),
+        ("nobody-carries-me", "Nobody Carries Me"),
+        ("pokemon", "Pok\u00e9mon"),
+        ("rugrats-2021", "Rugrats 2021"),
+        ("scooby-doo-mystery-incorporated", "Scooby Doo Mystery Incorporated"),
+    ]
+    assert rows(db, "SELECT show_id, season, episode FROM episodes ORDER BY show_id") == [
+        ("doctor-who-1963", 1, 1), ("nobody-carries-me", 1, 1), ("pokemon", 7, 1),
+        ("rugrats-2021", 1, 1), ("scooby-doo-mystery-incorporated", 1, 1),
+    ]  # fmt: skip
+
+
 def test_rescan_keeps_plex_and_tmdb_data_and_detaches_files_that_are_gone(
     db: sqlite3.Connection, tree: Path, make_catalog: MakeCatalog
 ) -> None:
