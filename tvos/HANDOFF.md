@@ -1,0 +1,369 @@
+# tvOS engineering handoff
+
+Owner: engineer. Product spec: `docs/specs/tvos.md` (TV-1 ... TV-44). Design spec:
+`docs/design/tvos.md` (D-1 ... D-14). Branch `m9/tvos`, cut from `m7/descriptions` at `c8e0e3d`
+(what the homelab runs). No server change so far: the app uses the API as it is.
+
+## Status
+
+Milestones 1 (foundation), 2 (Live TV), 3 (guide) and 4 (year picker, UI tests, screenshots,
+Brandon's sideload guide `tvos/README.md`) are done, and so are the review round 1 fixes (Nov 12,
+see "Review round 1"). Long runs, the D-14 pixel overlay and the hands-on checks are left (see
+"What is left").
+
+| Milestone | Scope | State |
+| --- | --- | --- |
+| 1 Foundation | Toolchain, XcodeGen project, RetroCableKit (models, client, contract test, tokens, layout, logic ports), power on, no signal, make targets | Done |
+| 2 Live TV | One AVPlayer + AVPlayerLayer, tune queue and advance, banner and clock, channel up/down, last channel, rapid flipping, media failure retune, bumper slate, filler card, demo slate, duration-mismatch log, tune latency log, persisted year and channel, watch reporting wired to playback, background and foreground, simulated midnight, screensaver, Siri Remote mapping, simulator UI tests | Done |
+| 3 Guide | `GuideGrid` (window, row + time-anchor focus, half-hour scrolling, 12 h limit), cell text by width class, details panel, /guide fetch with the 5 s retry, Select tunes, Play/Pause opens the year picker, stale guide reopens after the background; `GuideView` grid, details, PiP border, time bar, footer | Done |
+| 4 Year picker and finish | `YearGrid` focus, `YearPickerModel` (lineup cache, 120 ms delay, 1-5 s retry), `YearPanel` text, `DialColumns` (two columns of 12), Select sets the year and retunes, Back returns to the guide as it was, picture hidden and silent while it shows; `YearPickerView`. XCUITests for every screen (incl. no signal), simulator screenshots of every screen, `tvos/README.md`, STATUS and specs | Done |
+| Review 1 | App icon and Top Shelf placeholder; team kept in `Local.xcconfig`; "Tuning…" bars on a slow tune or /tune outage; 5 s retry cadence with 4 s timeouts; TV-on white line and banner after it; narrow cells with no lone "…"; diamond framed at its turned size; docs for Xcode 27.2 | Done |
+| 5 Long runs | Overnight run, D-14 side-by-side, hands-on checks | |
+
+## How to build and test
+
+All on a Mac with Xcode at `/Applications/Xcode.app` (the Makefile sets `DEVELOPER_DIR`).
+
+| Command | What it does | Needs |
+| --- | --- | --- |
+| `make test-tvos` | `swift test` of `tvos/RetroCableKit` on macOS (236 tests, about 1 s) | Xcode or the Swift toolchain |
+| `make tvos` | `xcodegen generate`, then `xcodebuild build-for-testing` for the tvOS Simulator with `CODE_SIGNING_ALLOWED=NO`: the app plus both test bundles | XcodeGen 2.46, Xcode with the tvOS SDK |
+| `make test-tvos-ui` | `xcodebuild test` in the "RC Apple TV" simulator: `RetroCableTests` (fonts load) and `RetroCableUITests` (power on, no signal, Live TV remote, background, guide, year picker). Saves screenshots to `tvos/build/screens/`. About 5 minutes. One class: add `-only-testing:RetroCableUITests/GuideTests` to the `xcodebuild test` line | The simulator below; the homelab server reachable |
+| `RC_FLIPS=1 make test-tvos-ui` | Also runs the opt-in 20-flip test for TV-40; read the times from the log (below) | as above |
+| `RC_SERVER_URL=http://127.0.0.1:8080 make test-tvos-ui` | UI tests against the Docker test stack instead of the homelab. `GuideTests` and `LaunchTests` pass there (Nov 12) with no ATS exception for plain `http://127.0.0.1` | `make stack-up` |
+| `make lint`, `make test` | Unchanged, Linux-only, no tvOS in them | as before |
+
+The tvOS targets are outside `make lint` and `make test`, so Linux CI never needs Xcode.
+
+### Toolchain on this Mac (verified Nov 11-12 2026)
+
+- Xcode 27.2 (27B52), Swift 6.4.2, tvOS 27.2 and tvOS Simulator 27.2 SDKs and the tvOS 27.2
+  simulator runtime, XcodeGen 2.46.0. No signing identity and no paired Apple TV yet.
+- The simulator is **"RC Apple TV"** (Apple TV 4K (2nd generation) (at 1080p), tvOS 27.2, so
+  screenshots are 1920x1080 points one to one). If it is missing: `xcrun simctl create "RC Apple TV"
+  com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-2nd-generation-1080p
+  com.apple.CoreSimulator.SimRuntime.tvOS-27-2`. Shut it down with `xcrun simctl shutdown "RC Apple TV"`.
+- Simulator builds need no signing (`CODE_SIGNING_ALLOWED=NO` everywhere).
+- Run the app by hand: `make tvos`, `xcrun simctl boot "RC Apple TV"`,
+  `xcrun simctl install "RC Apple TV" tvos/build/Build/Products/Debug-appletvsimulator/RetroCable.app`,
+  `xcrun simctl launch "RC Apple TV" us.tabaska.retrocable -RCNoWatch`, then
+  `xcrun simctl io "RC Apple TV" screenshot <file>.png` to see the screen. Xcode 27.2 has no
+  Simulator.app (`open -a Simulator` fails); `Xcode.app/Contents/Applications/DeviceHub.app` is
+  its replacement for device and simulator windows, untried here for remote input. There is no
+  `simctl` command for Siri Remote presses, so anything past power on is driven by the XCUITests
+  (`XCUIRemote`), which is how every screen in this work was exercised.
+- Tune times and length mismatches are in the log: `xcrun simctl spawn "RC Apple TV" log show
+  --last 10m --info --predicate 'subsystem == "us.tabaska.retrocable"'` (on the device: Xcode's
+  console, or Console.app filtered to the subsystem). Lines read `tune ktvu 850 ms` and
+  `The Simpsons S5E12: file runs 1381.0 s but its slot is 1376 s (+5.0 s)`; never a URL.
+
+### Sideloading (Brandon)
+
+`tvos/README.md` is the step-by-step guide: Xcode first launch, signing in with the Apple ID,
+pairing the Apple TV, `make tvos`, choosing the Personal Team, running on the TV, the 7-day expiry
+and the later move to TestFlight. The team is set once in `tvos/Local.xcconfig` (gitignored, one
+line `DEVELOPMENT_TEAM = <id>`); the committed `tvos/Signing.xcconfig` sets it empty and then
+includes `Local.xcconfig` if it exists, so every `make tvos` keeps it (checked with
+`xcodebuild -showBuildSettings`).
+
+## Layout
+
+| Path | What |
+| --- | --- |
+| `tvos/project.yml` | XcodeGen spec: app `RetroCable` (tvOS 18.0), `RetroCableTests` (unit, hosted), `RetroCableUITests`; project config files `Signing.xcconfig` |
+| `tvos/Signing.xcconfig` | Empty `DEVELOPMENT_TEAM`, then `#include? "Local.xcconfig"` (gitignored) |
+| `tvos/tools/make-app-icon.swift` | Draws the icon layers and Top Shelf placeholders from `design/tokens.json` and the bundled Archivo Narrow Bold. Rerun from the repo root after changing either |
+| `tvos/RetroCableKit/` | Swift package, platforms tvOS 18 + macOS 14, Swift 6 language mode (strict concurrency). All logic |
+| `tvos/RetroCable/App/` | `RetroCableApp` (entry point, audio session, `-RCNoWatch`) and `RootView` (screens, the one player moving between full screen and the PiP, TV-on reveal, scene phase, screensaver) |
+| `tvos/RetroCable/Playback/` | `AVPlaybackEngine`: the app's one `AVPlayer`, implementing the kit's `PlaybackEngine` |
+| `tvos/RetroCable/Views/` | Thin SwiftUI views: `PowerOnView`, `NoSignalView`, `LiveTVView` (banner, clock, remote), `InfoBannerView` (banner, badges, diamond, clock box, hints), `PlayerView` (AVPlayerLayer, bumper slate, filler card, demo slate), `GuideView` (header, details panel, PiP border, time bar, rows and cells, footer), `YearPickerView` (year grid, date panel, two-column dial), `Theme` (palette and fonts) |
+| `tvos/RetroCableUITests/` | `RCUITestCase` (shared launch, wait and screenshot helpers), `LaunchTests`, `NoSignalTests` (a closed local port as the server), `LiveTVTests`, `GuideTests`. They compile in `make tvos` (`build-for-testing`) and run in `make test-tvos-ui` |
+| `tvos/RetroCable/Resources/` | Fonts with their OFL licenses, `Assets.xcassets` (launch color; "App Icon & Top Shelf Image" brand assets: two-layer RC icon 400x240 @1x/@2x and 1280x768, plain Top Shelf and Top Shelf Wide images) |
+| Generated, gitignored | `tvos/RetroCable.xcodeproj/`, `tvos/RetroCable/Info.plist`, `tvos/build/`, `tvos/RetroCableKit/.build/` |
+
+### RetroCableKit
+
+| File | What | Tests |
+| --- | --- | --- |
+| `Timestamp.swift` | Exact ISO 8601 parsing (offsets, microseconds), calendar days | `TimestampTests` |
+| `Models.swift` | `ChannelInfo`, `Lineup`, `GuideSlot`, `TunedSlot`, `Tune`, `GuideRow`, `Guide`, `ServerVersion`, `Health`, `WatchReport`; `SignedPath` hides media paths from every print | `ContractTests`, `ModelTests` |
+| `APIClient.swift` | `/api` client over an injectable `HTTPTransport`; `APIError` carries no URL; `ServerConfig`; per-request timeouts (4 s, /guide 8 s) | `APIClientTests` |
+| `DesignTokens.swift` | `design/tokens.json` as typed constants; `Color(rc:)` | `DesignTokensTests` |
+| `TVLayout.swift` | tvOS-only geometry from the design spec | `TVLayoutTests` |
+| `FontFace.swift` | The five bundled faces, file names and pinned hashes | `FontFaceTests` |
+| `Years.swift` | Ports of `years.ts`, `channels.ts`, `focus.ts`, plus the dial and the starting channel | `PortedLogicTests` |
+| `Program.swift`, `TimeFormat.swift`, `GuideLayout.swift` | Ports of `program.ts`, `time.ts`, `guide.ts`; `SimulatedTime`, `MonotonicClock` | `PortedLogicTests` |
+| `WatchReporter.swift` | Port of `watch.ts` with `device: "appletv"` and fire-and-forget posting | `WatchReporterTests` |
+| `Settings.swift` | `rc.year`, `rc.channel` in UserDefaults | `SettingsTests` |
+| `AppModel.swift` | Screens, power on, server line, lineup, no signal; the remote on every screen (`move`, `pressSelect`, `pressPlayPause`, `pressBack`, `backLeavesApp`), channel up/down and last channel, the 4 s banner, the guide (`guide`, `guideStatus`, `guideDetails()`, /guide fetch and retry), the year picker (`yearPicker`, `changingYear`), `changeYear`, watch reporting from the tuner's slot, heartbeat, background and foreground, simulated midnight | `AppModelTests`, `LiveModelTests`, `GuideModelTests` |
+| `GuideGrid.swift` | `GuideGrid` (the guide's window, focus and moves as a value type), `GuideCellContent` (what a cell draws and says to VoiceOver), `GuideDetails` (details panel text, footer hints) | `GuideGridTests` |
+| `YearPicker.swift` | `YearGrid` (7x3 + All Years moves), `DialEntry`, `YearPanel` (left panel and dial text), `DialColumns` (two columns, rows shrink to 44, then "+N more"), `YearPickerModel` (focus, lineup cache, fetch timing) | `YearPickerTests` |
+| `Tuner.swift` | The /tune queue and the player it drives: live start position, advance at slot end with the 5 s overrun, refill at the second-to-last slot, one media retune then filler, 5 s /tune retry from the start of the failed try, "Tuning…" bars after 3 s without a picture or a failed /tune, stale-answer dropping, latency and length-mismatch logs | `TunerTests` |
+| `Playback.swift` | `PlaybackEngine` protocol and `PlaybackEvent`, `Picture`, `BumperSlate`, `DemoSlate`, `TuneLatencyLog` | `TunerTests`, `BannerTests` |
+| `LiveText.swift` | `BannerContent` (every banner field), `ClockText`, remote hints, the length-mismatch line | `BannerTests` |
+| `Scheduling.swift` | `TimerScheduler` (tasks in the app, a manual clock in tests) and `TimerHandle` | through the above |
+| (tests only) | XcodeGen spec checks: bundle id, team kept out of the repo and in `Local.xcconfig`, server URL, no ATS keys, gitignore, the icon's brand-asset roles and every PNG's pixel size | `ProjectSpecTests` |
+
+The contract test builds sample objects from `server/openapi.json` itself: a full sample must
+round-trip through each model with exactly the schema's keys (so a field the server adds, drops or
+renames fails), and a required-fields-only sample with nulls must decode. It also checks the paths,
+parameters and response schemas the client calls. It already caught one thing: `WatchReport.offset`
+is optional in the contract, so the model defaults it to 0.
+
+Retries never sleep in tests: `AppModel` takes a `Sleeper`, and the tests record the requested
+delays while a stub transport brings the server back. Each retry waits what is left of 5 s since
+its try started, read off the injected clock, so a test whose transport "hangs" (moves the
+`ManualClock` by the 4 s timeout, then throws) sees delays of `[1, 1, 1]`.
+
+Live TV tests run on a `ManualClock` (the monotonic clock and the timer scheduler in one: a test
+advances it and due timers fire in order), a `FakeEngine` (records load/start/stop and sends
+ready, first frame, failed and ended) and a `TuneServer` whose /tune answers the test hands out in
+any order (`LiveFakes.swift`). So rapid flipping, slot ends, the 5 s overrun, 60 s heartbeats, the
+4 s banner and simulated midnight are all tested without waiting.
+
+### How Live TV works
+
+- `AppModel` owns one `Tuner`, which owns no player: it drives the `PlaybackEngine` it is given
+  (`AVPlaybackEngine` in the app, `FakeEngine` in tests).
+- A tune (`Tuner.tune`) stops the old item at once (picture to black, sound off), bumps a serial,
+  and asks /tune. Only the latest serial's answer is used; earlier ones are dropped. The answer's
+  `now` becomes simulated time (`SimulatedTime` on the monotonic clock).
+- A slot with media is loaded; when the item is ready the tuner computes simulated now - slot
+  start, clamps it to 0.25 s before the file's end, and the engine seeks (1 s tolerance either
+  side) and calls `playImmediately`. The first `timeControlStatus == .playing` after that is the
+  first frame: the picture switches from black to video and the press-to-first-frame time is
+  logged. A slot without media shows the bumper slate or the filler card at once.
+- At slot end (simulated) the next slot starts; a file with 0-5 s left finishes first (its end
+  event, or the remaining time + 0.25 s). When the slot playing becomes the second to last fetched,
+  /tune is asked again; if its answer still has the playing slot, the queue is swapped around it
+  without a reload.
+- A failed file retunes once for a fresh URL (the answer restarts at the live position); a second
+  failure (or a failed retune) shows the filler card with the title until the slot ends.
+- A tune (or the next slot's file, or a media retry) with no first frame 3 s later, or a failed
+  /tune with nothing playing, shows `Picture.tuning`: the filler card titled "Tuning…", as the
+  browser does, until a picture comes. A normal tune stays a hard cut to black.
+- `AppModel` hands `WatchReporter` the playing slot whenever it changes (live or guide), sends a
+  heartbeat every 60 s, and ends with `power_off` on background; the reporter handles
+  `program_end`, `tune_away` and the 10 s minimum.
+
+## Acceptance criteria covered so far
+
+| Criterion | State |
+| --- | --- |
+| TV-1 | Done: `make tvos`, `make test-tvos`, `make lint`, `make test` all pass; `.xcodeproj` gitignored |
+| TV-2 | Ready for hands-on: bundle id, tvOS 18.0, empty committed team with `Local.xcconfig`, `RCServerURL`, no ATS keys, the RC icon (tested); the simulator reaches `https://tv.home.tabaska.us` with no ATS exception and shows the icon on the home screen (`sim-home-icon.png`) |
+| TV-3 | Done (unit; UI test passes in the simulator) |
+| TV-4 | Done (unit; UI test: Select turns on to Live TV on 02 with the banner) |
+| TV-5 | Done in the model (5 s cadence from each try's start, 4 s timeouts, automatic switch; unit-tested with tries that fail at once and tries that hang until the timeout); UI test: "No signal" on power on and the card after Select with no server; hands-on left |
+| TV-6 | Done in the simulator: AVPlayerLayer aspect-fit on black, 4:3 pillarboxed (screenshot), no system UI for any press in the UI tests. Hands-on left |
+| TV-7 | Offset math unit-tested; in the simulator the picture matched the schedule. Hands-on parity with the browser left |
+| TV-8 | Unit: advance at slot end, 5 s overrun, refill without restart, 12 slots back to back. Hands-on evening left |
+| TV-9, TV-10, TV-11, TV-12 | Done (unit); bumper slate, filler card, "Tuning…" bars and demo slate drawn in `PlayerView` |
+| TV-13, TV-14, TV-15, TV-17 | Done (unit and UI tests in the simulator) |
+| TV-16 | Done: holding Select (1 s in the UI test) doesn't open the guide; a click does |
+| TV-18, TV-19, TV-20, TV-21 | Done (unit; banner and clock screenshots) |
+| TV-22 | Done (unit: window, query `date`/`start`/`hours=13.5`, loading, "No signal", 5 s retry; UI) |
+| TV-23 | Done (unit: rows by number, tuned row, true run times, bumpers folded, "from 7:22", NEW/MOVIE kicker, holiday bar, transplant mark, past cells, width classes; UI screenshot) |
+| TV-24, TV-25 | Done (unit: focus on the tuned channel now, up/down keep the anchor and stop, 4th-row rule, left/right by cell, half-hour scrolling, never before the opening window or past 12 h, left at the start does nothing; UI) |
+| TV-26 | Done (unit: line, title, episode, badges, aired text with "(pretend)", filler, synopsis fallbacks) |
+| TV-27 | The PiP is the same player moved to the PiP frame (UI test and screenshots: it keeps playing with the grid). Hands-on left |
+| TV-28 | Done (unit and UI): Select tunes the focused row and shows the banner, Back returns without a retune, Play/Pause opens the year picker |
+| TV-29, TV-30 | Done (unit: grid moves, panel text, dial notes, 120 ms fetch, cache, 1-5 s retry; UI and screenshots) |
+| TV-31 | Done (unit and UI): Select saves the year and retunes with the banner, Back returns to the guide unchanged and retunes, picture stopped (tune_away) while the picker shows |
+| TV-42 | Done: the browser's flow runs as XCUITests (`GuideTests`: launch, banner, guide, tune; guide, year picker, change year). They pass against the homelab and, with `LaunchTests`, against the Docker test stack (`RC_SERVER_URL=http://127.0.0.1:8080`, Nov 12, server `64884b1` demo feeds) with no ATS exception |
+| TV-32, TV-33 | Done (unit): year and channel saved, fallback channel not saved, stored channel returns in a year where it is on the dial, last channel not saved |
+| TV-34, TV-35, TV-36 | Done (unit): sessions from the playing slot, live and PiP, 60 s heartbeat, program_end, tune_away, power_off, under 10 s never sent, fire and forget. Hands-on: rows in the Sunday report |
+| TV-37 | Done (unit, UI test): background and foreground, and a guide older than 30 simulated minutes reopens at the current half hour (also checked against the lineup's `now` on return) |
+| TV-38 | Done (unit): lineup refetched 1 s after simulated midnight in the server's zone |
+| TV-39 | `isIdleTimerDisabled` while Live TV or the PiP plays. Hands-on left |
+| TV-40 | Tunes start on the press (unit); latency logged per tune (unit, log). Simulator, 20 spaced flips against the homelab: median 520 ms, revisits ~330 ms, slowest 1.95 s and 1.99 s (cold files with software decode). Device p95 is hands-on |
+| TV-41 | Signed paths never print (tested); tuner logs carry no path, `exp`, `sig` or host (tested); fixtures carry none (tested) |
+| TV-44, D-1, D-3, D-13 | Done: tokens test, five fonts with hashes and UIAppFonts, new tokens in `tokens.json` |
+| TV-45 | Done (unit and UI): left/right move the banner's highlight between Guide and Year, Select opens it; Year opens the year picker from Live TV and Back returns there (Brandon's report, Nov 13) |
+| D-2 | View code uses `DesignTokens` / `TVLayout`; the SMPTE bar colors are the one literal set |
+| D-5, D-6 | Done in the simulator (screenshots): pillarbox, cut to black then picture, banner geometry and motion |
+| D-11 | Power on and no signal use the radial gradient (`tv-power-on.png`, `tv-no-signal.png`); launch screen is the `header` token (tested). TV on: a 4 pt white line at mid-screen opens to full height over 0.35 s ease-out, then the banner (seen in a simulator recording); Reduce Motion fades over 0.2 s |
+| D-12 | Banner hints: "▲▼ Channel  ◀▶ Year  SELECT Guide  ▶❚❚ Last channel" (◀▶ and SELECT follow the highlighted chip, TV-45); guide footer "SELECT Watch  ▶❚❚ Change year  BACK Live TV"; year picker "BACK Guide", or "BACK Live TV" when the banner opened it (TV-45, tested) |
+| D-7, D-8 | Done in the simulator (`tv-guide.png`): header, details, PiP at 1517,146, 7 rows, 1494 pt cell area at 16.6 pt a minute (tested), width classes (narrow cells without room for a letter and "…" draw no title), drawn diamond framed at 12.7 pt so its gaps are 3 and 10 pt, holiday bar, tuned bar |
+| D-9 | Focus is model state drawn as a gold fill; one focusable view per screen with `.focusEffectDisabled()`; moves snap |
+| D-10 | Done (`tv-year-picker.png`): 7x3 grid, full-width All Years, ring on the current year, 24 channels in two columns with off-air dimmed |
+
+## Decisions
+
+Open questions the PM and designer raised, decided for this build (Brandon can overrule):
+
+- **Hold Select = like**: reserved and does nothing. A likes feature needs a server change (field
+  or endpoint plus a station-manager input); not in this phase.
+- **Year picker shortcut**: none for now; Play/Pause in the guide, as the spec says. A long press
+  of Play/Pause on Live TV is easy to add later if two presses feel slow.
+- **Back on Live TV**: as the spec says (shows the banner when hidden, leaves when it shows).
+- **Power on every cold launch**: kept, as in the browser. It also shows the app version, so
+  Brandon can tell which sideload is installed.
+- **Local network prompt**: `NSLocalNetworkUsageDescription` is in Info.plist now ("Retro Cable
+  plays TV from the cable box server on your home network."). If tvOS never prompts, it is unused.
+- **Caption size (16 pt), title-safe insets (80/60 pt)**: as designed; Brandon judges from the
+  couch. Both are one-line changes (`fontSize.caption`, `TVLayout.safeSide`).
+- **Web switching its hex literals to the new tokens**: a later web PR, not this one.
+- **App icon**: built in review round 1 (design section 10): the two-layer RC icon and plain Top
+  Shelf placeholders, drawn by `tvos/tools/make-app-icon.swift` (our own art from the tokens and
+  the bundled font, no downloaded images). No Top Shelf extension. The missing-icon build warning
+  is gone.
+- **Server URL overrides**: `-RCServerURL <url>` launch argument or `RC_SERVER_URL` environment
+  variable, for the XCUITests against the Docker test stack. Info.plist has no ATS keys; if the
+  simulator refuses plain `http://127.0.0.1:8080`, add `NSAllowsLocalNetworking` to a test-only
+  configuration, never to the build Brandon installs.
+- **Fonts are assets, not dependencies**: Arimo (googlefonts/Arimo @ `22e482e`) and Archivo
+  Narrow (Omnibus-Type/ArchivoNarrow @ `9793ec7`), SIL OFL 1.1, TTFs and `OFL-*.txt` in
+  `tvos/RetroCable/Resources/Fonts/`. No third-party Swift packages.
+- **Tests**: Swift Testing in the kit and the app unit tests; XCTest for XCUITest.
+
+Milestone 2 decisions:
+
+- **No number entry**: the Siri Remote has no digits (spec, design 4.4).
+- **Remote input**: one focusable SwiftUI view per screen (`remoteControl` in `LiveTVView.swift`)
+  with `.focusEffectDisabled()`: `onMoveCommand` (swipes and clicks), `onTapGesture` (Select),
+  `onLongPressGesture(minimumDuration: 0.5)` that does nothing (hold Select), `onPlayPauseCommand`,
+  and `onExitCommand`, which is passed `nil` while the banner shows so Back leaves the app.
+  Verified with XCUIRemote in the simulator; a long press does not also fire the tap.
+- **Seek tolerance and start**: the engine seeks with 1 s tolerance either side and starts with
+  `playImmediately(atRate: 1)`. That cut cold tunes in the simulator noticeably and keeps the
+  picture within TV-7's 2 s. If the device misses 1.5 s, the next levers are a shorter
+  `preferredForwardBufferDuration` and pre-loading the next slot's item.
+- **First frame** is the first `timeControlStatus == .playing` after the seek, which is what the
+  latency log measures.
+- **A file shorter than its slot** goes to black for the remainder, then the next slot starts on
+  schedule (programs are never cut; this only covers a file that ends early).
+- **`-RCNoWatch`** (or `RC_NO_WATCH=1`) drops watch reports. The UI tests and every simulator
+  session in this work used it, so no test viewing reached the homelab's station manager.
+- **The guide screen** exists as a frame (header with clock and year badge, PiP, footer) so the
+  PiP and Back work now; Select in it returns to Live TV for now. Milestone 3 replaces the body.
+- **UI tests read the homelab's 1998 dial** (02, 04, 05, 09, 20, 21, ... 95). If the lineup
+  changes, update the expected numbers in `LiveTVTests`, or point them at the test stack.
+
+Milestone 3 and 4 decisions:
+
+- **Guide model as a value type**: `GuideGrid` is a struct; every remote press is a mutation that
+  the tests check directly. `AppModel.guide` is nil on Live TV, so each open starts at the current
+  half hour (the spec's "reopening re-centers it"); the year picker keeps it as it was.
+- **Select before the guide loads** does nothing (the browser's behavior); Back always works.
+- **Guide retries** run only while the guide shows; leaving it or the background cancels them.
+- **Year picker and the picture**: opening it calls `Tuner.stop()` (black, silent, `tune_away`);
+  the player stays in the tree at the PiP frame, hidden, so Back to the guide doesn't move it. Back
+  retunes at the live position. Returning from the background to the picker keeps it, with the
+  picture still off.
+- **Stale guide after the background** is checked at once (monotonic clock) and again with the
+  `now` of the lineup fetched on return, because the monotonic clock may not run while the Apple
+  TV sleeps.
+- **Footer wording** follows the design ("BACK Live TV"); the product spec now says the same.
+- **Dial rows**: 12 per column at 56 pt; more channels shrink rows to fit (44 pt minimum); past 32
+  the last row reads "+N more" (`DialColumns`).
+- **Color backgrounds**: a bare `.background(Color)` runs into the safe area (the channel column
+  first drew to x 0); views fill with a shape where an edge must stop at x 80.
+- **Badges**: `BannerContent.Badge` gained `.outline` for "S5 · E12" and MOVIE in the details
+  panel (2 pt `textMuted` border).
+
+## Review round 1 (Nov 12 2026)
+
+| Issue | Fix | Test |
+| --- | --- | --- |
+| TV-2 no app icon, build warning | "App Icon & Top Shelf Image" brand assets, `ASSETCATALOG_COMPILER_APPICON_NAME`; the build has no asset warning | `ProjectSpecTests.hasTheAppIconAndTopShelfImage` (roles, sizes, two layers) |
+| TV-2 team cleared by every `make tvos` | `Signing.xcconfig` + gitignored `Local.xcconfig`; README section 3 | `ProjectSpecTests.keepsTheTeamOutOfTheRepoAndAcrossRegeneration`; `-showBuildSettings` showed the team from `Local.xcconfig` |
+| TV-12 black screen during a /tune outage | `Picture.tuning` ("Tuning…" bars) after a failed /tune, or 3 s without a first frame | `TunerTests`: failed tune, slow tune, slow next slot, quick tune never, failed refill keeps the picture |
+| TV-5 13 s cycles when the host hangs | Retries 5 s after each try started (/version, /channels, /tune, /guide, year change); quick calls time out at 4 s (measured: a request's own timeout wins over the session's) | `AppModelTests` hang and quick-failure cadence, `GuideModelTests`, `TunerTests`, `APIClientTests` timeouts |
+| Docs: no Simulator.app in Xcode 27.2; TV-42 untried | README and the toolchain notes above; TV-42 run against the stack | `GuideTests`, `LaunchTests` with `RC_SERVER_URL` (6 passed) |
+| D-11 TV on: no white line, banner wiped in | White band over the opening mask fading as it opens; banner waits for the opening; Reduce Motion 0.2 s | `TVLayoutTests.tvOnTimings`; the line shows in a simulator recording |
+| D-8 lone "…" in 43 pt cells | The kit leaves out the title when the room (width − 4 gap − 8 − 4, − 25.7 with a diamond) is under 42 pt ("W…" is 40.3 pt in Archivo Narrow 26) | `GuideGridTests.narrowCellsTooSmallForALetterDrawNoTitle` |
+| D-7 player move into the PiP, banner fade | Not changed. A simulator recording of `testSelectOpensTheGuideAndHoldDoesNot` (Nov 12) showed the picture going straight from full screen to the PiP in about 4 recorded frames with the guide fading in under it, no guide showing through first; the banner fade-out took about 0.33 s (28.25 to 28.58 s in the recording) | Hands-on on the Apple TV: if the move lags there, drive the frame with `withAnimation` in the screen change's transaction |
+| D-8 diamond spacing | `TransplantMark` framed at 9 x √2 = 12.7 pt (`TVLayout.Guide.diamondExtent`), so the visible gaps are 3 and 10 pt | `TVLayoutTests.transplantMarkTakesItsRotatedWidth` |
+
+Simulator runs on Nov 12: `make test-tvos-ui` against the homelab, 15 tests (14 passed, the opt-in
+flips test skipped). Recordings and frames of real media stayed in the session scratchpad, never
+in the repo.
+
+## Ship (Nov 12 2026)
+
+Results before opening the PR, on this Mac (Xcode 27.2, "RC Apple TV" simulator, homelab `c8e0e3d`):
+
+| Command | Result |
+| --- | --- |
+| `make lint` | Clean (ruff, mypy --strict, tsc, eslint) |
+| `make test` | Green: server 719 passed; tools 9 passed; ops 75 passed, 1 skipped; web 98 passed (17 files); Playwright 10 passed |
+| `make test-tvos` | 236 tests in 26 suites passed |
+| `make tvos` | Built (app and both test bundles, unsigned) |
+| `make test-tvos-ui` | 15 tests: 14 passed, the opt-in 20-flip test skipped |
+
+The first `make test-tvos-ui` run, on a simulator that started shut down, failed one test
+(`GuideTests.testAllYearsIsBelowTheGrid`, the first to run): its recording showed the TV-on white
+line held on screen for about 8 s on the cold first launch, so the banner's 4 s (started at power
+on) ran out before the opening finished and no banner showed. A real bug, not only a test one: a
+slow opening on the Apple TV would have hidden the turn-on banner the same way. Fix: the view
+calls `AppModel.tvOnOpened()` when the opening finishes, which restarts the 4 s on Live TV
+(`LiveModelTests.theBannerHoldsFourSecondsAfterTheOpeningFinishes`,
+`theOpeningFinishingOffLiveTVShowsNoBanner`; TV-18 in the spec says so now). The rerun, again from a
+shut-down simulator, passed. Then by hand: installed and launched with `simctl` (`-RCNoWatch`),
+rewrote `sim-power-on.png` and `sim-home-icon.png`, and shut the simulator down.
+
+## Screenshots (milestone 2)
+
+`make test-tvos-ui` writes these to `tvos/build/screens/` (gitignored; they contain frames of real
+media, so they never go in the repo). Taken Nov 11 2026 in the "RC Apple TV" simulator against
+`https://tv.home.tabaska.us` (server `c8e0e3d`):
+
+| File | Shows |
+| --- | --- |
+| `tv-power-on.png` | Power on: wordmark, place and year, gold button, server line, app version |
+| `tv-live-banner.png` | Live TV right after turning on: 4:3 picture pillarboxed, clock box, banner with description, progress, next and hints |
+| `tv-live.png` | Live TV after the banner left: picture only |
+| `tv-guide-pip.png` | The guide frame with the live PiP (3 pt rule border) at x 1517, y 146 |
+
+Compared with `docs/design/tvos/web-live-banner.png` and `web-power-on.png`, the banner, clock box
+and power-on screen line up at the design's geometry; the banner grows upward when the
+description takes two lines, as designed.
+
+Milestones 3 and 4 (Nov 11 2026, same simulator and server), from `GuideTests`:
+
+| File | Shows |
+| --- | --- |
+| `tv-guide.png` | The guide on open: focus on KTVU's program now, details with badge, aired line and synopsis, the live PiP, 7 rows |
+| `tv-guide-moved.png` | After ▼ ▶ ▶: focus on KRON's 9:37, details follow |
+| `tv-year-picker.png` | Year picker on 1998: date, copy, grid with 1998 focused and ringed, the 24-channel dial in two columns with off-air channels dimmed |
+| `tv-year-picker-all-years.png` | All Years focused: the real date, the All Years copy, 1998 ringed |
+
+Against `web-guide.png`, `web-guide-moved.png` and `web-year-picker.png` they line up apart from
+the documented changes (80 pt sides, so 1494 pt of cells; the two-column dial; remote legends).
+
+Milestone 4 finish (Nov 11 2026, 21:20-21:25 ET): a full `make test-tvos-ui` run passed (15 tests:
+14 passed, the opt-in 20-flip test skipped) and rewrote every file above. New:
+
+| File | Shows |
+| --- | --- |
+| `tv-no-signal.png` | `NoSignalTests`: NO SIGNAL card and "Can't reach the cable box server. Retrying…" on the radial gradient; matches `web-no-signal.png` |
+| `sim-power-on.png` | Taken with `xcrun simctl io "RC Apple TV" screenshot` after installing and launching the app by hand against the homelab: "Server v0.0.0 · c8e0e3d", "App 1.0 (1)" |
+
+All in `tvos/build/screens/` (absolute: `/Users/brandontabaska/GitHub/retro-cable/.claude/worktrees/m9-tvos/tvos/build/screens/`).
+In `tv-guide.png` the PiP is still black: the test opens the guide right after turning on, before
+the first frame; `tv-guide-pip.png` (taken a few seconds into Live TV) shows the PiP playing.
+
+Review round 1 (Nov 12 2026, 09:45-09:50 ET, same simulator, homelab `c8e0e3d`): `make test-tvos-ui`
+rewrote every `tv-*.png` above (`tv-guide.png` now shows the blank narrow cells in rows 20 and
+21), and by hand with `simctl`:
+
+| File | Shows |
+| --- | --- |
+| `sim-power-on.png` | `xcrun simctl io "RC Apple TV" screenshot` after installing and launching by hand: "Server v0.0.0 · c8e0e3d", "App 1.0 (1)" (the year reads 1999, left stored by the year picker UI test) |
+| `sim-home-icon.png` | The tvOS home screen with the RC icon in the top row |
+
+Note: another tvOS simulator ("Apple TV 4K (4th generation)") was booted on this Mac by someone
+else during this work; it was left alone. With two booted, `simctl ... booted` is ambiguous, so the
+commands here name "RC Apple TV".
+
+## What is left
+
+- Milestone 5: a long simulator run across simulated midnight with the guide open, and a
+  pixel-level D-14 overlay of the tvOS screenshots on the web references (eyeballed so far).
+- Not built, by decision: likes (hold Select), a year-picker shortcut on Live TV, a Top Shelf
+  extension.
+- On the Apple TV: the live -> guide player move (D-7) and the banner fade, which looked right in
+  the simulator recording.
+- Hands-on checks on the Apple TV: TV-2, TV-5, TV-6, TV-7, TV-8 (an evening), TV-27, TV-34 (rows in
+  the Sunday report), TV-39, TV-40 (p95 from the log over 20 flips), TV-43.

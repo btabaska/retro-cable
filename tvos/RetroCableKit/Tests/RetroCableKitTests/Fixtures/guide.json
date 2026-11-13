@@ -1,0 +1,25 @@
+{
+  "date": "1998-11-11",
+  "weekday": "Wednesday",
+  "timezone": "America/New_York",
+  "start": "1998-11-11T19:30:00-05:00",
+  "end": "1998-11-11T21:00:00-05:00",
+  "channels": [
+    {
+      "channel": {"id": "kfix", "name": "KFIX (Fixture)", "type": "network", "number": 2, "call_sign": "KFIX", "network": "FOX", "on_air": true, "library": false, "launch": null},
+      "slots": [
+        {
+          "kind": "episode", "start": "1998-11-11T19:10:17-05:00", "end": "1998-11-11T19:33:15-05:00", "seconds": 1378,
+          "title": "The Hendersons", "show": "the-hendersons", "episode_title": "Mom Joins a Band", "season": 5, "episode": 11,
+          "air_date": "1994-01-06", "new": false, "transplant": false, "holiday": null, "holiday_name": null
+        },
+        {
+          "kind": "episode", "start": "1998-11-11T19:33:15-05:00", "end": "1998-11-11T19:56:11-05:00", "seconds": 1376,
+          "title": "The Hendersons", "show": "the-hendersons", "episode_title": "Dad Gets Famous", "season": 5, "episode": 12,
+          "air_date": "1994-02-03", "new": false, "transplant": true, "holiday": null, "holiday_name": null,
+          "description": "A made-up family has a made-up week."
+        }
+      ]
+    }
+  ]
+}

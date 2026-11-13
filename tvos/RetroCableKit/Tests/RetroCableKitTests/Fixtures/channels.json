@@ -1,0 +1,13 @@
+{
+  "year": 1998,
+  "date": "1998-11-11",
+  "weekday": "Wednesday",
+  "now": "1998-11-11T19:44:29.090069-05:00",
+  "timezone": "America/New_York",
+  "channels": [
+    {"id": "kfix", "name": "KFIX (Fixture)", "type": "network", "number": 2, "call_sign": "KFIX", "network": "FOX", "on_air": true, "library": false, "launch": null},
+    {"id": "retro-classics", "name": "Retro Classics", "type": "marathon", "number": 7, "call_sign": "RTC", "network": null, "on_air": true, "library": true, "launch": null},
+    {"id": "late-toons", "name": "Late Toons", "type": "marathon", "number": 31, "call_sign": "LATE", "network": null, "on_air": false, "library": false, "launch": "2001-09-02"},
+    {"id": "fixture-movies", "name": "Fixture Movies", "type": "movie", "number": 40, "call_sign": "FMOV", "network": null, "on_air": true, "library": false, "launch": null}
+  ]
+}
