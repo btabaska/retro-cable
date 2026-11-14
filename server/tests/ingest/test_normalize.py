@@ -171,14 +171,16 @@ def test_probe_reads_the_last_packets_when_the_streams_do_not_say_how_long(
         "if '-show_format' in sys.argv:\n"
         "    print(json.dumps({'format': {'duration': '1409.679'}, 'streams': [\n"
         "        {'index': 0, 'codec_type': 'video', 'width': 1920, 'height': 1080},\n"
-        "        {'index': 1, 'codec_type': 'audio'},\n"
+        "        {'index': 1, 'codec_type': 'audio', 'tags': {'language': 'fre'}},\n"
         "        {'index': 2, 'codec_type': 'subtitle'}]}))\n"
         "else:\n"
         "    assert sys.argv[sys.argv.index('-read_intervals') + 1] == '809.679%'\n"
         "    print('0,1305.104,0.033\\n1,1305.088,0.032,\\n2,1405.0,4.679\\n0,N/A,N/A')\n"
     )
     fake.chmod(0o755)
-    assert probe(tmp_path / "x.mkv", ffprobe=str(fake)).duration == pytest.approx(1305.137)
+    info = probe(tmp_path / "x.mkv", ffprobe=str(fake))
+    assert info.duration == pytest.approx(1305.137)
+    assert info.foreign_audio == "fre"  # measuring the length keeps what the streams said
 
 
 @needs_ffmpeg
@@ -249,6 +251,34 @@ def test_nvenc_command_uses_the_gpu_encoder_with_forced_idr_keyframes() -> None:
     assert "-crf" not in cmd
     assert "-force_key_frames expr:gte(t,n_forced*1)" in joined
     assert "scale=640:480" in joined
+
+
+@pytest.mark.parametrize(
+    ("languages", "foreign"),
+    [
+        (["fre"], "fre"),
+        (["fre", "ger"], "fre"),
+        (["fre", "eng"], None),  # English is there: it is the one kept
+        (["und"], None),  # untagged or undetermined: nothing says it isn't English
+        ([""], None),
+        (["fre", "und"], None),
+        ([], None),
+    ],
+)
+def test_parse_probe_flags_audio_with_no_english_track(
+    languages: list[str], foreign: str | None
+) -> None:
+    """A 30 Rock rip with only French audio aired on NBC in French (Nov 14 2026)."""
+    streams = [{"index": i + 1, "codec_type": "audio", "tags": {"language": lang}}
+               for i, lang in enumerate(languages)]  # fmt: skip
+    video = {"index": 0, "codec_type": "video", "width": 720, "height": 480}
+    assert parse_probe(probe_json(video, *streams)).foreign_audio == foreign
+
+
+def test_command_refuses_a_source_with_no_english_audio() -> None:
+    french = Probe(60.0, Stream(0, 720, 480, Fraction(1)), audio_index=1, foreign_audio="fre")
+    with pytest.raises(ValueError, match="no English audio"):
+        build_command(Path("a.mkv"), Path("a.mp4"), french, "x264")
 
 
 def test_command_without_audio_and_with_a_trial_limit() -> None:
