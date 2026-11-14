@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from retro_cable.catalog import Catalog
+from retro_cable.catalog import Catalog, load_catalog
 from retro_cable.db import connect, migrate
 from retro_cable.scheduler import Scheduler, load_library
+from tests.conftest import MakeCatalog
 
 
 @pytest.fixture
@@ -127,6 +128,27 @@ def test_an_encode_cut_short_of_its_source_is_never_scheduled(db: sqlite3.Connec
     assert "the-simpsons" not in load_library(db).episodes
 
 
+def test_a_clip_far_shorter_than_the_rest_of_its_show_is_never_scheduled(
+    db: sqlite3.Connection,
+) -> None:
+    """With no runtime to compare with, a truncated download measures whole against itself
+    (Leverage Redemption S01E13: 62 s). An episode under a quarter of its show's median
+    length stays off, once the show has five episodes to take a median from."""
+    db.execute("INSERT INTO shows (id, title) VALUES ('leverage', 'Leverage')")
+    for ep, seconds in [(1, 2600), (2, 2580), (3, 2610), (4, 650), (5, 62), (6, 2590)]:
+        db.execute(
+            "INSERT INTO episodes (show_id, season, episode, title, file_path, source_seconds,"
+            " media_path, media_seconds) VALUES ('leverage', 1, ?, '', '/s.mkv', ?, ?, ?)",
+            (ep, seconds, f"tv/{ep}.mp4", seconds),
+        )
+    # Just over a quarter of the median (2585 s) stays; the 62 s clip doesn't.
+    assert [p.episode for p in load_library(db).episodes["leverage"]] == [1, 2, 3, 4, 6]
+    assert len(load_library(db, allow_short=True).episodes["leverage"]) == 6
+    # Four episodes are too few to judge by: a short one stays.
+    db.execute("DELETE FROM episodes WHERE episode IN (1, 2)")
+    assert [p.episode for p in load_library(db).episodes["leverage"]] == [3, 4, 5, 6]
+
+
 def test_short_media_can_be_allowed_explicitly(db: sqlite3.Connection) -> None:
     # Trials (`normalize --max-seconds`) and demos may opt in: RC_ALLOW_SHORT_MEDIA=1.
     add_episode(db, 1, "/src/S01E01.mkv", media_path="tv/1.mp4", seconds=120)
@@ -146,3 +168,28 @@ def test_a_file_under_the_media_root_plays_at_its_measured_length(
     db.execute("UPDATE episodes SET source_seconds = 1379 WHERE episode = 3")
     eps = load_library(db).episodes["the-simpsons"]
     assert [(p.episode, p.seconds) for p in eps] == [(1, 1402), (2, 1320), (3, 1377)]
+
+
+def test_seasons_another_show_claims_air_as_that_show(
+    db: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """overrides.yaml `part_of`: TheTVDB files Justice League Unlimited as Justice League
+    seasons 3-5, so its files sit under the series' id. The scheduler reads them as the other
+    show, with its title and year; the series keeps its other seasons."""
+    for season in (1, 2):
+        db.execute(
+            "INSERT INTO episodes (show_id, season, episode, title, runtime_seconds, media_path,"
+            " media_seconds) VALUES ('the-simpsons', ?, 1, '', 1320, ?, 1320)",
+            (season, f"tv/s{season}.mp4"),
+        )
+    overrides = (
+        "shows:\n"
+        "  - { show: x-men, year: 1992, part_of: { show: the-simpsons, tvdb_id: 71663,"
+        " seasons: [2] } }\n"
+    )
+    lib = Scheduler(load_catalog(make_catalog(overrides=overrides)), load_library(db)).library
+    assert [(p.season, p.path) for p in lib.episodes["the-simpsons"]] == [(1, "tv/s1.mp4")]
+    assert [(p.show, p.title, p.season, p.path) for p in lib.episodes["x-men"]] == [
+        ("x-men", "X-Men", 2, "tv/s2.mp4")
+    ]
+    assert lib.show_years["x-men"] == 1992

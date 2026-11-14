@@ -51,6 +51,15 @@ case $source in
 esac
 
 mkdir -p "$state"
+# One at a time: the weekly station manager (ops/station-manager.sh) takes the same lock, so
+# it never runs while a deploy restarts the api or rolls the database back.
+if command -v flock >/dev/null; then
+  exec 9>"$state/deploy.lock"
+  if ! flock -w "${RC_LOCK_WAIT:-900}" 9; then
+    echo "deploy: the station manager or another deploy holds $state/deploy.lock" >&2
+    exit 1
+  fi
+fi
 current=$(cat "$state/current" 2>/dev/null || true)
 
 if [[ -n $current ]]; then
@@ -71,6 +80,8 @@ docker compose -f "$here/compose.yml" up -d --wait
 if RC_EXPECT_VERSION=$version "$here/smoke.sh"; then
   echo "$version" >"$state/current"
   echo "deploy: $version is live"
+  # The station manager's weekly timer is installed once with sudo; say so if it isn't.
+  "$here/systemd/install.sh" --check || true
   exit 0
 fi
 

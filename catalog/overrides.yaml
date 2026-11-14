@@ -14,7 +14,7 @@ shows:
   - { show: "fullmetal-alchemist", us_debut: 2004-11-06, tmdb_id: "tv:37863", year: 2004 }
 
   # Peanuts holiday specials only air around their holiday (no Great Pumpkin in July).
-  - { show: "peanuts-holiday-specials", seasonal: true }
+  - { show: "peanuts-holiday-specials", seasonal: true, year: 1965, plex_title: "Peanuts" }  # TheTVDB: the specials, 1965 on
 
   # TMDB ids and first-aired years from Brandon's lineup (channel_builder.lineup prune)
   - { show: "30-rock", tmdb_id: "tv:4608", year: 2006 }
@@ -35,7 +35,7 @@ shows:
   - { show: courage-the-cowardly-dog, tmdb_id: "tv:2085", year: 1999 }
   - { show: danny-phantom, tmdb_id: "tv:2309", year: 2004 }
   - { show: dexters-laboratory, tmdb_id: "tv:4229", year: 1996 }
-  - { show: digimon, tmdb_id: "tv:31654", year: 1999 }
+  - { show: digimon, tmdb_id: "tv:31654", year: 1999, plex_title: "Digimon: Digital Monsters" }  # TheTVDB title
   - { show: doug, tmdb_id: "tv:384", year: 1991 }
   - { show: dragon-tales, tmdb_id: "tv:1585", year: 1999 }
   - { show: drake-and-josh, tmdb_id: "tv:2038", year: 2004 }
@@ -63,8 +63,8 @@ shows:
   - { show: kratts-creatures, tmdb_id: "tv:933", year: 1996 }
   - { show: lilo-and-stitch-the-series, tmdb_id: "tv:2355", year: 2003 }
   - { show: lizzie-mcguire, tmdb_id: "tv:4575", year: 2001 }
-  - { show: looney-tunes, year: 1930 }
-  - { show: lupin-the-3rd, year: 2003 }
+  - { show: looney-tunes, year: 1929 }  # TheTVDB starts the shorts in 1929
+  - { show: lupin-the-3rd, year: 2003, part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [1] } }  # Part I
   - { show: malcolm-in-the-middle, tmdb_id: "tv:2004", year: 2000 }
   - { show: motocrossed, tmdb_id: "movie:71885", year: 2001 }
   - { show: nova, tmdb_id: "tv:3562", year: 1974 }
@@ -111,3 +111,26 @@ shows:
   - { show: zoboomafoo, tmdb_id: "tv:4217", year: 1999 }
   - { show: zoey-101, tmdb_id: "tv:1778", year: 2005 }
   - { show: zoids-new-century-zero, tmdb_id: "tv:29540", year: 2001 }
+
+  # Lookup fixes for acquire (Nov 8 2026)
+  - { show: back-home, tmdb_id: "movie:455330", year: 1989 }  # Disney Channel, 1990 in the US
+  - { show: bluey, tmdb_id: "tv:82728", year: 2019, plex_title: "Bluey 2018" }  # NAS folder
+
+  # Seasons TheTVDB files under another series (part_of, Nov 8 2026). `show` is the series'
+  # id in the library: its folder title's slug (Sonarr names it `Lupin III (1971)`).
+  - { show: animaniacs-2020, year: 2020, part_of: { show: animaniacs, tvdb_id: 72879, seasons: [6, 7, 8] } }
+  - { show: justice-league-unlimited, year: 2004, part_of: { show: justice-league, tvdb_id: 76320, seasons: [3, 4, 5] } }
+  - { show: lupin-the-3rd-part-ii, year: 2003, part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [2] } }
+  - { show: lupin-the-3rd-part-iv-the-italian-adventure, year: 2017, part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [4] } }
+  - { show: pokemon-horizons-the-series, year: 2024, part_of: { show: pokemon, tvdb_id: 76703, seasons: [20] } }
+  - { show: the-new-scooby-and-scrappy-doo-show, year: 1983, part_of: { show: scooby-doo-and-scrappy-doo, tvdb_id: 78740, seasons: [5] } }
+
+  # TV movies TheTVDB files as episodes of their series (episodes_of, Nov 8 2026): they come
+  # down with the series and the rig joins those episodes' encodes (ingest assemble).
+  - { show: avatar-sozins-comet, year: 2008, episodes_of: { show: avatar-the-last-airbender, episodes: [S03E18] } }  # the NAS file is S03E18-E21
+  - { show: drake-and-josh-really-big-shrimp, year: 2007, episodes_of: { show: drake-and-josh, episodes: [S04E17, S04E18] } }
+  - { show: rocket-power-reggies-big-beach-break, year: 2003, episodes_of: { show: rocket-power, episodes: [S04E01, S04E02, S04E03] } }
+  # Not a movie anywhere: a two-part Disney Channel miniseries on TheTVDB (338932) that no
+  # channel carries. No indexer has it, so it is no longer asked of Sonarr (no tvdb_id,
+  # Brandon, Nov 11 2026); it airs if a `heidi` folder with those episodes ever turns up.
+  - { show: heidi-1993, year: 1993, episodes_of: { show: heidi, episodes: [S01E01, S01E02] } }

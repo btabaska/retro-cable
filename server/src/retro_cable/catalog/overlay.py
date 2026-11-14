@@ -9,6 +9,10 @@ them up. A premiere may name any channel, YAML or
 custom, and replaces a synthetic.yaml entry for the same (show, channel). The catalog version
 covers both, so a schedule stays a pure function of (channel, date, catalog version, seed).
 Overlay channel ids start with `custom-`, so they can never collide with YAML ids.
+
+The weekly station manager (M5) writes only the overlay's `tuning`: weight multipliers on
+carriage and template pool entries (YAML or custom) and power hours. Tuning never adds or
+removes carriage and never moves a date; entries that no longer match anything are ignored.
 """
 
 import hashlib
@@ -27,12 +31,14 @@ from retro_cable.catalog.models import (
     ChannelsFile,
     Model,
     OverridesFile,
+    PowerHour,
     ShowIds,
     ShowOverride,
     Synthetic,
     SyntheticFile,
     Template,
     TemplatesFile,
+    Tuning,
 )
 
 __all__ = [
@@ -45,6 +51,7 @@ __all__ = [
     "with_channel",
     "with_ids",
     "with_premiere",
+    "with_tuning",
     "without_channel",
 ]
 
@@ -64,10 +71,20 @@ class Overlay(Model):
         default_factory=list,
         description="Lineup TMDB ids and years of shows the channel builder placed (M4)",
     )
+    tuning: Tuning = Field(
+        default_factory=Tuning, description="The weekly station manager's weights (M5)"
+    )
 
     @property
     def empty(self) -> bool:
-        return not (self.channels or self.carriage or self.premieres or self.templates or self.ids)
+        return not (
+            self.channels
+            or self.carriage
+            or self.premieres
+            or self.templates
+            or self.ids
+            or not self.tuning.empty
+        )
 
 
 def canonical(overlay: Overlay) -> str:
@@ -89,6 +106,15 @@ def canonical(overlay: Overlay) -> str:
         )
     else:
         del data["ids"]  # and before lineup ids (M4)
+    if overlay.tuning.empty:
+        del data["tuning"]  # and before the station manager (M5)
+    else:
+        tuning = data["tuning"]
+        tuning["carriage"] = sorted(tuning["carriage"], key=lambda t: (t["channel"], t["show"]))
+        tuning["pools"] = sorted(
+            tuning["pools"], key=lambda t: (t["template"], t["start"], t["show"])
+        )
+        tuning["power_hours"] = sorted(tuning["power_hours"], key=lambda p: p["channel"])
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
@@ -128,6 +154,10 @@ def apply_overlay(catalog: Catalog, overlay: Overlay) -> Catalog:
     templates = catalog.templates
     if overlay.templates:
         templates = TemplatesFile(templates=[*catalog.templates.templates, *overlay.templates])
+    power_hours: tuple[PowerHour, ...] = ()
+    if not overlay.tuning.empty:
+        carriage, templates = _tuned(carriage, templates, overlay.tuning)
+        power_hours = _power_hours(channels, carriage, overlay.tuning.power_hours)
     return replace(
         catalog,
         channels=channels,
@@ -136,7 +166,59 @@ def apply_overlay(catalog: Catalog, overlay: Overlay) -> Catalog:
         templates=templates,
         overrides=_with_ids(catalog.overrides, overlay.ids, {c.show for c in carriage.carriage}),
         version=overlay_version(catalog.version, overlay),
+        power_hours=power_hours,
     )
+
+
+def _tuned(
+    carriage: CarriageFile, templates: TemplatesFile, tuning: Tuning
+) -> tuple[CarriageFile, TemplatesFile]:
+    """Carriage and templates with the tuning's multipliers applied to their weights. Only
+    weights change: the same rows, windows, parts and pools."""
+    by_pair = {(t.channel, t.show): t.factor for t in tuning.carriage}
+    rows = [
+        c.model_copy(update={"weight": c.weight * by_pair[(c.channel, c.show)]})
+        if (c.channel, c.show) in by_pair
+        else c
+        for c in carriage.carriage
+    ]
+    by_entry = {(t.template, t.start, t.show): t.factor for t in tuning.pools}
+    if not by_entry:
+        return CarriageFile(carriage=rows), templates
+    tuned: list[Template] = []
+    for t in templates.templates:
+        parts = [
+            p.model_copy(
+                update={
+                    "pool": [
+                        e.model_copy(update={"weight": e.weight * by_entry[key]})
+                        if (key := (t.id, p.start, e.show or "")) in by_entry
+                        else e
+                        for e in p.pool
+                    ]
+                }
+            )
+            for p in t.parts
+        ]
+        tuned.append(t.model_copy(update={"parts": parts}))
+    return CarriageFile(carriage=rows), TemplatesFile(templates=tuned)
+
+
+def _power_hours(
+    channels: ChannelsFile, carriage: CarriageFile, wanted: list[PowerHour]
+) -> tuple[PowerHour, ...]:
+    """Power hours on channels that exist and aren't movie channels, pooling only shows the
+    channel carries; one that is left with no show is dropped."""
+    kinds = {c.id: c.type for c in channels.channels}
+    shows = {(c.channel, c.show) for c in carriage.carriage if c.kind == "show"}
+    out: list[PowerHour] = []
+    for ph in sorted(wanted, key=lambda p: p.channel):
+        if kinds.get(ph.channel) in (None, "movie") or any(p.channel == ph.channel for p in out):
+            continue
+        pool = [e for e in ph.pool if (ph.channel, e.show) in shows]
+        if pool:
+            out.append(ph.model_copy(update={"pool": pool}))
+    return tuple(out)
 
 
 def _with_ids(overrides: OverridesFile, ids: list[ShowIds], carried: set[str]) -> OverridesFile:
@@ -164,6 +246,7 @@ def without_channel(overlay: Overlay, channel_id: str) -> Overlay:
         premieres=[p for p in overlay.premieres if p.channel != channel_id],
         templates=[t for t in overlay.templates if t.channel != channel_id],
         ids=overlay.ids,  # per show, not per channel; unused ones are ignored when applied
+        tuning=overlay.tuning,  # stale entries are ignored when applied
     )
 
 
@@ -183,6 +266,7 @@ def with_channel(
         premieres=[*rest.premieres, *(premieres or [])],
         templates=[*rest.templates, *(templates or [])],
         ids=rest.ids,
+        tuning=rest.tuning,
     )
 
 
@@ -202,3 +286,8 @@ def with_premiere(overlay: Overlay, show: str, channel_id: str, premiere: date |
     if premiere is not None:
         rest.append(Synthetic(show=show, channel=channel_id, premiere=premiere))
     return overlay.model_copy(update={"premieres": rest})
+
+
+def with_tuning(overlay: Overlay, tuning: Tuning) -> Overlay:
+    """The overlay with the station manager's tuning replaced; everything else as it was."""
+    return overlay.model_copy(update={"tuning": tuning})

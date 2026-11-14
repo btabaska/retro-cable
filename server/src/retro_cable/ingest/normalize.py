@@ -24,7 +24,7 @@ import re
 import sqlite3
 import subprocess
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
@@ -59,6 +59,7 @@ class Stream:
     width: int
     height: int
     sar: Fraction
+    codec: str = ""  # ffprobe's codec_name: h264, hevc
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,14 @@ class Probe:
     duration: float
     video: Stream | None
     audio_index: int | None
+    # The first audio language when every track names one and none is English (a dub-only
+    # rip): build_command refuses it rather than air it.
+    foreign_audio: str | None = None
+
+
+ENGLISH = ("eng", "en")
+# Language tags that say nothing about the language: such a track may well be English.
+UNKNOWN_LANGUAGE = ("", "und", "unk", "mis", "mul", "zxx")
 
 
 def _fraction(value: Any) -> Fraction:
@@ -76,11 +85,34 @@ def _fraction(value: Any) -> Fraction:
         return Fraction(1)
 
 
+def _stream_seconds(stream: dict[str, Any]) -> float | None:
+    """A stream's own length: `duration` (MP4) or a `DURATION` tag (MKV, `HH:MM:SS.ns`)."""
+    tags = stream.get("tags") or {}
+    tagged = [v for k, v in tags.items() if k.upper().startswith("DURATION")]
+    for value in [stream.get("duration"), *tagged]:
+        try:
+            *hm, sec = str(value).split(":")
+            minutes = 0
+            for x in hm:
+                minutes = minutes * 60 + int(x)
+            seconds = minutes * 60 + float(sec)
+        except ValueError:
+            continue
+        if seconds > 0:
+            return seconds
+    return None
+
+
 def parse_probe(data: dict[str, Any]) -> Probe:
-    """The first real video stream (not cover art) and the audio to keep (English if tagged)."""
+    """The first real video stream (not cover art) and the audio to keep (English if tagged;
+    `foreign_audio` when every track is tagged with another language).
+    The length is the longer of those two streams, so a subtitle that runs past the end
+    doesn't count; the container's length when they don't say, and never more than it."""
     video = None
+    lengths: dict[int, float | None] = {}
     audio: list[tuple[int, str]] = []
     for s in data.get("streams", []):
+        lengths[int(s.get("index", -1))] = _stream_seconds(s)
         kind = s.get("codec_type")
         if kind == "video" and video is None and not s.get("disposition", {}).get("attached_pic"):
             video = Stream(
@@ -88,23 +120,68 @@ def parse_probe(data: dict[str, Any]) -> Probe:
                 int(s["width"]),
                 int(s["height"]),
                 _fraction(s.get("sample_aspect_ratio")),
+                str(s.get("codec_name", "")),
             )
         elif kind == "audio":
             audio.append((int(s["index"]), str(s.get("tags", {}).get("language", ""))))
-    english = [i for i, lang in audio if lang.lower() in ("eng", "en")]
+    english = [i for i, lang in audio if lang.lower() in ENGLISH]
     pick = english[0] if english else (audio[0][0] if audio else None)
+    named = audio and all(lang.lower() not in UNKNOWN_LANGUAGE for _, lang in audio)
+    foreign = audio[0][1] if named and not english else None
     duration = float(data.get("format", {}).get("duration") or 0)
-    return Probe(duration=duration, video=video, audio_index=pick)
+    kept = [lengths.get(i) for i in (video.index if video else None, pick) if i is not None]
+    if kept and all(kept):
+        longest = max(x for x in kept if x)
+        duration = min(duration, longest) if duration > 0 else longest
+    return Probe(duration=duration, video=video, audio_index=pick, foreign_audio=foreign)
+
+
+# How far before the container's end to look for the last picture and sound packets.
+PACKET_WINDOW = 600.0
 
 
 def probe(path: Path, ffprobe: str = "ffprobe") -> Probe:
+    """ffprobe's view of a file. When the kept streams don't say how long they are and another
+    stream (a subtitle) could have set the container's length, the length is where their last
+    packets end, read from the final ten minutes."""
     out = subprocess.run(
         [ffprobe, "-v", "error", "-of", "json", "-show_format", "-show_streams", str(path)],
         check=True,
         capture_output=True,
         text=True,
     ).stdout
-    return parse_probe(json.loads(out))
+    data = json.loads(out)
+    info = parse_probe(data)
+    streams = {int(s.get("index", -1)): s for s in data.get("streams", [])}
+    picture = info.video.index if info.video else None
+    kept = {i for i in (picture, info.audio_index) if i is not None}
+    if (
+        info.duration <= 0
+        or not kept
+        or all(_stream_seconds(streams[i]) for i in kept)
+        or set(streams) <= kept
+    ):
+        return info
+    start = max(info.duration - PACKET_WINDOW, 0.0)
+    out = subprocess.run(
+        [ffprobe, "-v", "error", "-read_intervals", f"{start:.3f}%",
+         "-show_entries", "packet=stream_index,pts_time,duration_time", "-of", "csv=p=0",
+         str(path)],
+        capture_output=True, text=True, check=False,
+    ).stdout  # fmt: skip
+    ends: dict[int, float] = {}
+    for line in out.splitlines():
+        try:
+            index, pts, length = line.split(",")[:3]
+            stream = int(index)
+            end = float(pts) + (float(length) if length not in ("", "N/A") else 0.0)
+        except ValueError:
+            continue
+        if stream in kept:
+            ends[stream] = max(end, ends.get(stream, 0.0))
+    if set(ends) != kept:
+        return info
+    return replace(info, duration=min(info.duration, max(ends.values())))
 
 
 def source_seconds(path: Path) -> float | None:
@@ -196,6 +273,35 @@ def no_crop(src: Path, info: Probe, max_seconds: float | None) -> Crop | None:
     return None
 
 
+def codec_args(codec: Codec, encoder: Encoder, *, audio: bool) -> list[str]:
+    """The video and audio encoder settings every encode shares (normalize, assemble)."""
+    args: list[str] = []
+    if codec == "hevc" and encoder == "nvenc":
+        args += ["-c:v", "hevc_nvenc", "-preset", "p7", "-tune", "hq", "-rc", "vbr", "-cq", "26",
+                "-b:v", "0", "-spatial-aq", "1", "-temporal-aq", "1", "-forced-idr", "1",
+                "-profile:v", "main"]  # fmt: skip
+    elif codec == "hevc":
+        args += ["-c:v", "libx265", "-preset", "fast", "-crf", "22",
+                "-x265-params", "log-level=error:forced-idr=1"]  # fmt: skip
+    elif encoder == "nvenc":
+        args += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0",
+                "-forced-idr", "1"]  # fmt: skip
+    else:
+        args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+    if codec == "hevc":
+        args += ["-maxrate", HEVC_MAXRATE, "-bufsize", HEVC_BUFSIZE, "-tag:v", "hvc1"]
+    else:
+        args += ["-maxrate", VIDEO_MAXRATE, "-bufsize", VIDEO_BUFSIZE, "-profile:v", "high"]
+    args += ["-pix_fmt", "yuv420p",
+            "-force_key_frames", f"expr:gte(t,n_forced*{KEYFRAME_SECONDS})"]  # fmt: skip
+    if audio:
+        audio_rate = "96k" if codec == "hevc" else "128k"
+        args += ["-c:a", "aac", "-b:a", audio_rate, "-ac", "2", "-ar", "48000"]
+    else:
+        args += ["-an"]
+    return args
+
+
 def build_command(
     src: Path,
     dst: Path,
@@ -208,6 +314,8 @@ def build_command(
 ) -> list[str]:
     if info.video is None:
         raise ValueError(f"{src.name}: no video stream")
+    if info.foreign_audio is not None:
+        raise ValueError(f"{src.name}: no English audio (only {info.foreign_audio})")
     width, height = info.video.width, info.video.height
     # bwdif only touches frames flagged interlaced (DVD and broadcast rips); progressive passes.
     filters = ["bwdif=mode=send_frame:deint=interlaced"]
@@ -224,29 +332,7 @@ def build_command(
     if info.audio_index is not None:
         cmd += ["-map", f"0:{info.audio_index}"]
     cmd += ["-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn", "-vf", vf]
-    if codec == "hevc" and encoder == "nvenc":
-        cmd += ["-c:v", "hevc_nvenc", "-preset", "p7", "-tune", "hq", "-rc", "vbr", "-cq", "26",
-                "-b:v", "0", "-spatial-aq", "1", "-temporal-aq", "1", "-forced-idr", "1",
-                "-profile:v", "main"]  # fmt: skip
-    elif codec == "hevc":
-        cmd += ["-c:v", "libx265", "-preset", "fast", "-crf", "22",
-                "-x265-params", "log-level=error:forced-idr=1"]  # fmt: skip
-    elif encoder == "nvenc":
-        cmd += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0",
-                "-forced-idr", "1"]  # fmt: skip
-    else:
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
-    if codec == "hevc":
-        cmd += ["-maxrate", HEVC_MAXRATE, "-bufsize", HEVC_BUFSIZE, "-tag:v", "hvc1"]
-    else:
-        cmd += ["-maxrate", VIDEO_MAXRATE, "-bufsize", VIDEO_BUFSIZE, "-profile:v", "high"]
-    cmd += ["-pix_fmt", "yuv420p",
-            "-force_key_frames", f"expr:gte(t,n_forced*{KEYFRAME_SECONDS})"]  # fmt: skip
-    if info.audio_index is not None:
-        audio_rate = "96k" if codec == "hevc" else "128k"
-        cmd += ["-c:a", "aac", "-b:a", audio_rate, "-ac", "2", "-ar", "48000"]
-    else:
-        cmd += ["-an"]
+    cmd += codec_args(codec, encoder, audio=info.audio_index is not None)
     cmd += ["-max_muxing_queue_size", "1024", "-movflags", "+faststart", "-f", "mp4", str(dst)]
     return cmd
 
@@ -444,6 +530,9 @@ class NormalizeStats:
     # Originals deleted after a whole, checked encode (`delete_sources_under`), relative to
     # that root, so the stats and the log name no host or share.
     deleted: list[str] = field(default_factory=list)
+    # Stopped at `limit` or `until` with items still to look at: the rig's worker scans again
+    # soon instead of sleeping (ops/rig/worker.sh).
+    unfinished: bool = False
     commands: list[list[str]] = field(default_factory=list)  # dry run only
 
 
@@ -572,6 +661,7 @@ def normalize(
     codec: Codec = "h264",
     max_seconds: float | None = None,
     limit: int | None = None,
+    until: datetime | None = None,
     force: bool = False,
     dry_run: bool = False,
     run: Runner = run_ffmpeg,
@@ -586,7 +676,8 @@ def normalize(
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     log: Callable[[str], None] | None = None,
 ) -> NormalizeStats:
-    """Encode every item that has no up-to-date output. `limit` caps the encodes in this run.
+    """Encode every item that has no up-to-date output. `limit` caps the encodes in this run,
+    and no item starts once `now()` reaches `until` (the one running then finishes).
 
     `encoder` is fixed, or asked once per item (the rig's GPU check, see ingest/gpu.py).
     `order` reorders the plan (see `prioritize`); `on_encoded` runs after each item is
@@ -620,7 +711,10 @@ def normalize(
 
     try:
         for item in items:
-            if limit is not None and stats.encoded >= limit:
+            if (limit is not None and stats.encoded >= limit) or (
+                until is not None and now() >= until
+            ):
+                stats.unfinished = True
                 break
             if item.source_deleted:  # the encode is all there is: never encoded again
                 if item.up_to_date_in_db() and (media_dir / item.target).is_file():

@@ -158,6 +158,11 @@ class LibraryEntry(BaseModel):
         default=None, description="TMDB id from the lineup (tv:N or movie:N), for ingest acquire"
     )
     year: int | None = Field(default=None, description="First-aired year from the lineup")
+    shifted: bool = Field(
+        default=False,
+        description="Airs on moved dates somewhere: a pretend premiere on some channel or a US"
+        " debut (ingest acquire keeps all its seasons)",
+    )
 
 
 class LibraryList(BaseModel):
@@ -210,11 +215,19 @@ def library_index(db: sqlite3.Connection, sched: Scheduler) -> dict[str, Library
             r["id"],
             LibraryItem(r["id"], r["title"], "movie", premiere, premiere, on_disk, 1),
         )
-    # Carried titles the database doesn't know yet (nothing on disk anywhere, such as shows
-    # the channel builder placed): listed with nothing to play, so the rig's `ingest acquire`
-    # sees them and /admin can carry them too.
+    # Carried titles the database doesn't know yet: seasons of another series (overrides.yaml
+    # `part_of`, kept under the series' id), or nothing on disk anywhere, such as shows the
+    # channel builder placed. Listed so the rig's `ingest acquire` sees them and /admin can
+    # carry them too.
     for c in sched.catalog.carriage.carriage:
-        items.setdefault(c.show, LibraryItem(c.show, c.title, c.kind, None, None, 0, 0))
+        if c.show in items:
+            continue
+        playable = sched.programs(c.show) if c.kind == "show" else ()
+        dated = [p.air_date for p in playable if p.air_date]
+        first, last = (min(dated), max(dated)) if dated else (None, None)
+        items[c.show] = LibraryItem(
+            c.show, c.title, c.kind, first, last, len(playable), len(playable)
+        )
     return items
 
 
@@ -452,6 +465,9 @@ def router(
             )
         needle = q.strip().lower()
         lineup = {o.show: o for o in sched.catalog.overrides.shows}
+        shifted = {p.show for p in sched.catalog.synthetic.synthetic} | {
+            o.show for o in sched.catalog.overrides.shows if o.us_debut
+        }
         items = [
             LibraryEntry(
                 id=item.id,
@@ -464,6 +480,7 @@ def router(
                 channels=sorted(carriers.get(item.id, {}).values(), key=lambda c: c.number),
                 tmdb_id=lineup[item.id].tmdb_id if item.id in lineup else None,
                 year=lineup[item.id].year if item.id in lineup else None,
+                shifted=item.id in shifted,
             )
             for item in index.values()
             if needle in item.title.lower()

@@ -153,6 +153,21 @@ def test_overrides_and_synthetic_must_name_carried_shows(make_catalog: MakeCatal
     assert any("synthetic: 'gravity-fallz' is not carried on cartoon-network" in e for e in errs)
 
 
+def test_a_lookup_only_override_may_name_a_show_admin_channels_carry(
+    make_catalog: MakeCatalog,
+) -> None:
+    """The channel builder's shows are carried in /admin, not the YAML. An override that only
+    helps find one (tmdb_id, year, plex_title) is allowed; one that changes airing is not."""
+    lookup = (
+        OVERRIDES
+        + '  - { show: bluey, tmdb_id: "tv:82728", year: 2019, plex_title: "Bluey 2018" }\n'
+    )
+    assert errors(make_catalog, overrides=lookup) == []
+    airing = OVERRIDES + "  - { show: bluey, year: 2019, seasonal: true }\n"
+    assert any("overrides: 'bluey' has no carriage" in e
+               for e in errors(make_catalog, overrides=airing))  # fmt: skip
+
+
 def test_a_synthetic_premiere_names_a_channel_that_carries_the_show(
     make_catalog: MakeCatalog,
 ) -> None:
@@ -161,3 +176,47 @@ def test_a_synthetic_premiere_names_a_channel_that_carries_the_show(
         "synthetic: 'gravity-falls' is not carried on ktvu" in e
         for e in errors(make_catalog, synthetic=synthetic)
     )
+
+
+def test_a_season_of_a_series_airs_as_one_show_only(make_catalog: MakeCatalog) -> None:
+    part = "part_of: {{ show: {series}, tvdb_id: 1, seasons: [{seasons}] }}"
+    ok = OVERRIDES + (
+        f"  - {{ show: x-men, {part.format(series='the-simpsons', seasons='2')} }}\n"
+        f"  - {{ show: bluey, {part.format(series='bluey-1976', seasons='1')} }}\n"
+    )
+    assert errors(make_catalog, overrides=ok) == []  # bluey: carried in /admin
+    twice = OVERRIDES + (
+        f"  - {{ show: x-men, {part.format(series='the-simpsons', seasons='2, 3')} }}\n"
+        f"  - {{ show: gravity-falls, {part.format(series='the-simpsons', seasons='3')} }}\n"
+    )
+    assert any(
+        "overrides: the-simpsons season 3 airs as both x-men and gravity-falls" in e
+        for e in errors(make_catalog, overrides=twice)
+    )
+    itself = OVERRIDES + f"  - {{ show: x-men, {part.format(series='x-men', seasons='2')} }}\n"
+    assert any(
+        "overrides: 'x-men' can't be part of itself" in e
+        for e in errors(make_catalog, overrides=itself)
+    )
+
+
+def test_a_tv_movie_made_of_episodes(make_catalog: MakeCatalog) -> None:
+    """overrides.yaml `episodes_of`: lookup-only, so a movie on an /admin channel may have
+    it; not its own series, each episode once, and not also seasons of a series."""
+    of = "episodes_of: {{ show: {series}, episodes: [{episodes}] }}"
+    ok = OVERRIDES + (
+        f"  - {{ show: really-big-shrimp, year: 2007,"
+        f" {of.format(series='drake-and-josh', episodes='S04E17, S04E18')} }}\n"
+    )
+    assert errors(make_catalog, overrides=ok) == []
+    bad = OVERRIDES + (
+        f"  - {{ show: halloweentown, {of.format(series='halloweentown', episodes='S01E01')} }}\n"
+        f"  - {{ show: really-big-shrimp,"
+        f" {of.format(series='drake-and-josh', episodes='S04E17, S4E17')} }}\n"
+        f"  - {{ show: sozins-comet, part_of: {{ show: avatar, tvdb_id: 1, seasons: [3] }},"
+        f" {of.format(series='avatar', episodes='S03E18')} }}\n"
+    )
+    found = errors(make_catalog, overrides=bad)
+    assert "overrides: 'halloweentown' can't be made of its own episodes" in found
+    assert "overrides: 'really-big-shrimp' lists S04E17 twice" in found
+    assert "overrides: 'sozins-comet' is part_of a series or episodes_of one, not both" in found

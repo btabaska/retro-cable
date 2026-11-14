@@ -17,6 +17,7 @@ from retro_cable.catalog.models import (
     HolidaysFile,
     Model,
     OverridesFile,
+    PowerHour,
     SyntheticFile,
     TemplatesFile,
 )
@@ -54,6 +55,8 @@ class Catalog:
     overrides: OverridesFile
     templates: TemplatesFile
     version: str  # first 12 hex chars of a sha256 over the input files
+    # The station manager's power hours (M5): only ever from the admin overlay, never YAML.
+    power_hours: tuple[PowerHour, ...] = ()
 
     def channel(self, channel_id: str) -> Channel:
         for channel in self.channels.channels:

@@ -12,6 +12,7 @@ import sqlite3
 import struct
 import subprocess
 from collections.abc import Callable
+from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from retro_cable.ingest.normalize import (
     parse_probe,
     plan,
     prioritize,
+    probe,
     resolve_source,
     target_path,
 )
@@ -129,6 +131,76 @@ def test_parse_probe_skips_cover_art_and_handles_missing_audio_and_sar() -> None
     assert p.audio_index is None
 
 
+def test_parse_probe_measures_the_picture_and_sound_not_a_longer_subtitle() -> None:
+    # Cougar Town S01E01, Harley Quinn S01E06 (Nov 9 2026): a subtitle track ran ~100 s past
+    # the end, the container took its length, and whole encodes were refused as short.
+    data = probe_json(
+        {"index": 0, "codec_type": "video", "width": 1920, "height": 1080,
+         "tags": {"DURATION": "00:22:55.625000000"}},
+        {"index": 1, "codec_type": "audio", "tags": {"DURATION-eng": "00:22:55.648000000"}},
+        {"index": 2, "codec_type": "audio", "tags": {"language": "spa", "DURATION": "01:00:00"}},
+        {"index": 3, "codec_type": "subtitle", "duration": "1431.233"},
+        duration="1431.233",
+    )  # fmt: skip
+    assert parse_probe(data).duration == pytest.approx(1375.648)
+    # MP4 streams carry `duration`; the container's length is the most a stream can claim.
+    data = probe_json(
+        {"index": 0, "codec_type": "video", "width": 640, "height": 480, "duration": "1290.0"},
+        {"index": 1, "codec_type": "audio", "duration": "1300.0"},
+        duration="1295.0",
+    )  # fmt: skip
+    assert parse_probe(data).duration == 1295.0
+
+
+def test_parse_probe_falls_back_to_the_container_length() -> None:
+    data = probe_json(
+        {"index": 0, "codec_type": "video", "width": 640, "height": 480},
+        {"index": 1, "codec_type": "audio", "tags": {"DURATION": "garbage"}},
+    )  # fmt: skip
+    assert parse_probe(data).duration == 1320.5
+
+
+def test_probe_reads_the_last_packets_when_the_streams_do_not_say_how_long(
+    tmp_path: Path,
+) -> None:
+    # Cougar Town S01E01: no stream lengths, a subtitle to 1409.7 s, sound and picture to 1305 s.
+    fake = tmp_path / "ffprobe"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "if '-show_format' in sys.argv:\n"
+        "    print(json.dumps({'format': {'duration': '1409.679'}, 'streams': [\n"
+        "        {'index': 0, 'codec_type': 'video', 'width': 1920, 'height': 1080},\n"
+        "        {'index': 1, 'codec_type': 'audio', 'tags': {'language': 'fre'}},\n"
+        "        {'index': 2, 'codec_type': 'subtitle'}]}))\n"
+        "else:\n"
+        "    assert sys.argv[sys.argv.index('-read_intervals') + 1] == '809.679%'\n"
+        "    print('0,1305.104,0.033\\n1,1305.088,0.032,\\n2,1405.0,4.679\\n0,N/A,N/A')\n"
+    )
+    fake.chmod(0o755)
+    info = probe(tmp_path / "x.mkv", ffprobe=str(fake))
+    assert info.duration == pytest.approx(1305.137)
+    assert info.foreign_audio == "fre"  # measuring the length keeps what the streams said
+
+
+@needs_ffmpeg
+def test_probe_measures_a_real_file_with_a_long_subtitle(tmp_path: Path) -> None:
+    srt = tmp_path / "s.srt"
+    srt.write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\nhi\n\n2\n00:00:08,000 --> 00:00:09,000\nbye\n"
+    )
+    clip = tmp_path / "clip.mkv"
+    subprocess.run(
+        ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+         "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30:duration=2",
+         "-f", "lavfi", "-i", "sine=duration=2", "-i", str(srt),
+         "-map", "0", "-map", "1", "-map", "2", "-c:v", "mpeg4", "-c:a", "ac3", "-c:s", "srt",
+         str(clip)],
+        check=True,
+    )  # fmt: skip
+    assert probe(clip).duration == pytest.approx(2.0, abs=0.1)
+
+
 SD = Probe(duration=60.0, video=Stream(0, 720, 480, Fraction(8, 9)), audio_index=1)
 
 
@@ -179,6 +251,34 @@ def test_nvenc_command_uses_the_gpu_encoder_with_forced_idr_keyframes() -> None:
     assert "-crf" not in cmd
     assert "-force_key_frames expr:gte(t,n_forced*1)" in joined
     assert "scale=640:480" in joined
+
+
+@pytest.mark.parametrize(
+    ("languages", "foreign"),
+    [
+        (["fre"], "fre"),
+        (["fre", "ger"], "fre"),
+        (["fre", "eng"], None),  # English is there: it is the one kept
+        (["und"], None),  # untagged or undetermined: nothing says it isn't English
+        ([""], None),
+        (["fre", "und"], None),
+        ([], None),
+    ],
+)
+def test_parse_probe_flags_audio_with_no_english_track(
+    languages: list[str], foreign: str | None
+) -> None:
+    """A 30 Rock rip with only French audio aired on NBC in French (Nov 14 2026)."""
+    streams = [{"index": i + 1, "codec_type": "audio", "tags": {"language": lang}}
+               for i, lang in enumerate(languages)]  # fmt: skip
+    video = {"index": 0, "codec_type": "video", "width": 720, "height": 480}
+    assert parse_probe(probe_json(video, *streams)).foreign_audio == foreign
+
+
+def test_command_refuses_a_source_with_no_english_audio() -> None:
+    french = Probe(60.0, Stream(0, 720, 480, Fraction(1)), audio_index=1, foreign_audio="fre")
+    with pytest.raises(ValueError, match="no English audio"):
+        build_command(Path("a.mkv"), Path("a.mp4"), french, "x264")
 
 
 def test_command_without_audio_and_with_a_trial_limit() -> None:
@@ -615,6 +715,25 @@ def test_limit_and_dry_run(db: sqlite3.Connection, fake_library: Path, tmp_path:
     some = Recorder()
     stats = normalize(db, media, run=some, probe=fake_probe, crop=no_crop, limit=2)
     assert stats.encoded == 2
+    assert stats.unfinished, "an item is left for the next run"
+    rest = normalize(db, media, run=Recorder(), probe=fake_probe, crop=no_crop, limit=2)
+    assert (rest.encoded, rest.unfinished) == (1, False)
+
+
+def test_a_deadline_stops_new_encodes_and_says_so(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    """The rig's worker gives each run a few hours, so new downloads are scanned in between
+    instead of waiting days for the whole backlog (Nov 10 2026)."""
+    clock = iter([datetime(2026, 11, 10, 12, m, tzinfo=UTC) for m in range(0, 60, 10)])
+    stats = normalize(
+        db, tmp_path / "media", run=Recorder(), probe=fake_probe, crop=no_crop,
+        now=lambda: next(clock), until=datetime(2026, 11, 10, 12, 15, tzinfo=UTC),
+    )  # fmt: skip
+    assert stats.encoded == 2, "the encode running at the deadline finishes; none starts after"
+    assert stats.unfinished
+    whole = normalize(db, tmp_path / "media", run=Recorder(), probe=fake_probe, crop=no_crop)
+    assert (whole.encoded, whole.unfinished) == (1, False)
 
 
 def test_nvenc_is_selectable(db: sqlite3.Connection, fake_library: Path, tmp_path: Path) -> None:

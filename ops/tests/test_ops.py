@@ -16,7 +16,15 @@ import pytest
 import yaml
 
 OPS = Path(__file__).resolve().parents[1]
-SCRIPTS = ["deploy.sh", "rollback.sh", "smoke.sh", "rig/worker.sh", "rig/up.sh"]
+SCRIPTS = [
+    "deploy.sh",
+    "rollback.sh",
+    "smoke.sh",
+    "station-manager.sh",
+    "systemd/install.sh",
+    "rig/worker.sh",
+    "rig/up.sh",
+]
 
 
 def load(name: str) -> dict[str, Any]:
@@ -47,7 +55,7 @@ def test_scripts_pass_shellcheck() -> None:
 
 def test_compose_runs_api_and_web_and_a_worker_on_demand() -> None:
     services = load("compose.yml")["services"]
-    assert set(services) == {"api", "web", "worker", "media-index"}
+    assert set(services) == {"api", "web", "worker", "media-index", "tmdb"}
     assert services["api"]["image"].startswith("ghcr.io/btabaska/retro-cable-api:")
     assert services["web"]["image"].startswith("ghcr.io/btabaska/retro-cable-web:")
     # The worker shares the api image (it has ffmpeg) and only runs when asked:
@@ -108,6 +116,21 @@ def test_media_index_is_unhealthy_until_it_can_write_the_database() -> None:
     assert index["healthcheck"]["start_period"]
 
 
+def test_tmdb_fills_metadata_gaps_on_the_mini_only_when_turned_on() -> None:
+    """Off unless ops/.env turns it on (COMPOSE_PROFILES=media-index,tmdb with TMDB_TOKEN):
+    the app's only call outside the LAN. No media; the catalog for the lineup's ids."""
+    services = load("compose.yml")["services"]
+    tmdb = services["tmdb"]
+    assert tmdb["profiles"] == ["tmdb"]
+    assert tmdb["image"] == services["api"]["image"]
+    assert tmdb["restart"] == "unless-stopped"
+    assert "ports" not in tmdb
+    assert tmdb["command"][:5] == ["python", "-m", "retro_cable.ingest", "tmdb", "--watch"]
+    assert volumes(tmdb) == {"/data": "rw", "/catalog": "ro"}
+    assert tmdb["depends_on"]["api"]["condition"] == "service_healthy"
+    assert "W_OK" in " ".join(tmdb["healthcheck"]["test"])
+
+
 # --- the rig worker ----------------------------------------------------------
 
 
@@ -145,7 +168,11 @@ def _fake_bin(tmp_path: Path) -> tuple[Path, Path]:
     for name, body in (
         ("nice", 'echo "nice $*" >>"$CALLS"; shift 2; exec "$@"'),
         ("ionice", 'echo "ionice $*" >>"$CALLS"; shift 2; exec "$@"'),
-        ("python", 'echo "python $*" >>"$CALLS"; echo "{}"'),
+        # PEEK: a file whose contents are logged after each call, as the worker sees them.
+        (
+            "python",
+            'echo "python $*" >>"$CALLS"; [[ -n ${PEEK:-} ]] && cat "$PEEK" >>"$CALLS"; echo "{}"',
+        ),
     ):
         path = bin_dir / name
         path.write_text(f"#!/usr/bin/env bash\n{body}\n")
@@ -181,10 +208,49 @@ def test_rig_worker_scans_then_normalizes_in_priority_order(tmp_path: Path) -> N
     assert pythons[0] == f"python -m retro_cable.ingest scan --tv {tv} --no-probe"
     assert pythons[1] == (
         "python -m retro_cable.ingest normalize --order priority --encoder auto --manifest"
+        " --for-minutes 360"
     ), "only what a channel carries is converted, never the whole library (--all)"
+    # Then TV movies made of episodes are joined from the new encodes.
+    assert pythons[2] == "python -m retro_cable.ingest assemble --manifest"
     lines = log.splitlines()
-    assert sum(line.startswith("nice -n 19 ionice -c 3 python") for line in lines) == 2
-    assert sum(line.startswith("ionice -c 3 python") for line in lines) == 2
+    assert sum(line.startswith("nice -n 19 ionice -c 3 python") for line in lines) == 3
+    assert sum(line.startswith("ionice -c 3 python") for line in lines) == 3
+
+
+def test_rig_worker_comes_back_soon_when_a_run_left_work(tmp_path: Path) -> None:
+    """Each normalize run gets RC_NORMALIZE_MINUTES (default 6 h). One that stopped with
+    items left is followed by a fresh scan a minute later, not the usual 6 h wait, so new
+    downloads reach the TV within hours of the backlog instead of after it (Nov 10 2026)."""
+    script = (OPS / "rig/worker.sh").read_text()
+    assert "RC_NORMALIZE_MINUTES:-360" in script
+    assert '"unfinished": true' in script
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    (tv / "Show (1990)").mkdir(parents=True)
+    _, log, _ = _run_worker(tmp_path, media, tv, RC_NORMALIZE_MINUTES="90")
+    assert _pythons(log)[1].endswith("--manifest --for-minutes 90")
+
+
+def test_rig_worker_keeps_the_last_normalize_report_until_the_next_one_is_whole(
+    tmp_path: Path,
+) -> None:
+    """A run takes hours; last-normalize.json keeps the previous run's report (its failures
+    and short encodes) until the new one is finished, instead of sitting empty (Nov 10 2026)."""
+    media, tv = tmp_path / "media", tmp_path / "tv"
+    media.mkdir()
+    (media / ".plexignore").write_text("*\n")
+    (tv / "Show (1990)").mkdir(parents=True)
+    report = tmp_path / "data/last-normalize.json"
+    report.parent.mkdir()
+    report.write_text('{"previous": true}\n')
+    code, log, _ = _run_worker(tmp_path, media, tv, PEEK=str(report))
+    assert code == 0
+    lines = log.splitlines()
+    during = lines[lines.index(_pythons(log)[1]) + 1]
+    assert during == '{"previous": true}', "the old report is readable while a run is going"
+    assert report.read_text() == "{}\n"
+    assert not list(report.parent.glob("*.part"))
 
 
 def test_rig_worker_writes_nothing_without_the_nas_share(tmp_path: Path) -> None:
@@ -253,8 +319,10 @@ def test_rig_worker_acquires_only_when_asked(tmp_path: Path) -> None:
     code, log, _ = _run_worker(tmp_path, media, tv, RC_ACQUIRE="1")
     assert code == 0
     jobs = [p.split()[3] for p in _pythons(log)]
-    assert jobs == ["scan", "acquire", "normalize"], "after the scan, before normalize"
+    assert jobs == ["scan", "acquire", "normalize", "assemble"], "after the scan, before normalize"
     assert (tmp_path / "data/last-acquire.json").is_file()
+    # sonarr-livetv's /tv, so finished downloads whose imports are encoded leave its queue.
+    assert _pythons(log)[1].endswith(f"acquire --livetv-tv {media}/sources/tv")
 
 
 def test_rig_worker_deletes_only_live_tv_originals_and_never_acquires_by_default() -> None:
@@ -686,3 +754,139 @@ def test_deploy_reads_host_settings_from_env_file(
 
     assert result.returncode == 0, result.stderr
     assert any(c.endswith(" build") for c in log.read_text().splitlines())
+
+
+# --- the weekly station manager (M5) ------------------------------------------
+
+
+def unit(name: str) -> dict[str, dict[str, str]]:
+    """A systemd unit file as {section: {key: value}} (last value wins)."""
+    out: dict[str, dict[str, str]] = {}
+    section = ""
+    for raw in (OPS / "systemd" / name).read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("["):
+            section = line.strip("[]")
+            out[section] = {}
+        else:
+            key, value = line.split("=", 1)
+            out[section][key] = value
+    return out
+
+
+def test_station_manager_timer_runs_sundays_at_2am_new_york_and_catches_up() -> None:
+    timer = unit("retro-cable-station-manager.timer")
+    assert timer["Timer"]["OnCalendar"] == "Sun *-*-* 02:00:00 America/New_York"
+    assert timer["Timer"]["Persistent"] == "true"
+    assert timer["Timer"]["Unit"] == "retro-cable-station-manager.service"
+    assert timer["Install"]["WantedBy"] == "timers.target"
+
+
+def test_station_manager_service_runs_the_job_script_after_docker() -> None:
+    service = unit("retro-cable-station-manager.service")
+    assert service["Service"]["Type"] == "oneshot"
+    assert service["Service"]["ExecStart"] == "/opt/retro-cable/ops/station-manager.sh"
+    assert "docker.service" in service["Unit"]["After"]
+    assert service["Unit"]["Requires"] == "docker.service"
+    assert service["Service"]["User"] == "CHECKOUT_OWNER"  # filled in by install.sh
+
+
+def test_station_manager_and_deploy_share_one_lock() -> None:
+    for script in ("deploy.sh", "station-manager.sh"):
+        text = (OPS / script).read_text()
+        assert 'exec 9>"$state/deploy.lock"' in text and "flock -w" in text
+    assert '"$here/systemd/install.sh" --check || true' in (OPS / "deploy.sh").read_text()
+
+
+def test_station_manager_runs_the_job_in_the_api_container(
+    tmp_path: Path, fake_docker: tuple[Path, Path]
+) -> None:
+    bin_dir, log = fake_docker
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "RC_STATE_DIR": str(tmp_path / "state"),
+        "RC_API_WAIT_DELAY": "0",
+    }
+    result = run("station-manager.sh", "--dry-run", env=env)
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text().splitlines()
+    compose = f"compose -f {OPS / 'compose.yml'}"
+    assert calls[0].endswith(f"{compose} exec -T api true")
+    assert calls[-1].endswith(
+        f"{compose} exec -T api python -m retro_cable.station_manager run --dry-run"
+    )
+
+
+def test_station_manager_gives_up_when_the_api_is_not_running(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text("#!/usr/bin/env bash\nexit 1\n")
+    (bin_dir / "docker").chmod(0o755)
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "RC_STATE_DIR": str(tmp_path / "state"),
+        "RC_API_WAIT": "2",
+        "RC_API_WAIT_DELAY": "0",
+    }
+    result = run("station-manager.sh", env=env)
+    assert result.returncode == 1
+    assert "isn't running" in result.stderr
+
+
+def test_install_renders_the_units_once_and_enables_the_timer(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "systemctl.log"
+    (bin_dir / "systemctl").write_text(f'#!/usr/bin/env bash\necho "$*" >> {calls}\n')
+    (bin_dir / "systemctl").chmod(0o755)
+    dest = tmp_path / "systemd"
+    dest.mkdir()
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "RC_SYSTEMD_DIR": str(dest),
+        "RC_SERVICE_USER": "deployer",
+    }
+    assert run("systemd/install.sh", "--check", env=env).returncode == 1  # not installed yet
+
+    result = run("systemd/install.sh", env=env)
+    assert result.returncode == 0, result.stderr
+    service = (dest / "retro-cable-station-manager.service").read_text()
+    repo = str(OPS.parent)
+    assert "User=deployer" in service
+    assert f"ExecStart={repo}/ops/station-manager.sh" in service
+    timer = (OPS / "systemd" / "retro-cable-station-manager.timer").read_text()
+    assert (dest / "retro-cable-station-manager.timer").read_text() == timer.replace(
+        "/opt/retro-cable", repo
+    )
+    assert calls.read_text().splitlines() == [
+        "daemon-reload",
+        "enable --now retro-cable-station-manager.timer",
+        "list-timers retro-cable-station-manager.timer --no-pager",
+    ]
+
+    # Again: nothing to rewrite, so no reload; the check passes.
+    calls.write_text("")
+    assert run("systemd/install.sh", env=env).returncode == 0
+    assert "daemon-reload" not in calls.read_text()
+    assert run("systemd/install.sh", "--check", env=env).returncode == 0
+
+
+def test_install_refuses_without_write_access(tmp_path: Path) -> None:
+    dest = tmp_path / "ro"
+    dest.mkdir(mode=0o555)
+    result = run("systemd/install.sh", env={"RC_SYSTEMD_DIR": str(dest)})
+    assert result.returncode == 1 and "sudo" in result.stderr
+
+
+def test_api_gets_the_local_model_settings_and_the_example_names_them() -> None:
+    env = load("compose.yml")["services"]["api"]["environment"]
+    assert env["RC_LLM_URL"] == "${RC_LLM_URL:-http://rig:4000}"
+    assert env["RC_LLM_KEY"] == "${RC_LLM_KEY:-}"
+    assert env["RC_LLM_MODEL"] == "${RC_LLM_MODEL:-chat}"
+    assert env["RC_STATION_AUTO_APPLY"] == "${RC_STATION_AUTO_APPLY:-1}"
+    text = (OPS / ".env.example").read_text()
+    for key in ("RC_LLM_URL", "RC_LLM_KEY", "RC_LLM_MODEL", "RC_STATION_AUTO_APPLY"):
+        assert f"# {key}=" in text
+    assert re.search(r"^# RC_LLM_KEY=\s", text, flags=re.M), "names only, never a key"

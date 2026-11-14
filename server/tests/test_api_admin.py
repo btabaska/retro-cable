@@ -115,6 +115,41 @@ def test_library_lists_carried_titles_with_nothing_on_disk_and_their_lineup_ids(
     assert any("X-Men" in w["message"] for w in check["warnings"])
 
 
+def test_library_counts_seasons_of_another_series_as_their_own_show(
+    make_catalog: MakeCatalog, tmp_path: Path
+) -> None:
+    """overrides.yaml `part_of`: the seasons a show airs as count for that show, not the
+    series TheTVDB files them under, as the scheduler airs them."""
+    overrides = (
+        "shows:\n  - { show: x-men, year: 1997, part_of: { show: the-simpsons,"
+        " tvdb_id: 71663, seasons: [9] } }\n"
+    )
+    media = tmp_path / "media"
+    media.mkdir()
+    db = tmp_path / "rc.db"
+    seed_db(db, media)
+    settings = Settings(
+        catalog_dir=make_catalog(overrides=overrides), db_path=db, media_dir=media,
+        media_secret="s", seed=7,
+    )  # fmt: skip
+    client = TestClient(create_app(settings, clock=lambda: REAL_NOW))
+    items = {i["id"]: i for i in client.get("/admin/library").json()["items"]}
+    assert items["x-men"]["episodes"] == 22
+    assert items["x-men"]["first_year"] == 1993  # season 9's air dates, weekly from 1989
+    assert items["the-simpsons"]["episodes"] == 200 - 22
+
+
+def test_library_says_which_shows_air_on_shifted_dates(client: TestClient) -> None:
+    """A pretend premiere on any channel (gravity-falls) or a US debut (dragon-ball-z) moves
+    a show's air dates; the rig's `ingest acquire` keeps every season of those, and of the
+    rest asks only for seasons that can air by 2010."""
+    items = {i["id"]: i for i in client.get("/admin/library").json()["items"]}
+    assert items["gravity-falls"]["shifted"] is True
+    assert items["dragon-ball-z"]["shifted"] is True
+    assert items["the-simpsons"]["shifted"] is False
+    assert items["courage-the-cowardly-dog"]["shifted"] is False
+
+
 def test_list_channels_marks_yaml_channels_read_only(client: TestClient) -> None:
     body = client.get("/admin/channels").json()
     assert body["state"] == {

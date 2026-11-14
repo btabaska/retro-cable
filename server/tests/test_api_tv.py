@@ -77,6 +77,29 @@ def test_channels_lists_the_dial_for_a_year(client: TestClient) -> None:
 def test_channels_rejects_years_outside_the_range(client: TestClient) -> None:
     assert client.get("/channels", params={"year": 1989}).status_code == 422
     assert client.get("/channels", params={"year": 2011}).status_code == 422
+    assert client.get("/channels", params={"year": 1}).status_code == 422
+    assert client.get("/channels", params={"year": -1}).status_code == 422
+
+
+def test_all_years_puts_every_channel_on_the_dial_today(client: TestClient) -> None:
+    """Year 0 is All Years: the real date, and every channel on the dial."""
+    body = client.get("/channels", params={"year": 0}).json()
+    assert body["year"] == 0
+    assert body["date"] == "2026-10-31"
+    assert body["weekday"] == "Saturday"
+    assert body["now"].startswith("2026-10-31T20:14")
+    assert all(c["on_air"] for c in body["channels"])
+    dated = client.get("/channels", params={"year": 0, "date": "02-29"}).json()
+    assert dated["date"] == "2026-02-28"
+
+
+def test_all_years_guide_and_tune(client: TestClient) -> None:
+    guide = client.get("/guide", params={"year": 0, "start": "20:00", "hours": 2}).json()
+    assert guide["date"] == "2026-10-31"
+    assert "cartoon-network" in {row["channel"]["id"] for row in guide["channels"]}
+    tune = client.get("/tune/cartoon-network", params={"year": 0})
+    assert tune.status_code == 200
+    assert tune.json()["now"].startswith("2026-10-31T20:14")
 
 
 def test_guide_returns_a_full_back_to_back_day(client: TestClient) -> None:

@@ -1,0 +1,18 @@
+[Unit]
+Description=Retro Cable weekly station manager (python -m retro_cable.station_manager run)
+Documentation=file:///opt/retro-cable/docs/specs/ops.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Installed by ops/systemd/install.sh, which sets User= to the checkout's owner (the user who
+# runs deploy.sh and docker) and the checkout's path if it isn't /opt/retro-cable.
+User=CHECKOUT_OWNER
+WorkingDirectory=/opt/retro-cable
+# Waits for a running deploy (shared lock), then runs the job inside the api container.
+ExecStart=/opt/retro-cable/ops/station-manager.sh
+# The local model takes a few minutes, longer when the rig is busy or loading a model.
+TimeoutStartSec=2h
+Nice=10

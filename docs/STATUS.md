@@ -1,6 +1,20 @@
 # Status
 
-**Current phase:** Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it, and M4 (Live TV downloads) on top of M3. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+**Current phase:** Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it, M4 (Live TV downloads) on top of M3, and M5 (the weekly station manager) on top of M4. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+
+## Milestone M5: the weekly AI station manager (in review, stacked on #23)
+
+Brandon (Nov 7 2026): "make sure it runs on a weekly schedule, like Sundays at 2am, to build the schedule using viewership data from what has been watched and when." Specs: `catalog.md` and `ops.md` (M5), `api.md` and `web.md` (M5: viewing reports), `scheduler.md` (M5: power hours).
+
+- [x] Viewing data: the TV reports each program it plays (heartbeat every minute, program end, tune-away, page hidden, power-off by `sendBeacon`; never blocks tuning, failures silent; under 10 s is surfing and isn't sent) to `POST /api/watch`, stored in `watch_sessions` (migration 0007) with no IPs, tokens or URLs
+- [x] Signals in code: watch time, completion and early tune-aways (under 3 minutes) per channel and show, channel dwell, an hour-of-week heatmap in New York time
+- [x] `python -m retro_cable.station_manager run [--dry-run] [--weeks 4]`: under 2 hours of viewing in the window it records "not enough viewing yet" and changes nothing; otherwise the rig's local model proposes weight changes and a power hour (Brandon's busiest hour, every day, from his most finished shows per channel)
+- [x] Guardrails in code: weights and power hours only (nothing carried or dropped, no dates, launches, premieres or holidays), the authenticity dial caps drift (default 30: x0.62 to x1.62), at most a fifth of a channel's weights per week, the /admin checks and a week's smoke test per channel; a Hypothesis property keeps the scheduler invariants
+- [x] Auto-apply on by default (`RC_STATION_AUTO_APPLY=1`): one /admin revision per week, undone in one tap; every run (applied, proposed, dry, skipped, failed) recorded and shown in /admin's new Station tab (`GET /api/admin/station/runs`)
+- [x] Timer: `ops/systemd/retro-cable-station-manager.{service,timer}`, Sundays 02:00 America/New_York, `Persistent=true`, running the job in the api container; shares a lock with `deploy.sh`
+- [ ] On the mini: add `RC_LLM_URL=http://192.168.10.12:4000`, `RC_LLM_MODEL=chat` and `RC_LLM_KEY` to `/opt/retro-cable/ops/.env`, deploy, then `sudo ops/systemd/install.sh` once
+- [ ] Brandon watches for a couple of weeks (2 hours is the minimum), then reads the first applied run in /admin → Station
+- Not yet: likes (hold Select on the banner), the authenticity dial in /admin, Telegram reports
 
 ## Milestone M4: Live TV downloads (in review, stacked on #21)
 
@@ -11,6 +25,7 @@ Shows Retro Cable needs that aren't on the NAS are downloaded, never into Plex (
 - [x] `ingest acquire [--dry-run]`: carried titles with no files anywhere go to sonarr-livetv / radarr-livetv (by library id, else exact title + first-aired year; unresolved otherwise). Refuses an instance whose root folders aren't exactly `/tv` / `/movies`; idempotent. Runs in the worker only with `RC_ACQUIRE=1` (off)
 - [x] Brandon's final list (Nov 7, 410 titles: 204 shows, 173 movies, 33 specials) applied to the YAML (`m4/final-lineup`, stacked on #22). `python -m retro_cable.channel_builder.lineup prune` kept 98 carried titles and removed 177 (61 `remove` rows, 116 not in the list). Templates were fixed where their pools emptied; no template was dropped and every channel still carries something. The other 313 kept titles are for the channel builder to place. Kept titles have the list's TMDB id and first-aired year in `overrides.yaml`; the builder records them for the shows it places (overlay `ids[]`); acquire prefers them; `/api/admin/library` lists carried titles with nothing on disk, so the rig sees builder-placed shows
 - [x] `acquire --dry-run` on the real instances (read-only, Nov 7): 80 carried titles have no files; 72 resolve (65 by TMDB id) and 8 don't (5 maybe already on the NAS under another folder name, 3 with no TMDB id or year). Details in `docs/specs/ops.md`
+- [x] First live acquire on Nov 8 (rig worker on `m5/station-manager`): 137 shows and 159 movies added. The unresolved titles were fixed by lookup-only overrides, the qualifier rule, strict TMDB matches, `part_of` (shows TheTVDB files as seasons of another series: Animaniacs 2020, Justice League Unlimited, Pokémon Horizons, The New Scooby and Scrappy-Doo Show, the Lupin parts; the scheduler airs them as their own shows) and `episodes_of` (TV movies that are episodes: Sozin's Comet, Really Big Shrimp, Reggie's Big Beach Break, joined on the rig by `ingest assemble` once their episodes convert; Heidi (1993) the same way, from TheTVDB's two-part miniseries). Mini deployed at `sha-413eeb9`
 - [ ] Brandon reviews the prune (judgment calls in the PR; KTVU's Fox Kids block now has nothing in 1990–91 and 1996–98) and the dry run, then sets `RC_ACQUIRE=1` and the two API keys in the rig's `ops/rig/.env` and redeploys the rig worker
 
 ## Milestone M3 / Phase 11 (part): AI channel builder (in review, stacked on #18)

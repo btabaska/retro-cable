@@ -3,12 +3,20 @@
 import shutil
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from retro_cable.catalog import load_catalog
-from retro_cable.ingest.scan import parse_episode, scan_movies, scan_tv, show_title, show_year
-from tests.conftest import CARRIAGE, MakeCatalog
+from retro_cable.ingest.scan import (
+    movie_title,
+    parse_episode,
+    scan_movies,
+    scan_tv,
+    show_title,
+    show_year,
+)
+from tests.conftest import CARRIAGE, OVERRIDES, MakeCatalog
 
 
 @pytest.mark.parametrize(
@@ -26,6 +34,23 @@ from tests.conftest import CARRIAGE, MakeCatalog
          (1, 3, "#03 - Divide and Conquer")),
         ("Season 2", "203 - My Case Study.avi", (2, 3, "My Case Study")),
         ("Season 1", "01. On Leather Wings.xvid", (1, 1, "On Leather Wings")),
+        # A release tag or a stray space after the season number (Young Justice, Adventure Time)
+        ("Season 1.AAC", "01 Independence Day (HD).m4v", (1, 1, "Independence Day (HD)")),
+        ("Season 2 ", "203 - My Case Study.avi", (2, 3, "My Case Study")),
+        ("Season 2 [DVDRip]", "05 - Pilot.avi", (2, 5, "Pilot")),
+        # `S.EE` and spelled-out numbers, in any folder (Buffy, Scooby-Doo, Always Sunny)
+        ("Buffy the Vampire Slayer", "1.01 Welcome to the Hellmouth.avi",
+         (1, 1, "Welcome to the Hellmouth")),
+        ("BtVS Season 5", "5.1 Buffy vs. Dracula.avi", (5, 1, "Buffy vs. Dracula")),
+        ("Season 1", "14.5. Heart of Ice Commentary.xvid", None),  # not 14x5
+        ("Scooby Doo Where Are You Season 1", "S1Episode 1 What a Night for a Knight.avi",
+         (1, 1, "What a Night for a Knight")),
+        ("Season 8", "Its Always Sunny in Philadelphia Season 08 Episode 01 - Pop-Pop.mkv",
+         (8, 1, "Pop-Pop")),
+        ("Season 1", "Community Season 1 Episode 12 \u2013 Comparative Religion.mp4",
+         (1, 12, "Comparative Religion")),
+        ("Extras", "00.00 - Adventure Time Pilot.mp4", None),  # no episode 0
+        ("Season 1 - 2", "01 Pilot.mkv", None),  # two seasons: the number isn't the season
         ("Season 3", "Episode 4.mkv", None),  # no number we can trust
         ("Specials", "Show - S00E01 - Pilot Promo.mkv", (0, 1, "Pilot Promo")),
         ("Season 1", "1920x1080 sample.mkv", None),
@@ -210,6 +235,55 @@ def test_an_uncarried_show_that_becomes_carried_moves_its_files(
     assert stats.shows == 1 and stats.uncarried == []
     # The carried id now has the file; the old uncarried row keeps no file, so nothing airs twice.
     assert rows(db, "SELECT show_id FROM episodes WHERE file_path IS NOT NULL") == [("bravo",)]
+
+
+def test_scan_matches_the_minis_admin_shows(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """Shows on the mini's /admin channels are carried there, not in the YAML. An uncarried
+    id is kept across re-scans only through its files, and normalize deletes the originals:
+    when sonarr-livetv later filled `Pok\u00e9mon (1997)` again, the scan no longer knew its
+    id, gave it `pokemon-1997`, which no channel carries, and 269 episodes sat unconverted
+    (Nov 13 2026, with ten more shows). With the mini's library items they match the mini's
+    id, and its year tells a remake apart as the YAML's does."""
+    root = tmp_path / "tv"
+    touch(root / "Pok\u00e9mon (1997)" / "Season 07" / "Pok\u00e9mon (1997) - S07E01 - Seed.mkv")
+    touch(root / "Doctor Who (1963)" / "Season 01" / "Doctor Who - S01E01.mkv")
+    touch(root / "Nobody Carries Me" / "Season 1" / "Nobody Carries Me - S01E01.mkv")
+    # A release folder matches by its cleaned title, its year still telling a remake apart.
+    release = "Scooby Doo Mystery Incorporated Complete Season 1 720p x265"
+    touch(root / release / "Scooby.Doo.Mystery.Incorporated.S01E01.720p.mkv")
+    touch(root / "Rugrats.2021.S01.720p.WEB-DL" / "Rugrats.2021.S01E01.720p.mkv")
+    mini: list[dict[str, Any]] = [
+        {"id": "scooby-doo-mystery-incorporated", "kind": "show", "year": 2010,
+         "title": "Scooby Doo Mystery Incorporated", "channels": [{"id": "cartoon-network"}]},
+        {"id": "rugrats", "title": "Rugrats", "kind": "show", "year": 1991,
+         "channels": [{"id": "nickelodeon"}]},
+        {"id": "pokemon", "title": "Pok\u00e9mon", "kind": "show", "year": 1998,
+         "channels": [{"id": "cartoon-network"}]},
+        {"id": "doctor-who", "title": "Doctor Who", "kind": "show", "year": 2005,
+         "channels": [{"id": "custom-sci-fi"}]},
+        {"id": "nobody-carries-me", "title": "Nobody Carries Me", "kind": "show",
+         "channels": []},
+        {"id": "the-rugrats-movie", "title": "Nobody Carries Me", "kind": "movie",
+         "channels": [{"id": "custom-nick-flicks"}]},
+    ]  # fmt: skip
+    stats = scan_tv(db, root, load_catalog(make_catalog()), extra=mini)
+    assert stats.shows == 2
+    assert stats.uncarried == [
+        "Doctor Who (1963)", "Nobody Carries Me", "Rugrats.2021.S01.720p.WEB-DL",
+    ]  # fmt: skip
+    assert rows(db, "SELECT id, title FROM shows ORDER BY id") == [
+        ("doctor-who-1963", "Doctor Who (1963)"),
+        ("nobody-carries-me", "Nobody Carries Me"),
+        ("pokemon", "Pok\u00e9mon"),
+        ("rugrats-2021", "Rugrats 2021"),
+        ("scooby-doo-mystery-incorporated", "Scooby Doo Mystery Incorporated"),
+    ]
+    assert rows(db, "SELECT show_id, season, episode FROM episodes ORDER BY show_id") == [
+        ("doctor-who-1963", 1, 1), ("nobody-carries-me", 1, 1), ("pokemon", 7, 1),
+        ("rugrats-2021", 1, 1), ("scooby-doo-mystery-incorporated", 1, 1),
+    ]  # fmt: skip
 
 
 def test_rescan_keeps_plex_and_tmdb_data_and_detaches_files_that_are_gone(
@@ -451,3 +525,243 @@ def test_scan_movies_reads_several_roots_and_prefers_the_first(
     assert rows(db, "SELECT file_path FROM movies") == [
         (str(plex / "Halloweentown (1998)" / "Halloweentown (1998).mkv"),)
     ]
+
+
+def test_scan_movies_reads_release_named_folders(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """Plex's movie tree has folders named like releases: the title ends at a year or a
+    release tag. A year inside a title doesn't cut it unless a tag follows."""
+    root = tmp_path / "movies"
+    touch(root / "Halloweentown.1998.1080p.WEB-DL.DD5.1.H264" / "h.mkv")
+    stats = scan_movies(db, root, load_catalog(make_catalog()))
+    assert stats.movies == 1 and rows(db, "SELECT id FROM movies") == [("halloweentown",)]
+
+
+@pytest.mark.parametrize(
+    ("folder", "title"),
+    [
+        ("Psych.The.Movie.2017.HDRip.XviD.AC3-EVO", "Psych The Movie"),
+        (
+            "Hey Arnold The Jungle Movie (2017) 720p Webrip X264 Solar",
+            "Hey Arnold The Jungle Movie",
+        ),
+        (
+            "Rugrats in Paris The Movie 2000 1080p WEB-DL DD5 1 H264-SA89",
+            "Rugrats in Paris The Movie",
+        ),
+        ("Addams_Family_Reunion_DVDRip_XviD-KIDSROCK", "Addams Family Reunion"),
+        ("Beauty.Shop[2005]DvDRip-Rdgrnnr", "Beauty Shop"),
+        ("Aloha Scooby Doo (2005) [1080p]", "Aloha Scooby Doo"),
+        ("Blade Runner 2049 (2017)", "Blade Runner 2049"),
+        ("2001 A Space Odyssey (1968)", "2001 A Space Odyssey"),
+        ("Amelie (2001)", "Amelie"),
+    ],
+)
+def test_movie_title_from_a_release_name(folder: str, title: str) -> None:
+    assert movie_title(folder) == title
+
+
+def test_scan_movies_matches_the_minis_admin_movies(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """Movies the channel builder placed are carried on the mini's /admin channels, not in
+    the YAML: with the mini's library items they match too, under the mini's id."""
+    root = tmp_path / "movies"
+    touch(root / "The Rugrats Movie (1998)" / "The Rugrats Movie (1998).mkv")
+    touch(root / "Nobody Carries Me (1999)" / "n.mkv")
+    mini: list[dict[str, Any]] = [
+        {"id": "the-rugrats-movie", "title": "The Rugrats Movie", "kind": "movie",
+         "channels": [{"id": "custom-nick-flicks"}]},
+        {"id": "nobody-carries-me", "title": "Nobody Carries Me", "kind": "movie",
+         "channels": []},
+    ]  # fmt: skip
+    stats = scan_movies(db, root, load_catalog(make_catalog()), extra=mini)
+    assert rows(db, "SELECT id, title FROM movies") == [("the-rugrats-movie", "The Rugrats Movie")]
+    assert stats.unmatched_folders == ["Nobody Carries Me (1999)"]
+
+
+def test_scan_movies_takes_the_year_from_the_lineup_when_the_folder_has_none(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """A release-named folder often has no `(Year)`, and nothing else dates a movie: TMDB
+    fills shows only. Undated, it would air in any year. The lineup knows its release year
+    (overrides.yaml, or the mini's library item for a movie the builder placed)."""
+    root = tmp_path / "movies"
+    touch(root / "Halloweentown_DVDRip_XviD-KIDS" / "h.avi")
+    touch(root / "The Rugrats Movie 1080p WEB-DL" / "r.mkv")
+    overrides = OVERRIDES + "  - show: halloweentown\n    year: 1998\n"
+    mini: list[dict[str, Any]] = [
+        {"id": "the-rugrats-movie", "title": "The Rugrats Movie", "kind": "movie", "year": 1998,
+         "channels": [{"id": "custom-nick-flicks"}]},
+    ]  # fmt: skip
+    scan_movies(db, root, load_catalog(make_catalog(overrides=overrides)), extra=mini)
+    assert rows(db, "SELECT id, year FROM movies ORDER BY id") == [
+        ("halloweentown", 1998),
+        ("the-rugrats-movie", 1998),
+    ]
+
+
+def test_scan_movies_skips_a_different_movie_inside_the_folder(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """A download named for one movie held another (Nov 11 2026: Serenity, 2005, in a Scooby-Doo
+    and the Cyber Chase folder, aired on a kids' channel as the Scooby-Doo movie). A subfolder or
+    file named for another year, with no word of the title, is not this movie."""
+    root = tmp_path / "movies"
+    folder = root / "Scooby Doo and the Cyber Chase [DVD-Rip.2001]"
+    wrong = folder / "Serenity (2005) [1080p]" / "Serenity.2005.1080p.BrRip.x264.YIFY.mkv"
+    touch(wrong, size=30)
+    mini: list[dict[str, Any]] = [
+        {"id": "scooby-doo-and-the-cyber-chase", "title": "Scooby-Doo and the Cyber Chase",
+         "kind": "movie", "year": 2001, "channels": [{"id": "custom-adventure-central"}]},
+    ]  # fmt: skip
+    catalog = load_catalog(make_catalog())
+    stats = scan_movies(db, root, catalog, extra=mini)
+    assert rows(db, "SELECT id FROM movies") == []
+    assert stats.mismatched == [str(wrong.relative_to(root))]
+
+    right = folder / "Scooby.Doo.and.the.Cyber.Chase.2001.DVDRip.avi"
+    touch(right, size=10)
+    stats = scan_movies(db, root, catalog, extra=mini)
+    assert rows(db, "SELECT file_path FROM movies") == [(str(right),)]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "h.mkv",  # no year: nothing to go on
+        "Halloweentown.1999.mkv",  # a year off: a re-release or a late DVD
+        "Halloweentown.2005.Remastered.mkv",  # the title's words are there
+        "Disneys Halloweentown (DVD 2004).mkv",  # a later release, same title
+    ],
+)
+def test_scan_movies_keeps_files_that_could_be_the_movie(
+    name: str, db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    root = tmp_path / "movies"
+    touch(root / "Halloweentown (1998)" / name)
+    stats = scan_movies(db, root, load_catalog(make_catalog()))
+    assert stats.movies == 1 and stats.mismatched == []
+
+
+def test_scan_reads_season_and_episode_numbers_from_a_whole_show_folder(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    # `101 - Title` outside a season folder is S01E01 when every numbered file in the folder
+    # reads that way; a folder with low numbers too is absolute numbering and stays unparsed.
+    root = tmp_path / "tv"
+    for name in (
+        "Freakazoid - 101 - Dance Of Doom.avi",
+        "Freakazoid - 102 - Candle Jack.avi",
+        "Freakazoid - 201 - The Chip.avi",
+    ):
+        touch(root / "Freakazoid" / name)
+    for name in ("101 Theres No Creature Like Snow Creature.avi", "102 3-D Struction.avi"):
+        touch(root / "Whats New Scooby Doo" / name)
+    for name in ("Anime - 099 - A.mkv", "Anime - 100 - B.mkv", "Anime - 101 - C.mkv"):
+        touch(root / "Anime" / name)
+    touch(root / "Lone" / "Lone - 101 - Only One.avi")
+    stats = scan_tv(db, root, load_catalog(make_catalog()))
+    assert rows(db, "SELECT show_id, season, episode, title FROM episodes"
+                    " ORDER BY show_id, season, episode") == [
+        ("freakazoid", 1, 1, "Dance Of Doom"),
+        ("freakazoid", 1, 2, "Candle Jack"),
+        ("freakazoid", 2, 1, "The Chip"),
+        ("whats-new-scooby-doo", 1, 1, "Theres No Creature Like Snow Creature"),
+        ("whats-new-scooby-doo", 1, 2, "3-D Struction"),
+    ]  # fmt: skip
+    assert sorted(stats.unparsed) == [
+        "Anime/Anime - 099 - A.mkv", "Anime/Anime - 100 - B.mkv", "Anime/Anime - 101 - C.mkv",
+        "Lone/Lone - 101 - Only One.avi",
+    ]  # fmt: skip
+
+
+def test_scan_reads_absolute_numbers_and_release_folders_in_a_season(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    # Names that differ only by one number are absolute numbering: season 1, episode N.
+    # Files in a release folder inside a season folder take that season.
+    root = tmp_path / "tv"
+    for n in ("01", "02", "26"):
+        touch(root / "Samurai Champloo" / f"[a-s] Samurai Champloo {n}.mkv")
+        touch(root / "Princess Jellyfish" / f"Princess.Jellyfish.-.{n}.-.1080p.BluRay.x264.DHD.mkv")
+        touch(root / "Show" / "Extras" / f"Making Of {n}.mkv")
+        touch(root / "Midwife" / "Midwife Series 5 + Bonus" / f"Episode {n}.mp4")
+        touch(root / "Dog" / "Dog.S01" / f"cd1{n}-wpi.avi")
+    touch(root / "Pair" / "Pair 01.mkv")
+    touch(root / "Pair" / "Pair 02.mkv")
+    for name in ("01 Tourist Trapped.mp4", "02 The Legend of the Gobblewonker.mp4"):
+        touch(root / "Gravity Falls" / "Season 1" / "Gravity Falls 720p" / name)
+    stats = scan_tv(db, root, load_catalog(make_catalog()))
+    assert rows(db, "SELECT show_id, season, episode, title FROM episodes"
+                    " ORDER BY show_id, season, episode") == [
+        ("gravity-falls", 1, 1, "Tourist Trapped"),
+        ("gravity-falls", 1, 2, "The Legend of the Gobblewonker"),
+        ("princess-jellyfish", 1, 1, ""),
+        ("princess-jellyfish", 1, 2, ""),
+        ("princess-jellyfish", 1, 26, ""),
+        ("samurai-champloo", 1, 1, ""),
+        ("samurai-champloo", 1, 2, ""),
+        ("samurai-champloo", 1, 26, ""),
+    ]  # fmt: skip
+    # A folder that names a season isn't absolute numbering; two files prove nothing.
+    assert sorted(stats.unparsed) == [
+        "Dog/Dog.S01/cd101-wpi.avi", "Dog/Dog.S01/cd102-wpi.avi", "Dog/Dog.S01/cd126-wpi.avi",
+        "Midwife/Midwife Series 5 + Bonus/Episode 01.mp4",
+        "Midwife/Midwife Series 5 + Bonus/Episode 02.mp4",
+        "Midwife/Midwife Series 5 + Bonus/Episode 26.mp4",
+        "Pair/Pair 01.mkv", "Pair/Pair 02.mkv",
+        "Show/Extras/Making Of 01.mkv", "Show/Extras/Making Of 02.mkv",
+        "Show/Extras/Making Of 26.mkv",
+    ]  # fmt: skip
+
+
+def test_files_in_an_extras_folder_are_never_episodes(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    # Mission Hill's DVD rip keeps the unfinished episodes' animatics in `Mission Hill -
+    # Extras`, named `S1E15`; they aired on the mini as episodes 15 and 16 (Nov 2026).
+    root = tmp_path / "tv"
+    show = root / "Dexters Laboratory"
+    touch(show / "Dexters Laboratory - Season 1" / "Dexters Laboratory - S1E01 - Changes.avi")
+    touch(show / "Dexters Laboratory - Extras" / "Animatic Episodes - S1E15 - Unfinished.avi")
+    touch(show / "Featurettes" / "Season 1" / "Dexters Laboratory - S01E02 - Making Of.mkv")
+    stats = scan_tv(db, root, load_catalog(make_catalog()))
+    assert rows(db, "SELECT show_id, season, episode FROM episodes") == [
+        ("dexters-laboratory", 1, 1)
+    ]
+    assert sorted(stats.unparsed) == [
+        "Dexters Laboratory/Dexters Laboratory - Extras/Animatic Episodes - S1E15 - Unfinished.avi",
+        "Dexters Laboratory/Featurettes/Season 1/Dexters Laboratory - S01E02 - Making Of.mkv",
+    ]
+
+
+def test_a_remake_years_apart_is_not_the_carried_show(
+    db: sqlite3.Connection, tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """sonarr-livetv held `Rugrats (2021)` next to `Rugrats (1991)` (Nov 11 2026): the year
+    was dropped to match the carried `Rugrats`, and the 2021 reboot aired as the 1991 show.
+    A folder whose `(year)` is more than 5 years from the lineup's year is another show,
+    stored as uncarried. A few years apart is the same show (`Sailor Moon (1992)`, which
+    the lineup has as 1995: its US debut). A plex_title that names the year still wins."""
+    carriage = CARRIAGE + (
+        "  - { show: rugrats, title: Rugrats, channel: ktvu, from: 1991-01-01 }\n"
+        "  - { show: sailor-moon, title: Sailor Moon, channel: ktvu, from: 1995-09-11 }\n"
+    )
+    overrides = """
+    shows:
+      - { show: rugrats, year: 1991 }
+      - { show: sailor-moon, year: 1995 }
+      - { show: x-men, year: 1992, plex_title: "X-Men (2011)" }
+    """
+    catalog = load_catalog(make_catalog(carriage=carriage, overrides=overrides))
+    root = tmp_path / "tv"
+    for folder in ("Rugrats (1991)", "Rugrats (2021)", "Sailor Moon (1992)", "X-Men (2011)"):
+        episode = 2 if folder == "Rugrats (2021)" else 1
+        touch(root / folder / "Season 01" / f"{folder} - S01E0{episode} - Pilot.mkv")
+    scan_tv(db, root, catalog)
+    assert rows(db, "SELECT show_id, season, episode FROM episodes ORDER BY show_id") == [
+        ("rugrats", 1, 1), ("rugrats-2021", 1, 2), ("sailor-moon", 1, 1), ("x-men", 1, 1),
+    ]  # fmt: skip
+    assert rows(db, "SELECT title FROM shows WHERE id = 'rugrats-2021'") == [("Rugrats (2021)",)]

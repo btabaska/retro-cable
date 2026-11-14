@@ -22,10 +22,11 @@ import re
 import sqlite3
 import unicodedata
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from retro_cable.catalog import Catalog
 from retro_cable.db import transaction
@@ -34,19 +35,29 @@ from retro_cable.ingest.plex import _title_index, normalize_title
 VIDEO = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".mpg", ".mpeg", ".xvid",
          ".divx", ".flv", ".webm"}  # fmt: skip
 SKIP_DIRS = {"@eaDir", "#recycle", "#snapshot", ".AppleDouble"}
-EXTRA = re.compile(r"(?:^|[-_. ])(?:sample|trailer|featurette|behindthescenes|extras?)(?:$|[-_. ])",
-                   re.I)  # fmt: skip
+EXTRA = re.compile(
+    r"(?:^|[-_. ])(?:samples?|trailers?|featurettes?|behindthescenes|extras?)(?:$|[-_. ])", re.I
+)
 
 _SXE = re.compile(r"(?<![A-Za-z0-9])[Ss](\d{1,2})[ ._-]?[Ee](\d{1,3})(?:-?[Ee]\d{1,3})*")
 _NXM = re.compile(r"(?<![0-9A-Za-z])(\d{1,2})x(\d{2,3})(?![0-9])")
-_SEASON_DIR = re.compile(r"^(?:season|series)[ ._-]*(\d{1,4})$", re.I)
+_SEASON_DIR = re.compile(r"^(?:season|series)[ ._-]*(\d{1,4})(.*)$", re.I)
 _LEADING_SE = re.compile(r"^(\d{1,2})(\d{2})(?=[ ._-])")
 _LEADING_E = re.compile(r"^(\d{1,3})(?:\.|\s*-|\s)\s*(?=\D)")
+# `1.01 Welcome to the Hellmouth`, `5.1 Buffy vs. Dracula` (one digit only before a space)
+_LEADING_DOT = re.compile(r"^(\d{1,2})\.(\d{2}(?=[ ._-])|\d(?= ))")
+_WORDS = re.compile(  # `Season 1 Episode 12`, `S1Episode 1`
+    r"(?<![A-Za-z0-9])(?:season|s)[ ._-]*(\d{1,2})[ ._-]*episode[ ._-]*(\d{1,3})(?!\d)", re.I
+)
+_SHOW_NUMBER = re.compile(r"^(?:.*? - )?(\d{1,3})(?: - |[ ._])\s*(.*)$")  # `Show - 101 - Title`
 _JUNK = re.compile(
     r"\b(?:480p|576p|720p|1080p|2160p|WEB[- ]?DL|WEBRip|WEB|DVDRip|DVD|BDRip|BluRay|HDTV|"
     r"x264|x265|h\.?264|h\.?265|HEVC|XviD|DivX|AAC2?\.?0?|AC3|DDP?5\.1|EAC3)\b.*$",
     re.I,
 )
+_BRACKETS = re.compile(r"\[[^\]]*\]|\([^)]*\)")
+_DIGITS = re.compile(r"(\d+)")
+_NAMES_SEASON = re.compile(r"(?:season|series)[ ._-]*\d|(?<![A-Za-z0-9])s\d{1,2}(?!\d)", re.I)
 _YEAR = re.compile(r"\((19\d{2}|20\d{2})\)")
 
 # Measures a source file: its length in seconds from ffprobe, or None when it can't be read.
@@ -87,7 +98,11 @@ def _season_of(folder: str) -> int | None:
     if folder.casefold() in ("specials", "season 0", "season 00"):
         return 0
     m = _SEASON_DIR.match(folder)
-    return int(m[1]) if m else None
+    if m is None:
+        return None
+    # `Season 1.AAC`, `Season 2 [DVDRip]`: a release tag may follow, but not another number
+    tail = m[2].strip(" ._-")
+    return int(m[1]) if not tail or tail[0] in "[(" or _JUNK.match(tail) else None
 
 
 def _clean_title(rest: str) -> str:
@@ -96,7 +111,7 @@ def _clean_title(rest: str) -> str:
     if " " not in rest.strip(" ._-"):
         rest = rest.replace(".", " ").replace("_", " ")
     rest = _JUNK.sub("", rest)
-    return rest.strip(" ._-")
+    return rest.strip(" ._-\u2013\u2014")  # en and em dashes too
 
 
 def parse_episode(folder: str, name: str) -> tuple[int, int, str] | None:
@@ -104,10 +119,13 @@ def parse_episode(folder: str, name: str) -> tuple[int, int, str] | None:
     stem = Path(name).stem
     if EXTRA.search(stem):
         return None
-    tokens = [m for m in (_SXE.search(stem), _NXM.search(stem)) if m]
+    tokens = [m for m in (_SXE.search(stem), _NXM.search(stem), _WORDS.search(stem)) if m]
     if tokens:
         first = min(tokens, key=lambda m: m.start())
         return int(first[1]), int(first[2]), _clean_title(stem[first.end() :])
+    m = _LEADING_DOT.match(stem)
+    if m and int(m[2]) > 0:
+        return int(m[1]), int(m[2]), _clean_title(stem[m.end() :])
     season = _season_of(folder)
     if season is None:
         return None
@@ -141,17 +159,46 @@ def _keys(folder: str) -> list[str]:
     return [normalize_title(n) for n in names]
 
 
+# A folder `(year)` further than this from the lineup's year is a remake, not the show
+# (`Rugrats (2021)` for the 1991 Rugrats); closer is the same show premiering elsewhere
+# first (`Sailor Moon (1992)`, which the lineup has as 1995, its US debut).
+REMAKE_YEARS = 5
+
+
 class _Index:
-    def __init__(self, catalog: Catalog, kind: str) -> None:
-        self.exact = _title_index(catalog, kind)
+    def __init__(
+        self,
+        catalog: Catalog,
+        kind: str,
+        more: Mapping[str, str] = {},
+        years: Mapping[str, int] = {},
+    ) -> None:
+        # `more`: id -> title of others carried (the mini's /admin channels), `years` their
+        # lineup years; the YAML wins.
+        self.exact = {normalize_title(t): i for i, t in more.items()} | _title_index(catalog, kind)
         self.compact = {k.replace(" ", ""): v for k, v in self.exact.items()}
+        overrides = catalog.overrides.shows if kind == "show" else []
+        self.years = dict(years) | {o.show: o.year for o in overrides if o.year is not None}
 
     def match(self, folder: str) -> str | None:
-        for key in _keys(folder):
+        for n, key in enumerate(_keys(folder)):
             slug = self.exact.get(key) or self.compact.get(key.replace(" ", ""))
             if slug:
+                # Matched without its year (not a plex_title naming it): a remake?
+                year, lineup = show_year(folder, []), self.years.get(slug)
+                if n and year and lineup and abs(year - lineup) > REMAKE_YEARS:
+                    return None
                 return slug
         return None
+
+
+def _mini_carried(extra: Iterable[Mapping[str, Any]], kind: str) -> dict[str, str]:
+    """id -> title of the mini's library items of `kind` that some /admin channel carries."""
+    return {
+        str(i["id"]): str(i.get("title") or i["id"])
+        for i in extra
+        if i.get("id") and i.get("channels") and i.get("kind") == kind
+    }
 
 
 def _titles(catalog: Catalog) -> dict[str, str]:
@@ -233,6 +280,35 @@ def show_title(folder: str) -> str:
     return (f"{m[2]} {m[1]}" if m else name) or folder
 
 
+_MOVIE_TAG = (
+    r"\d{3,4}p|WEB(?:-?DL|Rip)?|HDRip|HDTV|DVDRip|DVD|BluRay|BrRip|BDRip|REMUX|x26[45]|"
+    r"H\.?26[45]|HEVC|XviD|AC3|AAC|DTS|YTS(?:\.\w+)?|HD-?TS|Directors?\.?\s?Cut"
+)
+# Where a release-named movie folder's title ends: a bracketed year, a bare year (to 2029,
+# so `Blade Runner 2049` stays whole) before a tag or the end, or the first release tag.
+_MOVIE_END = re.compile(
+    r"\s*[(\[](?:19|20)\d{2}[)\]]"
+    rf"|\s(?:19\d{{2}}|20[0-2]\d)(?=\s+(?:{_MOVIE_TAG})\b|\s*$)"
+    rf"|[\s\[(-](?:{_MOVIE_TAG})(?=$|[\s\])._-])",
+    re.I,
+)
+
+
+def movie_title(folder: str) -> str:
+    """A movie's title from its folder name: `Psych.The.Movie.2017.HDRip.XviD.AC3-EVO` ->
+    `Psych The Movie`, `Beauty.Shop[2005]DvDRip-Rdgrnnr` -> `Beauty Shop`, `Amelie (2001)`
+    -> `Amelie`. A trailing article moves to the front, as for shows."""
+    name = "".join(ch for ch in folder if unicodedata.category(ch) != "Co").strip()
+    if " " not in name:
+        name = name.replace(".", " ").replace("_", " ")
+    m = _MOVIE_END.search(name, 1)
+    if m:
+        name = name[: m.start()]
+    name = name.strip(" -._")
+    m2 = re.match(r"^(.*),\s*(the|a|an)$", name, re.I)
+    return (f"{m2[2]} {m2[1]}" if m2 else name) or folder
+
+
 def _slug(title: str) -> str:
     return "-".join(normalize_title(title).split()) or "show"
 
@@ -246,13 +322,70 @@ def _excluded(catalog: Catalog) -> set[str]:
     return keys | {k.replace(" ", "") for k in keys}
 
 
+def _numbered(files: list[Path]) -> dict[Path, tuple[int, int, str]]:
+    """`101 - Title` files in a folder that isn't a season folder, as S01E01, when every
+    numbered file there has a season digit and an episode from 01 to 49. A folder with lower
+    numbers too (`099`, `100`) is absolute numbering, and one file alone proves nothing."""
+    hits = {f: m for f in files if not EXTRA.search(f.stem) and (m := _SHOW_NUMBER.match(f.stem))}
+    if len(hits) < 2 or not all(
+        len(m[1]) == 3 and m[1][0] != "0" and 1 <= int(m[1][1:]) <= 49 for m in hits.values()
+    ):
+        return {}
+    return {f: (int(m[1][0]), int(m[1][1:]), _clean_title(m[2])) for f, m in hits.items()}
+
+
+def _absolute(files: list[Path]) -> dict[Path, tuple[int, int, str]]:
+    """Files whose names are one name with a different number in each (`[a-s] Samurai
+    Champloo 01`, `Princess.Jellyfish.-.02.-.1080p`) as season 1, episode N: absolute
+    numbering. Tags in brackets don't count; it takes three such files, none of them extras,
+    in a folder that doesn't name a season (`Series 5 + Bonus/Episode 01`, `Dog.S01/cd101`)."""
+    groups: dict[tuple[str, ...], list[tuple[Path, list[str]]]] = {}
+    for f in files:
+        if not EXTRA.search(f.stem):
+            parts = _DIGITS.split(_BRACKETS.sub("", f.stem).strip())
+            groups.setdefault(tuple(parts[0::2]), []).append((f, parts[1::2]))
+    found = {}
+    for members in groups.values():
+        columns = list(zip(*(numbers for _, numbers in members), strict=True))
+        varying = [i for i, column in enumerate(columns) if len(set(column)) > 1]
+        if len(members) < 3 or len(varying) != 1:
+            continue
+        column = columns[varying[0]]
+        if len(set(column)) == len(column) and all(len(n) <= 3 and int(n) > 0 for n in column):
+            found.update({f: (1, int(numbers[varying[0]]), "") for f, numbers in members})
+    return found
+
+
+def _in_extras(f: Path, folder: Path) -> bool:
+    """In an `Extras` / `Featurettes` folder below the show folder (`Mission Hill - Extras/
+    Animatic Episodes - S1E15.avi`): never an episode, whatever its name says."""
+    return any(EXTRA.search(p.name) for p in f.relative_to(folder).parents if p.name)
+
+
 def _collect(
     folder: Path, root: Path, stats: ScanStats, rank: int = 0
 ) -> tuple[list[Path], list[_Found]]:
     files = _video_files(folder)
+    extras = {f for f in files if _in_extras(f, folder)}
+    episodes = {f: None if f in extras else parse_episode(f.parent.name, f.name) for f in files}
+    loose: dict[Path, list[Path]] = {}
+    for f, parsed in episodes.items():
+        if parsed is not None or f in extras or _season_of(f.parent.name) is not None:
+            continue
+        # `Season 1/Gravity Falls 720p/01 Tourist Trapped.mp4`: a release folder in a season
+        if f.parent != folder and not EXTRA.search(f.parent.name):
+            season_dir = f.parent.parent.name
+            if _season_of(season_dir) is not None:
+                episodes[f] = parse_episode(season_dir, f.name)
+                continue
+        loose.setdefault(f.parent, []).append(f)
+    for parent, group in loose.items():
+        episodes.update(_numbered(group))
+        if not EXTRA.search(parent.name) and not _NAMES_SEASON.search(parent.name):
+            episodes.update(_absolute([f for f in group if episodes[f] is None]))
     found = []
     for f in files:
-        parsed = parse_episode(f.parent.name, f.name)
+        parsed = episodes[f]
         if parsed is None:
             stats.unparsed.append(f.relative_to(root).as_posix())
             continue
@@ -372,6 +505,7 @@ def scan_tv(
     *,
     carried_only: bool = False,
     probe: SourceProbe | None = None,
+    extra: Iterable[Mapping[str, Any]] = (),
 ) -> ScanStats:
     """Attach every show's episode files under `root` (one root, or several read as one
     library: see the module docstring). Air dates are left alone.
@@ -383,11 +517,17 @@ def scan_tv(
 
     With `probe`, each new or changed file's length is measured (source_seconds), so the
     scheduler never has to fall back on a runtime class default.
+
+    `extra` is the mini's /api/admin/library items: shows on its /admin channels are carried
+    too, under its ids, with its year for telling a remake apart.
     """
     stats = ScanStats()
-    index, titles = _Index(catalog, "show"), _titles(catalog)
+    extra = list(extra)
+    more = _mini_carried(extra, "show")
+    years = {str(i["id"]): int(i["year"]) for i in extra if i.get("year") and str(i["id"]) in more}
+    index, titles = _Index(catalog, "show", more, years), more | _titles(catalog)
     excluded = _excluded(catalog)
-    carried = {c.show for c in catalog.carriage.carriage}
+    carried = {c.show for c in catalog.carriage.carriage} | set(more)
     seen: set[tuple[str, str]] = set()
     groups: dict[tuple[str, int | None], _Uncarried] = {}
     shows: dict[str, _Carried] = {}
@@ -395,6 +535,10 @@ def scan_tv(
     for rank, top in enumerate(roots):
         for folder in _folders(top):
             slug = index.match(folder.name)
+            if slug is None and (title := show_title(folder.name)) != folder.name:
+                # A release folder (`Show Complete Season 1 720p x265`): by its cleaned title.
+                year = show_year(folder.name, [])
+                slug = index.match(f"{title} ({year})" if year else title)
             if slug is None and (
                 carried_only
                 or any(k in excluded or k.replace(" ", "") in excluded for k in _keys(folder.name))
@@ -471,7 +615,26 @@ def scan_tv(
 class MovieScanStats:
     movies: int = 0
     unmatched_folders: list[str] = field(default_factory=list)
+    mismatched: list[str] = field(default_factory=list)  # files named for another movie
     missing_roots: list[str] = field(default_factory=list)
+
+
+_ANY_YEAR = re.compile(r"(?<!\d)(19\d{2}|20[0-2]\d)(?!\d)")
+_FILLER_WORDS = frozenset({"a", "an", "and", "the", "of", "in", "on", "to", "movie"})
+
+
+def _words(title: str) -> set[str]:
+    return set(normalize_title(title).split()) - _FILLER_WORDS
+
+
+def other_movie(name: str, title: str, year: int | None) -> bool:
+    """A file or subfolder named for a different movie than `title` (released `year`): it
+    names a year more than one off and shares no word of the title. Without a year on
+    either side there is nothing to go on, so it could be the movie."""
+    years = [int(y) for y in _ANY_YEAR.findall(name)]
+    if year is None or not years or any(abs(y - year) <= 1 for y in years):
+        return False
+    return not _words(movie_title(name)) & _words(title)
 
 
 def scan_movies(
@@ -481,26 +644,40 @@ def scan_movies(
     now: datetime | None = None,
     *,
     probe: SourceProbe | None = None,
+    extra: Iterable[Mapping[str, Any]] = (),
 ) -> MovieScanStats:
-    """Attach carried movies from `<root>/<Title (Year)>/`: the biggest video file that isn't
-    a trailer or extra, from the earliest root that has one. The premiere date is left alone
-    (the year bounds it, see load_library)."""
+    """Attach carried movies from `<root>/<Title (Year)>/` (or a release-named folder, see
+    `movie_title`): the biggest video file that isn't a trailer or extra, from the earliest
+    root that has one, unless it or a folder it sits in is named for another movie
+    (`other_movie`; listed as mismatched). `extra` is the mini's /api/admin/library items:
+    movies on its /admin channels are carried too, under its ids. The year is the lineup's
+    (overrides.yaml, or the mini's item) when it has one, else the folder's; the premiere
+    date is left alone (the year bounds it, see load_library)."""
     stats = MovieScanStats()
-    index, titles = _Index(catalog, "movie"), _titles(catalog)
+    more = _mini_carried(extra, "movie")
+    index, titles = _Index(catalog, "movie", more), more | _titles(catalog)
+    lineup = {o.show: o.year for o in catalog.overrides.shows if o.year is not None}
+    lineup |= {str(i["id"]): int(i["year"]) for i in extra if i.get("id") and i.get("year")}
     picks: dict[str, tuple[tuple[int, int, str], Path, Path]] = {}
     for rank, top in enumerate(_present(root, stats.missing_roots)):
         for folder in _folders(top):
-            slug = index.match(folder.name)
+            slug = index.match(folder.name) or index.match(movie_title(folder.name))
             if slug is None:
                 stats.unmatched_folders.append(folder.name)
                 continue
+            year = lineup.get(slug) or show_year(folder.name, [])
+            title = titles.get(slug, movie_title(folder.name))
             for f in _video_files(folder):
+                inner = [*f.relative_to(folder).parent.parts, f.stem]
+                if any(other_movie(part, title, year) for part in inner):
+                    stats.mismatched.append(str(f.relative_to(top)))
+                    continue
                 if not EXTRA.search(f.stem):
                     key = (rank, -f.stat().st_size, str(f))
                     if slug not in picks or key < picks[slug][0]:
                         picks[slug] = (key, f, folder)
     for slug, (_, best, folder) in picks.items():
-        year = show_year(folder.name, [])
+        year = lineup.get(slug) or show_year(folder.name, [])
         size = best.stat().st_size
         row = db.execute(
             "SELECT file_path, file_size, source_seconds FROM movies WHERE id = ?", (slug,)

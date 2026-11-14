@@ -6,8 +6,11 @@
              each may be given more than once: the rig adds the LiveTV downloads)
   acquire    add carried titles with no files to sonarr-livetv and radarr-livetv
              (RC_SONARR_LIVETV_URL/_KEY, RC_RADARR_LIVETV_URL/_KEY); see ingest/acquire.py
+             (RC_ACQUIRE_SEARCH=off: add, but search nothing while the seedbox is full)
   normalize  encode playable MP4s into the media root (RC_MEDIA_DIR); see ingest/normalize.py
              (RC_DELETE_SOURCES_UNDER: delete originals there once their encode is whole)
+  assemble   join the episodes of TV movies TheTVDB files as episodes (overrides.yaml
+             `episodes_of`) into those movies; see ingest/assemble.py
   manifest   write manifest.json at the media root from this database (ingest/manifest.py)
   index-media  record a manifest's encodes in this database, without probing (the mini)
 
@@ -23,7 +26,7 @@ import time
 import urllib.request
 from collections.abc import Callable
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from retro_cable.admin import store
@@ -32,6 +35,7 @@ from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.db import connect, migrate
 from retro_cable.ingest import manifest
 from retro_cable.ingest.acquire import acquire
+from retro_cable.ingest.assemble import AssembleStats, assemble
 from retro_cable.ingest.gpu import choose_encoder, comfy_busy
 from retro_cable.ingest.http import Request, json_request
 from retro_cable.ingest.normalize import (
@@ -47,7 +51,7 @@ from retro_cable.ingest.plex import PlexClient, import_plex
 from retro_cable.ingest.plex import http_fetch as plex_http_fetch
 from retro_cable.ingest.progress import PROGRESS, ProgressFile
 from retro_cable.ingest.scan import scan_movies, scan_tv
-from retro_cable.ingest.tmdb import TmdbClient, fill_gaps
+from retro_cable.ingest.tmdb import TmdbClient, fill_gaps, lineup_ids
 from retro_cable.ingest.tmdb import http_fetch as tmdb_http_fetch
 
 
@@ -72,7 +76,16 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m retro_cable.ingest")
     parser.add_argument(
         "job",
-        choices=["plex", "tmdb", "scan", "acquire", "normalize", "manifest", "index-media"],
+        choices=[
+            "plex",
+            "tmdb",
+            "scan",
+            "acquire",
+            "normalize",
+            "assemble",
+            "manifest",
+            "index-media",
+        ],
     )
     parser.add_argument("--db", type=Path, default=None)
     parser.add_argument(
@@ -104,14 +117,21 @@ def _parser() -> argparse.ArgumentParser:
                       help="the mini's /api/admin/library (/admin channels)")  # fmt: skip
     norm.add_argument("--manifest", action="store_true",
                       help="write JSON sidecars and manifest.json (the rig)")  # fmt: skip
+    acq = parser.add_argument_group("acquire")
+    acq.add_argument("--livetv-tv", type=Path, default=None,
+                     help="sonarr-livetv's /tv here: release finished downloads whose "
+                          "imports are all encoded and deleted (the rig)")  # fmt: skip
     idx = parser.add_argument_group("index-media")
     idx.add_argument("--manifest-file", type=Path, default=None,
                      help="default <media dir>/manifest.json")  # fmt: skip
     idx.add_argument("--prune", action="store_true",
                      help="clear encodes the manifest no longer lists")  # fmt: skip
     idx.add_argument("--watch", type=float, default=None, metavar="SECONDS",
-                     help="keep running: re-index whenever the manifest changes")  # fmt: skip
+                     help="keep running: index-media re-indexes whenever the manifest"
+                          " changes; tmdb fills again every SECONDS")  # fmt: skip
     norm.add_argument("--limit", type=int, default=None, help="encode at most N items")
+    norm.add_argument("--for-minutes", type=float, default=None, metavar="N",
+                      help="start no item after N minutes (the rig rescans then)")  # fmt: skip
     norm.add_argument("--max-seconds", type=float, default=None,
                       help="trials only: keep the first N seconds of each item")  # fmt: skip
     norm.add_argument("--force", action="store_true", help="re-encode up-to-date items")
@@ -159,7 +179,8 @@ def main(argv: list[str]) -> int:
     elif args.job == "scan" and not (args.tv or args.movies):
         print("scan needs --tv DIR and/or --movies DIR", file=sys.stderr)
         return 2
-    if args.job in ("plex", "scan", "acquire") or (args.job == "normalize" and not args.all):
+    needs_catalog = ("plex", "tmdb", "scan", "acquire", "assemble")
+    if args.job in needs_catalog or (args.job == "normalize" and not args.all):
         try:
             catalog = load_catalog(args.catalog)
         except CatalogError as err:
@@ -181,21 +202,27 @@ def main(argv: list[str]) -> int:
         fetch = plex_http_fetch(os.environ["PLEX_URL"], token)
         stats = asdict(import_plex(db, PlexClient(fetch), catalog, now))
     elif args.job == "tmdb":
-        stats = asdict(fill_gaps(db, TmdbClient(tmdb_http_fetch(token)), now))
+        assert catalog is not None
+        return _tmdb(db, catalog, TmdbClient(tmdb_http_fetch(token)), args.watch)
     elif args.job == "scan":
         assert catalog is not None
         out: dict[str, object] = {}
         measure = None if args.no_probe else source_seconds
+        # The mini's /admin channels carry shows and movies too (the channel builder's).
+        mini = _mini_items(args) if args.tv or args.movies else []
         if args.tv:
-            out["tv"] = asdict(
-                scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only, probe=measure)
-            )
+            out["tv"] = asdict(scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only,
+                                       probe=measure, extra=mini))  # fmt: skip
         if args.movies:
-            out["movies"] = asdict(scan_movies(db, args.movies, catalog, now, probe=measure))
+            found = scan_movies(db, args.movies, catalog, now, probe=measure, extra=mini)
+            out["movies"] = asdict(found)
         stats = out
     elif args.job == "acquire":
         assert catalog is not None
         return _acquire(db, catalog, args)
+    elif args.job == "assemble":
+        assert catalog is not None
+        stats = _assemble(db, catalog, args)
     elif args.job == "manifest":
         path = manifest.write_manifest(db, _media_dir(args), now)
         stats = {"manifest": str(path)}
@@ -204,13 +231,27 @@ def main(argv: list[str]) -> int:
     else:
         shows = None
         if not args.all and catalog is not None:
-            # What a channel carries here, plus the shows on channels made in the mini's /admin.
+            # What a channel carries here, plus the shows on channels made in the mini's /admin,
+            # plus the series whose seasons they are or whose episodes make their movies
+            # (overrides.yaml part_of, episodes_of).
             shows = carried_shows(db, catalog) | frozenset(
-                priority_years(db, None, args.priority_url)
+                priority_years(db, catalog, args.priority_url)
             )
         stats = _normalize(db, args, shows, catalog)
     print(json.dumps(stats, indent=2))
     return 0
+
+
+def _tmdb(db: sqlite3.Connection, catalog: Catalog, source: TmdbClient, every: float | None) -> int:
+    """Fill gaps from TMDB by the lineup's ids (the admin overlay's too, read again each
+    time); with `every`, again every that many seconds, as new encodes arrive."""
+    while True:
+        lineup = lineup_ids(apply_overlay(catalog, store.head(db).overlay))
+        stats = fill_gaps(db, source, datetime.now(UTC), lineup=lineup)
+        print(json.dumps(asdict(stats), indent=2), flush=True)
+        if every is None:
+            return 0
+        time.sleep(every)
 
 
 def _media_dir(args: argparse.Namespace) -> Path:
@@ -239,22 +280,55 @@ def _arr(name: str) -> Request | None:
     None when either is unset. The key goes only into the request header."""
     url = os.environ.get(f"RC_{name}_LIVETV_URL", "")
     key = os.environ.get(f"RC_{name}_LIVETV_KEY", "")
-    return json_request(url, {"X-Api-Key": key}) if url and key else None
+    # The twins answer slowly for hours while they import season packs (Nov 9 2026).
+    timeout = float(os.environ.get("RC_ARR_TIMEOUT", "120"))
+    return json_request(url, {"X-Api-Key": key}, timeout=timeout) if url and key else None
+
+
+def _mini_items(args: argparse.Namespace) -> list[dict[str, object]]:
+    """The mini's /api/admin/library items (--priority-url), or none if it can't be read."""
+    if not args.priority_url:
+        return []
+    try:
+        data = _get_json(args.priority_url)
+    except (OSError, ValueError) as err:
+        print(f"warning: can't read {args.priority_url}: {err}", file=sys.stderr)
+        return []
+    found = data.get("items", []) if isinstance(data, dict) else []
+    return [i for i in found if isinstance(i, dict)]
 
 
 def _acquire(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace) -> int:
-    items: list[dict[str, object]] = []
-    if args.priority_url:  # the mini's /admin channels count as carried
-        try:
-            data = _get_json(args.priority_url)
-            found = data.get("items", []) if isinstance(data, dict) else []
-            items = [i for i in found if isinstance(i, dict)]
-        except (OSError, ValueError) as err:
-            print(f"warning: can't read {args.priority_url}: {err}", file=sys.stderr)
+    # The mini's /admin channels count as carried. RC_ACQUIRE_SEARCH=off: the seedbox is full.
+    search = os.environ.get("RC_ACQUIRE_SEARCH", "").strip().lower() != "off"
     report = acquire(db, catalog, sonarr=_arr("SONARR"), radarr=_arr("RADARR"),
-                     dry_run=args.dry_run, extra=items)  # fmt: skip
+                     dry_run=args.dry_run, extra=_mini_items(args),
+                     now=datetime.now(UTC), livetv_tv=args.livetv_tv, search=search)  # fmt: skip
     print(json.dumps(asdict(report), indent=2))
     return 0 if report.ok else 1
+
+
+def _assemble(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace) -> object:
+    media = _media_dir(args)
+    rig = args.manifest and not args.dry_run
+
+    def written(movie: str, target: str) -> None:
+        try:
+            manifest.write_sidecar(db, media, "movies", movie, target)
+        except OSError as err:  # the manifest below still lists it
+            print(f"warning: sidecar write failed: {err}", file=sys.stderr)
+
+    result: AssembleStats = assemble(
+        db, catalog, media, extra=_mini_items(args), dry_run=args.dry_run,
+        on_assembled=written if rig else None,
+    )  # fmt: skip
+    if rig and result.assembled:
+        manifest.write_manifest(db, media, datetime.now(UTC))
+    for cmd in result.commands:
+        print(" ".join(cmd), file=sys.stderr)
+    stats = asdict(result)
+    stats.pop("commands")
+    return stats
 
 
 def _get_json(url: str) -> object:
@@ -270,8 +344,11 @@ def priority_years(
 ) -> dict[str, int]:
     """Show and movie id -> the earliest year a channel carries it: the YAML catalog plus
     this database's /admin overlay, plus (with `url`, the mini's /api/admin/library) the
-    shows on channels made in the mini's /admin. A failed fetch is a warning."""
+    shows on channels made in the mini's /admin. A series some of whose seasons a carried
+    show is (overrides.yaml part_of), or whose episodes a carried movie is made of
+    (episodes_of), ranks with it. A failed fetch is a warning."""
     years: dict[str, int] = {}
+    effective = None
     if catalog is not None:
         effective = apply_overlay(catalog, store.head(db).overlay)
         for c in effective.carriage.carriage:
@@ -286,6 +363,11 @@ def priority_years(
         for item in items:
             if isinstance(item, dict) and item.get("channels") and item.get("id"):
                 years.setdefault(str(item["id"]), int(item.get("first_year") or 9999))
+    if effective is not None:
+        for o in effective.overrides.shows:
+            of = o.part_of or o.episodes_of
+            if of is not None and o.show in years:
+                years[of.show] = min(years.get(of.show, 9999), years[o.show])
     return years
 
 
@@ -349,6 +431,11 @@ def _normalize(
         codec=args.codec,
         max_seconds=args.max_seconds,
         limit=args.limit,
+        until=(
+            datetime.now(UTC) + timedelta(minutes=args.for_minutes)
+            if args.for_minutes is not None
+            else None
+        ),
         force=args.force,
         dry_run=args.dry_run,
         crop=detect_crop if args.crop == "auto" else no_crop,

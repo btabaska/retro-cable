@@ -257,6 +257,101 @@
         "title": "AdminState",
         "type": "object"
       },
+      "CarriageTune": {
+        "additionalProperties": false,
+        "description": "A weight multiplier for one show on one channel: every carriage window of it, so the\nall-day rotation, tag pools and empty block parts.",
+        "properties": {
+          "channel": {
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Channel",
+            "type": "string"
+          },
+          "factor": {
+            "description": "Multiplier on the base weight",
+            "maximum": 5.0,
+            "minimum": 0.2,
+            "title": "Factor",
+            "type": "number"
+          },
+          "show": {
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Show",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "show",
+          "factor"
+        ],
+        "title": "CarriageTune",
+        "type": "object"
+      },
+      "Change": {
+        "properties": {
+          "after": {
+            "title": "After",
+            "type": "number"
+          },
+          "before": {
+            "title": "Before",
+            "type": "number"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "knob": {
+            "title": "Knob",
+            "type": "string"
+          },
+          "show": {
+            "title": "Show",
+            "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "why": {
+            "default": "",
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knob",
+          "channel",
+          "show",
+          "before",
+          "after"
+        ],
+        "title": "Change",
+        "type": "object"
+      },
       "ChangeResult": {
         "properties": {
           "message": {
@@ -404,6 +499,35 @@
           "launch"
         ],
         "title": "ChannelInfo",
+        "type": "object"
+      },
+      "ChannelSignal": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "mean_seconds": {
+            "description": "Dwell: average seconds per program watched",
+            "title": "Mean Seconds",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "integer"
+          },
+          "sessions": {
+            "title": "Sessions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "seconds",
+          "sessions",
+          "mean_seconds"
+        ],
+        "title": "ChannelSignal",
         "type": "object"
       },
       "CheckIssue": {
@@ -577,6 +701,35 @@
           "show"
         ],
         "title": "DraftShow",
+        "type": "object"
+      },
+      "Dropped": {
+        "properties": {
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "what": {
+            "title": "What",
+            "type": "string"
+          }
+        },
+        "required": [
+          "what",
+          "reason"
+        ],
+        "title": "Dropped",
         "type": "object"
       },
       "Guide": {
@@ -885,6 +1038,12 @@
             ],
             "title": "Last Year"
           },
+          "shifted": {
+            "default": false,
+            "description": "Airs on moved dates somewhere: a pretend premiere on some channel or a US debut (ingest acquire keeps all its seasons)",
+            "title": "Shifted",
+            "type": "boolean"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -1082,6 +1241,186 @@
         "title": "MediaShowProgress",
         "type": "object"
       },
+      "Pool": {
+        "additionalProperties": false,
+        "description": "One weighted entry in a day-part pool: a specific carried show, or every show with a tag.",
+        "properties": {
+          "show": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          },
+          "weight": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "title": "Pool",
+        "type": "object"
+      },
+      "PoolTune": {
+        "additionalProperties": false,
+        "description": "A weight multiplier for one show in a template's parts that start at `start` (the same\nday-part on every weekday it appears).",
+        "properties": {
+          "factor": {
+            "description": "Multiplier on the base weight",
+            "maximum": 5.0,
+            "minimum": 0.2,
+            "title": "Factor",
+            "type": "number"
+          },
+          "show": {
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Show",
+            "type": "string"
+          },
+          "start": {
+            "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Start",
+            "type": "string"
+          },
+          "template": {
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template",
+          "start",
+          "show",
+          "factor"
+        ],
+        "title": "PoolTune",
+        "type": "object"
+      },
+      "PowerHour": {
+        "additionalProperties": false,
+        "description": "Brandon's busiest viewing hour(s) as a day-part on one channel, every day, ahead of the\nchannel's templates (or its all-day rotation). Like any part it starts when the program\nalready running ends. When none of its shows can air on a date, the usual part plays.",
+        "properties": {
+          "channel": {
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Channel",
+            "type": "string"
+          },
+          "hours": {
+            "default": 1,
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Hours",
+            "type": "integer"
+          },
+          "pool": {
+            "description": "The channel's top shows, by weight",
+            "items": {
+              "$ref": "#/components/schemas/Pool"
+            },
+            "minItems": 1,
+            "title": "Pool",
+            "type": "array"
+          },
+          "start": {
+            "description": "Local HH:MM it begins",
+            "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "start",
+          "pool"
+        ],
+        "title": "PowerHour",
+        "type": "object"
+      },
+      "PowerHourPlan": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "integer"
+          },
+          "shows": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Shows",
+            "type": "array"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "titles": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Titles",
+            "type": "array"
+          },
+          "weights": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Weights",
+            "type": "array"
+          }
+        },
+        "required": [
+          "channel",
+          "start",
+          "hours",
+          "shows",
+          "weights"
+        ],
+        "title": "PowerHourPlan",
+        "type": "object"
+      },
+      "PowerWindow": {
+        "properties": {
+          "hours": {
+            "title": "Hours",
+            "type": "integer"
+          },
+          "start": {
+            "description": "Local HH:MM",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "hours"
+        ],
+        "title": "PowerWindow",
+        "type": "object"
+      },
       "PremiereRequest": {
         "properties": {
           "premiere": {
@@ -1196,6 +1535,95 @@
         "title": "PreviewDay",
         "type": "object"
       },
+      "RunReport": {
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Tuning"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tuning it applied or proposes"
+          },
+          "before": {
+            "$ref": "#/components/schemas/Tuning",
+            "description": "The tuning the run started from"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "dropped": {
+            "items": {
+              "$ref": "#/components/schemas/Dropped"
+            },
+            "title": "Dropped",
+            "type": "array"
+          },
+          "model_summary": {
+            "default": "",
+            "description": "The model's own one-line summary",
+            "title": "Model Summary",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "power_hours": {
+            "items": {
+              "$ref": "#/components/schemas/PowerHourPlan"
+            },
+            "title": "Power Hours",
+            "type": "array"
+          },
+          "power_window": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PowerWindow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signals": {
+            "$ref": "#/components/schemas/Signals"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          },
+          "weeks": {
+            "description": "Weeks of viewing read",
+            "title": "Weeks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weeks",
+          "since",
+          "until",
+          "signals"
+        ],
+        "title": "RunReport",
+        "type": "object"
+      },
       "SaveResult": {
         "properties": {
           "channel_id": {
@@ -1220,6 +1648,208 @@
           "state"
         ],
         "title": "SaveResult",
+        "type": "object"
+      },
+      "ShowSignal": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "completion": {
+            "description": "Seconds watched over seconds available (0-1)",
+            "title": "Completion",
+            "type": "number"
+          },
+          "early_tune_aways": {
+            "description": "Tune-aways in under 3 minutes",
+            "title": "Early Tune Aways",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "integer"
+          },
+          "sessions": {
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "show": {
+            "title": "Show",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "show",
+          "seconds",
+          "sessions",
+          "completion",
+          "early_tune_aways"
+        ],
+        "title": "ShowSignal",
+        "type": "object"
+      },
+      "Signals": {
+        "properties": {
+          "busiest_hours": {
+            "description": "Hours of the day, busiest first (up to 3)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Busiest Hours",
+            "type": "array"
+          },
+          "channels": {
+            "description": "Most watched first",
+            "items": {
+              "$ref": "#/components/schemas/ChannelSignal"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "heatmap": {
+            "description": "Seconds watched by real weekday (Monday first) and hour, in the catalog zone",
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Heatmap",
+            "type": "array"
+          },
+          "sessions": {
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "shows": {
+            "description": "Per channel and show, most watched first",
+            "items": {
+              "$ref": "#/components/schemas/ShowSignal"
+            },
+            "title": "Shows",
+            "type": "array"
+          },
+          "total_seconds": {
+            "title": "Total Seconds",
+            "type": "integer"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The simulated year watched most",
+            "title": "Year"
+          }
+        },
+        "required": [
+          "total_seconds",
+          "sessions",
+          "year",
+          "shows",
+          "channels",
+          "heatmap",
+          "busiest_hours"
+        ],
+        "title": "Signals",
+        "type": "object"
+      },
+      "StationRunRow": {
+        "properties": {
+          "can_undo": {
+            "description": "Applied and still the latest /admin revision",
+            "title": "Can Undo",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/RunReport"
+          },
+          "revision_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The /admin revision an applied run saved",
+            "title": "Revision Id"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "proposed",
+              "dry_run",
+              "skipped",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "week_of": {
+            "description": "YYYY-MM-DD, the Sunday the run's week starts",
+            "title": "Week Of",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "week_of",
+          "status",
+          "model",
+          "revision_id",
+          "summary",
+          "report",
+          "can_undo"
+        ],
+        "title": "StationRunRow",
+        "type": "object"
+      },
+      "StationRuns": {
+        "properties": {
+          "auto_apply": {
+            "description": "RC_STATION_AUTO_APPLY on this server",
+            "title": "Auto Apply",
+            "type": "boolean"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/StationRunRow"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "auto_apply",
+          "runs"
+        ],
+        "title": "StationRuns",
         "type": "object"
       },
       "Tune": {
@@ -1400,6 +2030,35 @@
         "title": "TunedSlot",
         "type": "object"
       },
+      "Tuning": {
+        "additionalProperties": false,
+        "description": "What the weekly station manager changes (M5): weights and power hours, never which\nshows are carried, their dates, launches, premieres or holidays.",
+        "properties": {
+          "carriage": {
+            "items": {
+              "$ref": "#/components/schemas/CarriageTune"
+            },
+            "title": "Carriage",
+            "type": "array"
+          },
+          "pools": {
+            "items": {
+              "$ref": "#/components/schemas/PoolTune"
+            },
+            "title": "Pools",
+            "type": "array"
+          },
+          "power_hours": {
+            "items": {
+              "$ref": "#/components/schemas/PowerHour"
+            },
+            "title": "Power Hours",
+            "type": "array"
+          }
+        },
+        "title": "Tuning",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1456,6 +2115,133 @@
           "commit"
         ],
         "title": "Version",
+        "type": "object"
+      },
+      "WatchReport": {
+        "additionalProperties": false,
+        "description": "One program watched on one channel, so far.",
+        "properties": {
+          "channel": {
+            "maxLength": 120,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Channel",
+            "type": "string"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "App-chosen label, if any",
+            "title": "Device"
+          },
+          "ended": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tune_away",
+                  "power_off",
+                  "program_end"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it ended; null while playing",
+            "title": "Ended"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "maximum": 9999.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "item": {
+            "description": "Show or movie id",
+            "maxLength": 120,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Item",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "episode",
+              "movie"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Seconds in when tuned in",
+            "maximum": 21600.0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "runtime": {
+            "description": "The program's full length",
+            "maximum": 21600.0,
+            "minimum": 1.0,
+            "title": "Runtime",
+            "type": "integer"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "maximum": 999.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "seconds": {
+            "description": "Seconds watched so far",
+            "maximum": 21600.0,
+            "minimum": 0.0,
+            "title": "Seconds",
+            "type": "integer"
+          },
+          "session": {
+            "description": "Random id the app picks per program",
+            "pattern": "^[A-Za-z0-9_-]{8,64}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "year": {
+            "description": "Simulated year 1990-2010, or 0 for All Years",
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session",
+          "channel",
+          "item",
+          "kind",
+          "year",
+          "seconds",
+          "runtime"
+        ],
+        "title": "WatchReport",
         "type": "object"
       }
     }
@@ -1947,6 +2733,54 @@
         ]
       }
     },
+    "/admin/station/runs": {
+      "get": {
+        "description": "Recent station manager runs: applied, proposed, dry, skipped and failed.",
+        "operationId": "adminStationRuns",
+        "parameters": [
+          {
+            "description": "Newest first",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Newest first",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationRuns"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adminstationruns",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/admin/undo": {
       "post": {
         "description": "Revert the last save or delete: the previous inputs, so the same catalog version\nand the same schedules.",
@@ -1978,14 +2812,12 @@
         "operationId": "getChannels",
         "parameters": [
           {
-            "description": "Simulated year",
+            "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
             "in": "query",
             "name": "year",
             "required": true,
             "schema": {
-              "description": "Simulated year",
-              "maximum": 2010,
-              "minimum": 1990,
+              "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
               "title": "Year",
               "type": "integer"
             }
@@ -2041,14 +2873,12 @@
         "operationId": "getGuide",
         "parameters": [
           {
-            "description": "Simulated year",
+            "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
             "in": "query",
             "name": "year",
             "required": true,
             "schema": {
-              "description": "Simulated year",
-              "maximum": 2010,
-              "minimum": 1990,
+              "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
               "title": "Year",
               "type": "integer"
             }
@@ -2166,14 +2996,12 @@
             }
           },
           {
-            "description": "Simulated year",
+            "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
             "in": "query",
             "name": "year",
             "required": true,
             "schema": {
-              "description": "Simulated year",
-              "maximum": 2010,
-              "minimum": 1990,
+              "description": "Simulated year 1990-2010, or 0 for All Years (every channel and episode)",
               "title": "Year",
               "type": "integer"
             }
@@ -2235,6 +3063,34 @@
           }
         },
         "summary": "Getversion"
+      }
+    },
+    "/watch": {
+      "post": {
+        "description": "Record (or update) what is being watched. Fire and forget: the app ignores the\nanswer, and nothing waits on it.",
+        "operationId": "postWatch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "The session id already names another program"
+          },
+          "422": {
+            "description": "Not a valid report, or an unknown channel"
+          }
+        },
+        "summary": "Postwatch"
       }
     }
   }

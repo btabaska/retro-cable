@@ -5,9 +5,11 @@ import { ChannelEditor } from "./ChannelEditor";
 import { ChannelList } from "./ChannelList";
 import { focusTitle } from "./focus";
 import { MediaPanel } from "./MediaPanel";
+import { StationPanel } from "./StationPanel";
 import { Toast } from "./Toast";
 
-type View = { kind: "list" } | { kind: "edit"; id: string | null } | { kind: "media" };
+type View = { kind: "list" } | { kind: "edit"; id: string | null } | { kind: "media" } | { kind: "station" };
+type Tab = "list" | "media" | "station";
 
 interface ToastState {
   message: string;
@@ -19,8 +21,8 @@ interface AdminAppProps {
   api?: AdminApi;
 }
 
-/** /admin on a phone: channels you can add, edit, preview and undo, and the media conversion's
- * progress. LAN only, no sign-in. */
+/** /admin on a phone: channels you can add, edit, preview and undo, the media conversion's
+ * progress, and what the weekly station manager changed. LAN only, no sign-in. */
 export function AdminApp({ api = liveAdminApi }: AdminAppProps) {
   const [view, setView] = useState<View>({ kind: "list" });
   const [list, setList] = useState<AdminChannelList | null>(null);
@@ -91,6 +93,25 @@ export function AdminApp({ api = liveAdminApi }: AdminAppProps) {
         </main>
       </div>
     );
+  } else if (view.kind === "station") {
+    body = (
+      <div className="adm-screen">
+        <header className="adm-header">
+          <h1 className="adm-title" tabIndex={-1}>
+            Station manager
+          </h1>
+        </header>
+        <main className="adm-body">
+          <StationPanel
+            api={api}
+            onUndone={(message) => {
+              setToast({ message, canUndo: false, key: Date.now() });
+              setVersion((n) => n + 1);
+            }}
+          />
+        </main>
+      </div>
+    );
   } else {
     body = (
       <div className="adm-screen">
@@ -116,7 +137,12 @@ export function AdminApp({ api = liveAdminApi }: AdminAppProps) {
     );
   }
 
-  const onMedia = view.kind === "media";
+  const tab: Tab = view.kind === "edit" ? "list" : view.kind;
+  const tabs: [Tab, string][] = [
+    ["list", "Channels"],
+    ["media", "Media"],
+    ["station", "Station"],
+  ];
   return (
     <div className="adm" data-testid="admin">
       {body}
@@ -131,28 +157,21 @@ export function AdminApp({ api = liveAdminApi }: AdminAppProps) {
           onDone={dismiss}
         />
       )}
-      {/* Holidays, Manager and Build arrive with their phases. */}
+      {/* Holidays and Build arrive with their phases. */}
       <nav className="adm-tabs" aria-label="Admin sections">
-        <button
-          type="button"
-          className={`adm-tab adm-tab-button${onMedia ? "" : " adm-tab-on"}`}
-          aria-current={onMedia ? undefined : "page"}
-          onClick={() => {
-            if (onMedia) setView({ kind: "list" });
-          }}
-        >
-          Channels
-        </button>
-        <button
-          type="button"
-          className={`adm-tab adm-tab-button${onMedia ? " adm-tab-on" : ""}`}
-          aria-current={onMedia ? "page" : undefined}
-          onClick={() => {
-            if (!onMedia) setView({ kind: "media" });
-          }}
-        >
-          Media
-        </button>
+        {tabs.map(([kind, label]) => (
+          <button
+            key={kind}
+            type="button"
+            className={`adm-tab adm-tab-button${tab === kind ? " adm-tab-on" : ""}`}
+            aria-current={tab === kind ? "page" : undefined}
+            onClick={() => {
+              if (view.kind !== kind) setView({ kind });
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </nav>
     </div>
   );

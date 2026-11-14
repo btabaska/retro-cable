@@ -3,13 +3,15 @@ import { type Lineup, liveApi, type TvApi } from "./api/client";
 import { Player, type PlayerMode } from "./components/Player";
 import { useNow } from "./hooks/useNow";
 import { useTuner } from "./hooks/useTuner";
+import { useWatchReporter } from "./hooks/useWatchReporter";
 import { stepChannel } from "./lib/channels";
 import { load, save } from "./lib/storage";
 import { simulatedNow } from "./lib/time";
+import { parseYear } from "./lib/years";
 import { Guide } from "./screens/Guide";
 import { BANNER_MS, LiveTV } from "./screens/LiveTV";
 import { PowerOn } from "./screens/PowerOn";
-import { FIRST_YEAR, LAST_YEAR, YearPicker } from "./screens/YearPicker";
+import { YearPicker } from "./screens/YearPicker";
 import { Stage } from "./Stage";
 
 type Screen = "live" | "guide" | "year";
@@ -17,8 +19,7 @@ const DEFAULT_YEAR = 1998;
 const RETRY_MS = 5000;
 
 function storedYear(): number {
-  const year = Number(load("rc.year"));
-  return year >= FIRST_YEAR && year <= LAST_YEAR ? year : DEFAULT_YEAR;
+  return parseYear(load("rc.year")) ?? DEFAULT_YEAR;
 }
 
 interface AppProps {
@@ -127,6 +128,12 @@ export function App({ api = liveApi }: AppProps) {
   let mode: PlayerMode = "hidden";
   if (powered && screen === "live") mode = "live";
   else if (powered && screen === "guide") mode = "pip";
+
+  // What is on screen, for the weekly station manager (full screen or the guide's PiP).
+  useWatchReporter(
+    mode !== "hidden" && tunedId && tuner.slot ? { channel: tunedId, year, slot: tuner.slot, simNow: now } : null,
+    api.reportWatch,
+  );
 
   let body;
   if (!powered) {
