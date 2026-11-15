@@ -368,21 +368,35 @@ def test_assemble_reads_the_minis_titles_and_writes_the_manifest(
     assert [m["id"] for m in movies] == ["rbs"]
 
 
-def test_scan_matches_movies_on_the_minis_admin_channels(
+def test_scan_matches_shows_and_movies_on_the_minis_admin_channels(
     tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:  # fmt: skip
     library = {"items": [{"id": "the-rugrats-movie", "title": "The Rugrats Movie",
-                          "kind": "movie", "channels": [{"id": "custom-nick"}]}]}  # fmt: skip
-    monkeypatch.setattr(cli, "_get_json", lambda url: library)
+                          "kind": "movie", "channels": [{"id": "custom-nick"}]},
+                         {"id": "pokemon", "title": "Pok\u00e9mon", "kind": "show",
+                          "channels": [{"id": "cartoon-network"}]}]}  # fmt: skip
+    fetched: list[str] = []
+
+    def get(url: str) -> object:
+        fetched.append(url)
+        return library
+
+    monkeypatch.setattr(cli, "_get_json", get)
     movies = tmp_path / "movies" / "The.Rugrats.Movie.1998.DVDRip.XviD"
     movies.mkdir(parents=True)
     (movies / "rugrats.avi").write_bytes(b"x")
+    season = tmp_path / "tv" / "Pok\u00e9mon (1997)" / "Season 07"
+    season.mkdir(parents=True)
+    (season / "Pok\u00e9mon (1997) - S07E01 - Seed.mkv").write_bytes(b"x")
     args = ["scan", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog()),
-            "--movies", str(tmp_path / "movies"), "--no-probe",
+            "--tv", str(tmp_path / "tv"), "--movies", str(tmp_path / "movies"), "--no-probe",
             "--priority-url", "http://mini/api/admin/library"]  # fmt: skip
     assert cli.main(args) == 0
-    assert json.loads(capsys.readouterr().out)["movies"]["movies"] == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["movies"]["movies"] == 1
+    assert out["tv"]["shows"] == 1 and out["tv"]["uncarried"] == []
+    assert len(fetched) == 1
 
 
 def test_arr_clients_wait_for_a_busy_instance(monkeypatch: pytest.MonkeyPatch) -> None:
