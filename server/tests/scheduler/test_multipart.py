@@ -31,6 +31,8 @@ from tests.scheduler.conftest import HALF, make_library, weekly
         ("+E02 London Pt 1 + Pt 2", None),
         ("The Boiling Rock Part 1 & Chapter Fifteen The Boiling Rock Part 2", None),
         ("The More You Moe (1) (2)", None),
+        # A marker before a subtitle (Gravity Falls).
+        ("Weirdmageddon (2): Escape from Reality", ("weirdmageddon", 2)),
         ("Pilot", None),
         ("Episode 12", None),
         ("Part Time Pal", None),  # "Part" is a word of the title, not a marker
@@ -130,6 +132,27 @@ def test_multipart_blocks_finds_stories_however_their_parts_are_titled(
 def test_a_two_in_one_episode_airs_like_any_other() -> None:
     eps = [episode(1, "Opener"), episode(2, "The Finale Part 1 and The Finale Part 2")]
     assert multipart_blocks(eps) == {}
+
+
+def test_a_double_length_part_one_holds_both_parts() -> None:
+    """A two-parter in one file (S02E01-E02) is named for its first episode, "Twilight (1)"
+    (Justice League, Avatar, Nov 15 2026): a lone Part 1 at least 1.6x the show's usual length
+    is the whole story and airs like any episode."""
+    eps = [
+        episode(1, "Ordinary"),
+        replace(episode(2, "Twilight (1)"), seconds=HALF * 2),
+        episode(4, "Another"),
+        episode(5, "Waiting (1)"),  # a usual-length Part 1 whose Part 2 isn't on disk yet
+        episode(6, "Last"),
+    ]
+    blocks = multipart_blocks(eps)
+    assert ("show", 1, 2) not in blocks
+    assert blocks[("show", 1, 5)] == ()
+
+
+def test_a_marker_before_a_subtitle_continues_the_story() -> None:
+    eps = [episode(1, "Weirdmageddon (1)"), episode(2, "Weirdmageddon (2): Escape from Reality")]
+    assert multipart_blocks(eps)[("show", 1, 1)] == keys(1, 2)
 
 
 def two_parters(programs: list[Program], pairs: int) -> list[Program]:
