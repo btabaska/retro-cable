@@ -11,7 +11,8 @@ scheduler airs a story's parts back to back, as one block, and never one part on
   unmarked predecessor starting with its title is Part 1 (The Simpsons' "Warrin Priests" then
   "Warrin Priests Part 2"), and an untitled episode right after a Part 1 is Part 2.
 
-A file holding both parts ("The Cadillac Part 1 and The Cadillac Part 2") is one episode. A
+A file holding both parts ("The Cadillac Part 1 and The Cadillac Part 2", or a lone Part 1 far
+longer than the show's usual episode) is one episode. A
 part left without its story (its Part 1 isn't on disk, or nothing follows a Part 1) is held
 back until the rest arrives.
 """
@@ -19,6 +20,7 @@ back until the rest arrives.
 import re
 from collections import defaultdict
 from collections.abc import Sequence
+from statistics import median
 
 from retro_cable.scheduler.library import Program
 
@@ -33,7 +35,12 @@ _N = r"(\d{1,2}|one|two|three|four|five|six|i{1,3}|iv|vi?)"
 _MARKERS = (
     re.compile(rf"\s*\(\s*(?:part\s+|pt\.?\s*)?{_N}(?:\s+of\s+\d+)?\s*\)\s*$", re.I),
     re.compile(rf"[\s,:;\-\u2013\u2014]+(?:part|pt\.?)\s*{_N}(?:\s+of\s+\d+)?\s*$", re.I),
+    # Before a subtitle: "Weirdmageddon (2): Escape from Reality".
+    re.compile(rf"\s*\(\s*(?:part\s+)?{_N}\s*\)\s*:", re.I),
 )
+# A lone Part 1 this much longer than the show's usual episode holds the whole story: a
+# two-parter in one file (S02E01-E02) is named for its first part, "Twilight (1)".
+WHOLE_STORY_RATIO = 1.6
 
 
 def _number(text: str) -> int:
@@ -73,6 +80,7 @@ def multipart_blocks(programs: Sequence[Program]) -> dict[ProgramKey, tuple[Prog
     number = [m[1] if m else 0 for m in marks]
     blocks: dict[ProgramKey, tuple[ProgramKey, ...]] = {}
     taken: set[int] = set()
+    usual = median(p.seconds for p in eps) if eps else 0
 
     def story(indices: list[int]) -> None:
         keys = tuple(_key(eps[i]) for i in indices)
@@ -120,6 +128,8 @@ def multipart_blocks(programs: Sequence[Program]) -> dict[ProgramKey, tuple[Prog
             run.append(after)
         if first == 1 and len(run) > 1:
             story(run)
+        elif first == 1 and eps[i].seconds >= usual * WHOLE_STORY_RATIO:
+            pass  # both parts in one file: an ordinary episode
         else:
             for j in run:
                 blocks[_key(eps[j])] = ()
