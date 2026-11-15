@@ -6,6 +6,7 @@
              each may be given more than once: the rig adds the LiveTV downloads)
   acquire    add carried titles with no files to sonarr-livetv and radarr-livetv
              (RC_SONARR_LIVETV_URL/_KEY, RC_RADARR_LIVETV_URL/_KEY); see ingest/acquire.py
+             (RC_ACQUIRE_SEARCH=off: add, but search nothing while the seedbox is full)
   normalize  encode playable MP4s into the media root (RC_MEDIA_DIR); see ingest/normalize.py
              (RC_DELETE_SOURCES_UNDER: delete originals there once their encode is whole)
   assemble   join the episodes of TV movies TheTVDB files as episodes (overrides.yaml
@@ -207,14 +208,13 @@ def main(argv: list[str]) -> int:
         assert catalog is not None
         out: dict[str, object] = {}
         measure = None if args.no_probe else source_seconds
+        # The mini's /admin channels carry shows and movies too (the channel builder's).
+        mini = _mini_items(args) if args.tv or args.movies else []
         if args.tv:
-            out["tv"] = asdict(
-                scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only, probe=measure)
-            )
+            out["tv"] = asdict(scan_tv(db, args.tv, catalog, now, carried_only=args.carried_only,
+                                       probe=measure, extra=mini))  # fmt: skip
         if args.movies:
-            # The mini's /admin channels carry movies too (the channel builder's).
-            found = scan_movies(db, args.movies, catalog, now, probe=measure,
-                                extra=_mini_items(args))  # fmt: skip
+            found = scan_movies(db, args.movies, catalog, now, probe=measure, extra=mini)
             out["movies"] = asdict(found)
         stats = out
     elif args.job == "acquire":
@@ -299,10 +299,11 @@ def _mini_items(args: argparse.Namespace) -> list[dict[str, object]]:
 
 
 def _acquire(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace) -> int:
-    # The mini's /admin channels count as carried.
+    # The mini's /admin channels count as carried. RC_ACQUIRE_SEARCH=off: the seedbox is full.
+    search = os.environ.get("RC_ACQUIRE_SEARCH", "").strip().lower() != "off"
     report = acquire(db, catalog, sonarr=_arr("SONARR"), radarr=_arr("RADARR"),
                      dry_run=args.dry_run, extra=_mini_items(args),
-                     now=datetime.now(UTC), livetv_tv=args.livetv_tv)  # fmt: skip
+                     now=datetime.now(UTC), livetv_tv=args.livetv_tv, search=search)  # fmt: skip
     print(json.dumps(asdict(report), indent=2))
     return 0 if report.ok else 1
 

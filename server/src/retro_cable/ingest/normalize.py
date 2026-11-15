@@ -24,7 +24,7 @@ import re
 import sqlite3
 import subprocess
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
@@ -67,6 +67,14 @@ class Probe:
     duration: float
     video: Stream | None
     audio_index: int | None
+    # The first audio language when every track names one and none is English (a dub-only
+    # rip): build_command refuses it rather than air it.
+    foreign_audio: str | None = None
+
+
+ENGLISH = ("eng", "en")
+# Language tags that say nothing about the language: such a track may well be English.
+UNKNOWN_LANGUAGE = ("", "und", "unk", "mis", "mul", "zxx")
 
 
 def _fraction(value: Any) -> Fraction:
@@ -96,7 +104,8 @@ def _stream_seconds(stream: dict[str, Any]) -> float | None:
 
 
 def parse_probe(data: dict[str, Any]) -> Probe:
-    """The first real video stream (not cover art) and the audio to keep (English if tagged).
+    """The first real video stream (not cover art) and the audio to keep (English if tagged;
+    `foreign_audio` when every track is tagged with another language).
     The length is the longer of those two streams, so a subtitle that runs past the end
     doesn't count; the container's length when they don't say, and never more than it."""
     video = None
@@ -115,14 +124,16 @@ def parse_probe(data: dict[str, Any]) -> Probe:
             )
         elif kind == "audio":
             audio.append((int(s["index"]), str(s.get("tags", {}).get("language", ""))))
-    english = [i for i, lang in audio if lang.lower() in ("eng", "en")]
+    english = [i for i, lang in audio if lang.lower() in ENGLISH]
     pick = english[0] if english else (audio[0][0] if audio else None)
+    named = audio and all(lang.lower() not in UNKNOWN_LANGUAGE for _, lang in audio)
+    foreign = audio[0][1] if named and not english else None
     duration = float(data.get("format", {}).get("duration") or 0)
     kept = [lengths.get(i) for i in (video.index if video else None, pick) if i is not None]
     if kept and all(kept):
         longest = max(x for x in kept if x)
         duration = min(duration, longest) if duration > 0 else longest
-    return Probe(duration=duration, video=video, audio_index=pick)
+    return Probe(duration=duration, video=video, audio_index=pick, foreign_audio=foreign)
 
 
 # How far before the container's end to look for the last picture and sound packets.
@@ -170,7 +181,7 @@ def probe(path: Path, ffprobe: str = "ffprobe") -> Probe:
             ends[stream] = max(end, ends.get(stream, 0.0))
     if set(ends) != kept:
         return info
-    return Probe(min(info.duration, max(ends.values())), info.video, info.audio_index)
+    return replace(info, duration=min(info.duration, max(ends.values())))
 
 
 def source_seconds(path: Path) -> float | None:
@@ -303,6 +314,8 @@ def build_command(
 ) -> list[str]:
     if info.video is None:
         raise ValueError(f"{src.name}: no video stream")
+    if info.foreign_audio is not None:
+        raise ValueError(f"{src.name}: no English audio (only {info.foreign_audio})")
     width, height = info.video.width, info.video.height
     # bwdif only touches frames flagged interlaced (DVD and broadcast rips); progressive passes.
     filters = ["bwdif=mode=send_frame:deint=interlaced"]
