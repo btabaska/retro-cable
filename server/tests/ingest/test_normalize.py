@@ -263,6 +263,13 @@ def test_nvenc_command_uses_the_gpu_encoder_with_forced_idr_keyframes() -> None:
         ([""], None),
         (["fre", "und"], None),
         ([], None),
+        (["spa"], "spa"),
+        (["ja"], "ja"),
+        (["es-419"], "es-419"),  # a regional tag (Latin American Spanish)
+        # A tag no dub uses is a mislabel: SpongeBob's "Mermaid Man and Barnacle Boy III"
+        # (an English Amazon rip) came tagged "iii", Sichuan Yi (Nov 15 2026).
+        (["iii"], None),
+        (["fre", "iii"], None),
     ],
 )
 def test_parse_probe_flags_audio_with_no_english_track(
