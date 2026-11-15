@@ -73,8 +73,23 @@ class Probe:
 
 
 ENGLISH = ("eng", "en")
-# Language tags that say nothing about the language: such a track may well be English.
-UNKNOWN_LANGUAGE = ("", "und", "unk", "mis", "mul", "zxx")
+# The languages US shows are dubbed into (ISO 639-2 and 639-1). Any other tag ("", "und",
+# or a mislabel like "iii" taken from "... Barnacle Boy III") says nothing: it may be English.
+DUB_LANGUAGES = frozenset({
+    "fre", "fra", "fr", "ger", "deu", "de", "spa", "es", "ita", "it", "por", "pt", "jpn", "ja",
+    "rus", "ru", "pol", "pl", "dut", "nld", "nl", "swe", "sv", "nor", "nob", "nno", "no", "nb",
+    "dan", "da", "fin", "fi", "cze", "ces", "cs", "slo", "slk", "sk", "hun", "hu", "tur", "tr",
+    "kor", "ko", "chi", "zho", "zh", "cmn", "yue", "hin", "hi", "ara", "ar", "heb", "he", "gre",
+    "ell", "el", "ukr", "uk", "rum", "ron", "ro", "bul", "bg", "hrv", "hr", "srp", "sr", "slv",
+    "sl", "tha", "th", "vie", "vi", "ind", "id", "may", "msa", "ms", "tam", "ta", "tel", "te",
+    "per", "fas", "fa", "cat", "ca", "est", "et", "lav", "lv", "lit", "lt", "ice", "isl", "is",
+    "fil", "tgl", "tl",
+})  # fmt: skip
+
+
+def _language(tag: str) -> str:
+    """The base language of a tag: "es-419" -> "es"."""
+    return tag.lower().split("-")[0]
 
 
 def _fraction(value: Any) -> Fraction:
@@ -124,9 +139,9 @@ def parse_probe(data: dict[str, Any]) -> Probe:
             )
         elif kind == "audio":
             audio.append((int(s["index"]), str(s.get("tags", {}).get("language", ""))))
-    english = [i for i, lang in audio if lang.lower() in ENGLISH]
+    english = [i for i, lang in audio if _language(lang) in ENGLISH]
     pick = english[0] if english else (audio[0][0] if audio else None)
-    named = audio and all(lang.lower() not in UNKNOWN_LANGUAGE for _, lang in audio)
+    named = audio and all(_language(lang) in DUB_LANGUAGES for _, lang in audio)
     foreign = audio[0][1] if named and not english else None
     duration = float(data.get("format", {}).get("duration") or 0)
     kept = [lengths.get(i) for i in (video.index if video else None, pick) if i is not None]
