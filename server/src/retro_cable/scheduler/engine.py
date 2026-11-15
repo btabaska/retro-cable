@@ -38,6 +38,7 @@ from retro_cable.catalog.models import (
 from retro_cable.catalog.parts import season_parts
 from retro_cable.scheduler.clock import broadcast_day, broadcast_day_bounds
 from retro_cable.scheduler.library import Bumper, Library, Program
+from retro_cable.scheduler.multipart import multipart_blocks
 
 SlotKind = Literal["episode", "movie", "bumper", "filler"]
 
@@ -52,6 +53,9 @@ OFF_AIR = "Off Air"
 DEFAULT_PRIME = (time(19, 0), time(23, 0))
 
 ProgramKey = tuple[str, int | None, int | None]
+# What airs next: one program, or a multi-part story's parts in order (multipart.py), and
+# whether it is a NEW premiere.
+Pick = tuple[tuple[Program, ...], bool]
 
 
 class ChannelOffAir(Exception):
@@ -137,6 +141,10 @@ class Scheduler:
         self._programs = {
             show: self._effective(show, eps, None) for show, eps in library.episodes.items()
         }
+        # Multi-part stories air as one block (multipart.py); keyed by each part.
+        self._blocks: dict[ProgramKey, tuple[ProgramKey, ...]] = {}
+        for eps in self._programs.values():
+            self._blocks.update(multipart_blocks(eps))
         # A show with a synthetic premiere on a channel has its own dates there, and only there.
         self._channel_programs = {
             (channel, show): self._effective(show, library.episodes[show], channel)
@@ -424,6 +432,9 @@ class Scheduler:
         # prime, so Halloween prime time stays themed without looping one episode all day.
         played_prime: set[ProgramKey] = set()
         marathon = self._marathon(channel, day)
+        # The parts of a multi-part story still to air: they follow at once, whatever the
+        # day-part, and fit before 5 a.m. (the story was only started if all of it did).
+        follow: Pick | None = None
         t = start
         while t < end:
             local = t.astimezone(self.tz)
@@ -432,6 +443,13 @@ class Scheduler:
             rng = Random(f"{self.seed}:{channel.id}:{t.isoformat()}")
             if marathon:
                 t = self._marathon_step(channel, day, marathon, slots, t, end, rng)
+                continue
+            if follow:
+                rest = follow
+                holidays = self._holidays(channel, part, local)
+                bumper = self._bumper(channel, rng)
+                t, follow = self._place(channel, slots, t, end - t, rest, bumper, sim_date)
+                self._mark(rest[0][0], aired, played, played_prime, holidays)
                 continue
             candidates = self._candidates(channel, part, sim_date)
             if not candidates and part is not None and part.block:
@@ -456,54 +474,99 @@ class Scheduler:
                 t = self._fill(slots, t, min(boundary, end), OFF_AIR)
                 continue
             bumper = self._bumper(channel, rng) if slots and slots[-1].kind != "filler" else None
-            pick: tuple[Program, bool] | None = (special, False) if special else None
+            pick: Pick | None = ((special,), False) if special else None
             if pick is None:
                 pick = self._pick(
                     channel, part, day, sim_date, candidates, room, rng, aired, slots,
                     holidays, played_prime if holidays and holidays.prime else played,
                 )  # fmt: skip
-            if pick and bumper:
-                gap = timedelta(seconds=min(bumper.seconds, channel.bumper_seconds))
-                if pick[0].seconds + gap.total_seconds() <= room.total_seconds():
-                    slots.append(
-                        Slot(
-                            start=t,
-                            end=t + gap,
-                            kind="bumper",
-                            title=channel.name,
-                            path=bumper.path,
-                        )
-                    )
-                    t += gap
             if pick is None:
                 t = self._fill(slots, t, end, PAID_PROGRAMMING)
                 continue
-            program, new = pick
-            aired[program.show] += 1
-            played.add(_key(program))
-            if holidays and holidays.prime:
-                played_prime.add(_key(program))
-            slot_end = t + timedelta(seconds=program.seconds)
-            slots.append(
-                Slot(
-                    start=t,
-                    end=slot_end,
-                    kind=program.kind,
-                    title=program.title,
-                    show=program.show,
-                    episode_title=program.episode_title,
-                    season=program.season,
-                    episode=program.episode,
-                    air_date=program.air_date,
-                    new=new,
-                    transplant=self._is_transplant(channel, program.show),
-                    path=program.path,
-                    holiday=self._holiday_label(program, sim_date),
-                    summary=program.summary,
-                )
-            )
-            t = slot_end
+            t, follow = self._place(channel, slots, t, room, pick, bumper, sim_date)
+            self._mark(pick[0][0], aired, played, played_prime, holidays)
         return tuple(slots)
+
+    def _place(
+        self,
+        channel: Channel,
+        slots: list[Slot],
+        t: datetime,
+        room: timedelta,
+        pick: Pick,
+        bumper: Bumper | None,
+        sim_date: date,
+    ) -> tuple[datetime, Pick | None]:
+        """Place a bumper (when the whole pick still fits after it) and the pick's first
+        program; return the new time and the parts still to follow."""
+        unit, new = pick
+        program = unit[0]
+        if bumper:
+            gap = timedelta(seconds=min(bumper.seconds, channel.bumper_seconds))
+            if self._block_seconds(channel, unit) + gap.total_seconds() <= room.total_seconds():
+                slots.append(
+                    Slot(start=t, end=t + gap, kind="bumper", title=channel.name, path=bumper.path)
+                )
+                t += gap
+        slot_end = t + timedelta(seconds=program.seconds)
+        slots.append(
+            Slot(
+                start=t,
+                end=slot_end,
+                kind=program.kind,
+                title=program.title,
+                show=program.show,
+                episode_title=program.episode_title,
+                season=program.season,
+                episode=program.episode,
+                air_date=program.air_date,
+                new=new and program.air_date == sim_date,  # a story's other parts aired before
+                transplant=self._is_transplant(channel, program.show),
+                path=program.path,
+                holiday=self._holiday_label(program, sim_date),
+                summary=program.summary,
+            )
+        )
+        return slot_end, ((unit[1:], new) if len(unit) > 1 else None)
+
+    def _mark(
+        self,
+        program: Program,
+        aired: Counter[str],
+        played: set[ProgramKey],
+        played_prime: set[ProgramKey],
+        holidays: "_Holidays | None",
+    ) -> None:
+        aired[program.show] += 1
+        played.add(_key(program))
+        if holidays and holidays.prime:
+            played_prime.add(_key(program))
+
+    def _block_seconds(self, channel: Channel, unit: tuple[Program, ...]) -> float:
+        """How long a block runs: its programs and, between them, the longest bumper."""
+        between = channel.bumper_seconds if self.library.bumpers.get(channel.id) else 0
+        return float(sum(p.seconds for p in unit) + between * (len(unit) - 1))
+
+    def _units(
+        self, channel: Channel, progs: list[Program], limit: float
+    ) -> list[tuple[Program, ...]]:
+        """A source's eligible programs as blocks that fit in `limit` seconds: each program
+        on its own, except a multi-part story's parts, which form one block at the first part's
+        place. A story airs only once all its parts are eligible (the debut rule holds for
+        every part); a part held back (multipart.py) never airs."""
+        eligible = {_key(p): p for p in progs}
+        units: list[tuple[Program, ...]] = []
+        for p in progs:
+            block = self._blocks.get(_key(p))
+            if block is None:
+                unit: tuple[Program, ...] = (p,)
+            elif not block or block[0] != _key(p) or any(k not in eligible for k in block):
+                continue
+            else:
+                unit = tuple(eligible[k] for k in block)
+            if self._block_seconds(channel, unit) <= limit:
+                units.append(unit)
+        return units
 
     def _marathon(self, channel: Channel, day: date) -> tuple[tuple[Program, str], ...]:
         """On a holiday itself, a movie channel's holiday marathon: every eligible movie it
@@ -658,33 +721,38 @@ class Scheduler:
         slots: list[Slot],
         holidays: "_Holidays | None" = None,
         played: set[ProgramKey] | None = None,
-    ) -> tuple[Program, bool] | None:
-        """Choose the next program that fits in `room`, and whether it is a NEW premiere."""
+    ) -> Pick | None:
+        """Choose what airs next and fits in `room` (a program, or a multi-part story's
+        parts), and whether it is a NEW premiere."""
         limit = room.total_seconds()
-        fitting = [(s, [p for p in progs if p.seconds <= limit]) for s, progs in candidates]
-        fitting = [(s, progs) for s, progs in fitting if progs]
+        fitting = [(s, self._units(channel, progs, limit)) for s, progs in candidates]
+        fitting = [(s, units) for s, units in fitting if units]
         if not fitting:
             return None
 
         if part is not None and part.primetime and not self.all_years:
             done = {(s.show, s.season, s.episode) for s in slots if s.new}
-            for _, progs in fitting:
-                for p in progs:
-                    if p.air_date == sim_date and (p.show, p.season, p.episode) not in done:
-                        return p, True
+            for _, units in fitting:
+                for unit in units:
+                    for p in unit:
+                        if p.air_date == sim_date and (p.show, p.season, p.episode) not in done:
+                            return unit, True
 
         if channel.type == "movie" and channel.playlist == "ordered":
-            return self._next_in_order([progs[0] for _, progs in fitting], day, aired, slots), False
+            movies = [units[0][0] for _, units in fitting]
+            return (self._next_in_order(movies, day, aired, slots),), False
 
         # Inside an "on" window, a show's tagged episodes not yet aired today come first, and
         # shows that have some get a boost by the holiday's strength.
-        preferred: dict[str, list[Program]] = {}
+        preferred: dict[str, list[tuple[Program, ...]]] = {}
         if holidays and holidays.prefer:
             seen = played or set()
-            for s, progs in fitting:
+            for s, units in fitting:
                 if s.kind == "show":
                     keep = [
-                        p for p in progs if self.tags(p) & holidays.prefer and _key(p) not in seen
+                        u
+                        for u in units
+                        if any(self.tags(p) & holidays.prefer and _key(p) not in seen for p in u)
                     ]
                     if keep:
                         preferred[s.show] = keep
@@ -697,13 +765,13 @@ class Scheduler:
             * (boost if s.show in preferred else 1.0)
             for s, _ in fitting
         ]
-        source, progs = rng.choices(fitting, weights=weights)[0]
+        source, units = rng.choices(fitting, weights=weights)[0]
         if source.kind == "movie":
-            return progs[0], False
-        progs = preferred.get(source.show, progs)
-        offset = _stable_int(self.seed, channel.id, source.show) % len(progs)
-        index = (offset + (day - EPOCH).days * RERUN_STRIDE + aired[source.show]) % len(progs)
-        return progs[index], False
+            return units[0], False
+        units = preferred.get(source.show, units)
+        offset = _stable_int(self.seed, channel.id, source.show) % len(units)
+        index = (offset + (day - EPOCH).days * RERUN_STRIDE + aired[source.show]) % len(units)
+        return units[index], False
 
     def _next_in_order(
         self, movies: list[Program], day: date, aired: Counter[str], slots: list[Slot]
