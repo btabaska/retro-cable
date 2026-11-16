@@ -815,3 +815,27 @@ def test_normalize_follows_a_given_order(
         order=lambda items: list(reversed(items)),
     )  # fmt: skip
     assert ["S01E03" in " ".join(c) for c in rec.calls] == [True, False, False]
+
+
+def _probe_failing(path: Path) -> Probe:
+    if path.name.endswith("e03.mp4.partial"):
+        raise subprocess.CalledProcessError(
+            1, ["ffprobe", "-v", "error"], stderr="x.mp4: Host is down\n"
+        )
+    return fake_probe(path)
+
+
+def test_every_failure_is_reported_with_its_reason(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    """Bill Nye S02E04 and Xena S05E05 failed with nothing in the log (Nov 15 2026): only a
+    ValueError was reported, so an ffmpeg or ffprobe exit or a file error left no reason."""
+    said: list[str] = []
+    stats = normalize(db, tmp_path / "media", run=Recorder(fail_on="S01E02"),
+                      probe=_probe_failing, crop=no_crop, progress=said.append)  # fmt: skip
+    assert stats.failed == ["s S01E02", "s S01E03"]
+    failures = [line for line in said if "failed" in line]
+    assert failures == [
+        "s S01E02 failed: ffmpeg exited 1",
+        "s S01E03 failed: ffprobe exited 1: x.mp4: Host is down",
+    ]
