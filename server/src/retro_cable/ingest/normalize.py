@@ -773,6 +773,17 @@ def normalize(
     return stats
 
 
+def _reason(err: Exception) -> str:
+    """Why an encode failed, in one line: the tool that exited and its last error line."""
+    if isinstance(err, subprocess.CalledProcessError):
+        cmd = err.cmd[0] if isinstance(err.cmd, list | tuple) else str(err.cmd).split()[0]
+        said = (err.stderr or "").strip().splitlines() if isinstance(err.stderr, str) else []
+        return f"{Path(cmd).name} exited {err.returncode}" + (f": {said[-1]}" if said else "")
+    if isinstance(err, KeyError):
+        return f"missing {err}"
+    return str(err)
+
+
 def _encode(
     db: sqlite3.Connection,
     media_dir: Path,
@@ -816,8 +827,8 @@ def _encode(
     except (subprocess.CalledProcessError, ValueError, KeyError, OSError) as err:
         tmp.unlink(missing_ok=True)
         stats.failed.append(item.label)
-        if progress is not None and isinstance(err, ValueError):
-            progress(f"{item.label} failed: {err}")
+        if progress is not None:
+            progress(f"{item.label} failed: {_reason(err)}")
         return "failed"
     _record(db, item, seconds, source, st)
     stats.encoded += 1
