@@ -73,18 +73,21 @@ class Probe:
 
 
 ENGLISH = ("eng", "en")
-# The languages US shows are dubbed into (ISO 639-2 and 639-1). Any other tag ("", "und",
-# or a mislabel like "iii" taken from "... Barnacle Boy III") says nothing: it may be English.
-DUB_LANGUAGES = frozenset({
-    "fre", "fra", "fr", "ger", "deu", "de", "spa", "es", "ita", "it", "por", "pt", "jpn", "ja",
-    "rus", "ru", "pol", "pl", "dut", "nld", "nl", "swe", "sv", "nor", "nob", "nno", "no", "nb",
-    "dan", "da", "fin", "fi", "cze", "ces", "cs", "slo", "slk", "sk", "hun", "hu", "tur", "tr",
-    "kor", "ko", "chi", "zho", "zh", "cmn", "yue", "hin", "hi", "ara", "ar", "heb", "he", "gre",
-    "ell", "el", "ukr", "uk", "rum", "ron", "ro", "bul", "bg", "hrv", "hr", "srp", "sr", "slv",
-    "sl", "tha", "th", "vie", "vi", "ind", "id", "may", "msa", "ms", "tam", "ta", "tel", "te",
-    "per", "fas", "fa", "cat", "ca", "est", "et", "lav", "lv", "lit", "lt", "ice", "isl", "is",
-    "fil", "tgl", "tl",
-})  # fmt: skip
+# The languages US shows are dubbed into: each one's ISO 639-2 and 639-1 codes. Any other tag
+# ("", "und", or "iii") says nothing: the track may be English.
+_DUBS = (
+    ("fre", "fra", "fr"), ("ger", "deu", "de"), ("spa", "es"), ("ita", "it"), ("por", "pt"),
+    ("jpn", "ja"), ("rus", "ru"), ("pol", "pl"), ("dut", "nld", "nl"), ("swe", "sv"),
+    ("nor", "nob", "nno", "no", "nb"), ("dan", "da"), ("fin", "fi"), ("cze", "ces", "cs"),
+    ("slo", "slk", "sk"), ("hun", "hu"), ("tur", "tr"), ("kor", "ko"),
+    ("chi", "zho", "zh", "cmn", "yue"), ("hin", "hi"), ("ara", "ar"), ("heb", "he"),
+    ("gre", "ell", "el"), ("ukr", "uk"), ("rum", "ron", "ro"), ("bul", "bg"), ("hrv", "hr"),
+    ("srp", "sr"), ("slv", "sl"), ("tha", "th"), ("vie", "vi"), ("ind", "id"),
+    ("may", "msa", "ms"), ("tam", "ta"), ("tel", "te"), ("per", "fas", "fa"), ("cat", "ca"),
+    ("est", "et"), ("lav", "lv"), ("lit", "lt"), ("ice", "isl", "is"), ("fil", "tgl", "tl"),
+)  # fmt: skip
+_SAME_LANGUAGE = {code: frozenset(group) for group in _DUBS for code in group}
+DUB_LANGUAGES = frozenset(_SAME_LANGUAGE)
 
 
 def _language(tag: str) -> str:
@@ -141,7 +144,14 @@ def parse_probe(data: dict[str, Any]) -> Probe:
             audio.append((int(s["index"]), str(s.get("tags", {}).get("language", ""))))
     english = [i for i, lang in audio if _language(lang) in ENGLISH]
     pick = english[0] if english else (audio[0][0] if audio else None)
-    named = audio and all(_language(lang) in DUB_LANGUAGES for _, lang in audio)
+    # Some muxers tag the audio with a word of the title ("No Free Rides" -> "nor", "Boy III" ->
+    # "iii"): a tag spelled by the title says nothing either.
+    title = str(data.get("format", {}).get("tags", {}).get("title", ""))
+    words = set(re.findall(r"[a-z]+", title.lower()))
+    named = audio and all(
+        _language(lang) in DUB_LANGUAGES and not words & _SAME_LANGUAGE[_language(lang)]
+        for _, lang in audio
+    )
     foreign = audio[0][1] if named and not english else None
     duration = float(data.get("format", {}).get("duration") or 0)
     kept = [lengths.get(i) for i in (video.index if video else None, pick) if i is not None]
