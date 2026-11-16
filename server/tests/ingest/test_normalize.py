@@ -839,3 +839,26 @@ def test_every_failure_is_reported_with_its_reason(
         "s S01E02 failed: ffmpeg exited 1",
         "s S01E03 failed: ffprobe exited 1: x.mp4: Host is down",
     ]
+
+
+@pytest.mark.parametrize(
+    ("title", "language", "foreign"),
+    [
+        # iVy's SpongeBob S02 took the audio tag from a word of the title (Nov 16 2026).
+        ("S02E17.No.Free.Rides.1080p.AMZN.WEB-DL.DD2.0.H264-AME", "nor", None),  # "No" = no/nor
+        ("S02E30.The.Fry.Cook.Games.1080p.AMZN.WEB-DL.DD2.0.H264-AME", "fry", None),
+        ("S02E07.Mermaid.Man.and.Barnacle.Boy.III.1080p.AMZN.WEB-DL", "iii", None),
+        # A real dub's tag is not a word of its title.
+        ("30.Rock.S02E05.MULTi.480p.DVDRip", "fre", "fre"),
+        ("", "fre", "fre"),
+    ],
+)
+def test_an_audio_tag_taken_from_the_title_is_a_mislabel(
+    title: str, language: str, foreign: str | None
+) -> None:
+    data = probe_json(
+        {"index": 0, "codec_type": "video", "width": 720, "height": 480},
+        {"index": 1, "codec_type": "audio", "tags": {"language": language}},
+    )
+    data["format"] = {"duration": "1320.5", "tags": {"title": title}}
+    assert parse_probe(data).foreign_audio == foreign
