@@ -829,7 +829,23 @@ def _encode(
         if watch is not None:
             watch.started(item, chosen)
         dst.parent.mkdir(parents=True, exist_ok=True)
-        run(cmd)
+        try:
+            run(cmd)
+        except subprocess.CalledProcessError as err:
+            # ffmpeg killed by a signal mid-NVENC (SIGSEGV on sound files, Nov 17 2026) is a
+            # driver hiccup, not the file: do it again at once on the CPU.
+            if chosen != "nvenc" or err.returncode >= 0:
+                raise
+            if progress:
+                progress(f"{item.label} crashed on nvenc ({_reason(err)}), again on x264")
+            tmp.unlink(missing_ok=True)
+            chosen = "x264"
+            cmd = build_command(src, tmp, info, chosen, max_seconds, crop=bars, codec=codec)
+            if progress:
+                progress(f"{item.label} [{chosen}]")
+            if watch is not None:
+                watch.started(item, chosen)
+            run(cmd)
         out = probe(tmp)
         check_encode(out, info, max_seconds)
         seconds = math.floor(out.duration)
