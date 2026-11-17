@@ -149,6 +149,34 @@ def test_a_clip_far_shorter_than_the_rest_of_its_show_is_never_scheduled(
     assert [p.episode for p in load_library(db).episodes["leverage"]] == [3, 4, 5, 6]
 
 
+def test_an_episode_with_a_two_part_runtime_airs_when_it_is_as_long_as_its_shows(
+    db: sqlite3.Connection,
+) -> None:
+    """TMDB gives some finales the runtime of their two-hour broadcast (Lost "Exodus 2": 5220 s,
+    Desperate Housewives "Remember 1": 5280 s) while each part is its own 43-minute file. A
+    file under half its runtime still airs when it is whole (not short of its source) and at
+    least three quarters of its show's usual episode, once the show has five to judge by."""
+    db.execute("INSERT INTO shows (id, title) VALUES ('lost', 'Lost')")
+
+    def add(ep: int, runtime: int, source: int, seconds: int) -> None:
+        db.execute(
+            "INSERT INTO episodes (show_id, season, episode, title, runtime_seconds, file_path,"
+            " source_seconds, media_path, media_seconds) VALUES ('lost', 1, ?, '', ?, '/s.mkv',"
+            " ?, ?, ?)",
+            (ep, runtime, source, f"tv/{ep}.mp4", seconds),
+        )
+
+    for ep, seconds in [(1, 2600), (2, 2580), (3, 2610), (4, 2590)]:
+        add(ep, 2640, seconds, seconds)
+    add(5, 5220, 2589, 2589)  # Exodus 2: whole, and as long as the rest
+    # Four episodes are too few to judge by.
+    assert [p.episode for p in load_library(db).episodes["lost"]] == [1, 2, 3, 4]
+    add(6, 2640, 2595, 2595)
+    add(7, 5220, 1200, 1200)  # a sample: far shorter than the show's episodes
+    add(8, 5220, 2600, 1100)  # an encode cut short of its source
+    assert [p.episode for p in load_library(db).episodes["lost"]] == [1, 2, 3, 4, 5, 6]
+
+
 def test_short_media_can_be_allowed_explicitly(db: sqlite3.Connection) -> None:
     # Trials (`normalize --max-seconds`) and demos may opt in: RC_ALLOW_SHORT_MEDIA=1.
     add_episode(db, 1, "/src/S01E01.mkv", media_path="tv/1.mp4", seconds=120)
