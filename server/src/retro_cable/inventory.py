@@ -26,7 +26,12 @@ from retro_cable.catalog.holidays import Tagger
 from retro_cable.catalog.models import Carriage, Channel
 from retro_cable.db import connect, migrate
 from retro_cable.ingest.cli import default_db
-from retro_cable.scheduler.library import EXPECTED_SECONDS, PLAY_SECONDS, SHORT_MEDIA_RATIO
+from retro_cable.scheduler.library import (
+    EXPECTED_SECONDS,
+    PLAY_SECONDS,
+    SHORT_MEDIA_RATIO,
+    load_library,
+)
 
 
 @dataclass(frozen=True)
@@ -152,6 +157,9 @@ def short_media(db: sqlite3.Connection) -> list[str]:
     media is allowed (RC_ALLOW_SHORT_MEDIA)."""
     on_disk = "(media_path IS NOT NULL OR file_path IS NOT NULL)"
     short = f"seconds > 0 AND seconds < expected * {SHORT_MEDIA_RATIO}"
+    # A whole episode as long as its show's others airs anyway (SHOW_WHOLE_RATIO).
+    lib = load_library(db)
+    airs = {(p.show, p.season, p.episode) for eps in lib.episodes.values() for p in eps}
     found = [
         f"{r['show_id']} S{r['season']:02d}E{r['episode']:02d}"
         f" ({r['seconds']} s of {r['expected']} s)"
@@ -159,6 +167,7 @@ def short_media(db: sqlite3.Connection) -> list[str]:
             f"SELECT * FROM (SELECT show_id, season, episode, {PLAY_SECONDS} AS seconds,"
             f" {EXPECTED_SECONDS} AS expected FROM episodes WHERE {on_disk}) WHERE {short}"
         )
+        if (r["show_id"], r["season"], r["episode"]) not in airs
     ]
     found += [
         f"{r['id']} (movie) ({r['seconds']} s of {r['expected']} s)"
