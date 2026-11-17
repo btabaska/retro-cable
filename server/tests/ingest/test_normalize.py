@@ -841,6 +841,56 @@ def test_every_failure_is_reported_with_its_reason(
     ]
 
 
+class Crasher(Recorder):
+    """ffmpeg killed by a signal (exit -11) the first time it encodes `crash_on` with NVENC."""
+
+    def __init__(self, crash_on: str, code: int = -11, every: bool = False) -> None:
+        super().__init__()
+        self.crash_on, self.code, self.every, self.crashed = crash_on, code, every, False
+
+    def __call__(self, cmd: list[str]) -> None:
+        hit = any(self.crash_on in part for part in cmd)
+        if hit and (self.every or ("h264_nvenc" in cmd and not self.crashed)):
+            self.calls.append(cmd)
+            self.crashed = True
+            raise subprocess.CalledProcessError(self.code, cmd[0])
+        super().__call__(cmd)
+
+
+def test_an_nvenc_encode_that_crashes_is_done_again_on_x264(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path
+) -> None:
+    """30 Rock S04E21 and Gilmore Girls S06E13 (Nov 17 2026): ffmpeg died with SIGSEGV (exit
+    -11) during an NVENC encode of a sound file, and the episode waited for the next run.
+    An NVENC encode killed by a signal is done again at once with libx264."""
+    said: list[str] = []
+    run = Crasher("S01E02")
+    stats = normalize(db, tmp_path / "media", run=run, probe=fake_probe, crop=no_crop,
+                      encoder="nvenc", progress=said.append)  # fmt: skip
+    assert stats.failed == []
+    assert stats.encoded == 3
+    assert stats.encoders == {"nvenc": 2, "x264": 1}
+    e02 = [c for c in run.calls if any("S01E02" in part for part in c)]
+    assert ["h264_nvenc" in c for c in e02] == [True, False]
+    assert "libx264" in e02[1]
+    assert "s S01E02 crashed on nvenc (ffmpeg exited -11), again on x264" in said
+    assert "s S01E02 [x264]" in said
+
+
+@pytest.mark.parametrize(
+    ("code", "encoder"),
+    [(1, "nvenc"), (-11, "x264")],  # an ordinary error; a crash already on the CPU
+)
+def test_other_encode_failures_are_not_retried(
+    db: sqlite3.Connection, fake_library: Path, tmp_path: Path, code: int, encoder: Encoder
+) -> None:
+    run = Crasher("S01E02", code=code, every=True)
+    stats = normalize(db, tmp_path / "media", run=run, probe=fake_probe, crop=no_crop,
+                      encoder=encoder)  # fmt: skip
+    assert stats.failed == ["s S01E02"]
+    assert len([c for c in run.calls if any("S01E02" in part for part in c)]) == 1
+
+
 @pytest.mark.parametrize(
     ("title", "language", "foreign"),
     [
