@@ -231,6 +231,34 @@ def test_an_existing_whole_encode_lets_its_download_go_on_a_later_pass(
     assert len(deleted) == 2
 
 
+@pytest.mark.parametrize(
+    ("length", "deleted", "recorded"),
+    [
+        (1320.9, 2, 1320),  # the source runs as long as its encode: the original goes
+        (2000.0, 0, 2000),  # the encode is short of it: kept, and encoded again next run
+        (0.0, 0, None),  # still unknown: kept
+    ],
+)
+def test_an_encode_from_before_source_lengths_were_recorded_lets_its_download_go(
+    db: sqlite3.Connection, downloads: Path, length: float, deleted: int, recorded: int | None
+) -> None:
+    """433 Live TV originals (239 GB) stayed after their encodes (Nov 18 2026): they were
+    encoded before normalize recorded the source's length, so nothing could check the encode
+    against it. A skipped item without that length has its source probed once and recorded,
+    and then the usual check decides."""
+    _run(db, downloads, None)
+    db.execute("UPDATE episodes SET source_seconds = NULL")
+
+    def probe(path: Path) -> Probe:
+        return Probe(length, VIDEO, 1)
+
+    rec, gone = _run(db, downloads, downloads / "media/sources", probe=probe)
+    assert rec.calls == []
+    assert len(gone) == deleted
+    rows = db.execute("SELECT source_seconds FROM episodes WHERE episode < 3").fetchall()
+    assert [r[0] for r in rows] == [recorded, recorded]
+
+
 def test_a_deleted_original_is_not_queued_again_and_still_counts_as_done(
     db: sqlite3.Connection, downloads: Path
 ) -> None:
