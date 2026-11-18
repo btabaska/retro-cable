@@ -576,6 +576,22 @@ def _record(
         )
 
 
+def _measure_source(db: sqlite3.Connection, item: Item, src: Path, probe: Prober) -> None:
+    """Record the length of a source encoded before lengths were recorded (Nov 18 2026: 433
+    Live TV originals kept for want of one), so its encode can be checked and its original
+    deleted. An encode it shows short is converted again on the next run."""
+    try:
+        seconds = probe(src).duration
+    except (subprocess.CalledProcessError, ValueError, KeyError, OSError):
+        return
+    if seconds > 0:
+        with transaction(db):
+            db.execute(
+                f"UPDATE {item.table} SET source_seconds = ? WHERE id = ?",
+                (math.floor(seconds), item.rowid),
+            )
+
+
 def check_encode(out: Probe, info: Probe, max_seconds: float | None) -> None:
     """Raise ValueError unless the encode `out` of source `info` is whole: playable video,
     audio when the source had some, and the source's length (or the trial's) within 2%."""
@@ -763,6 +779,8 @@ def normalize(
                 and (media_dir / item.target).is_file()
             ):
                 stats.skipped += 1
+                if may_delete and item.source_seconds is None and item.table != "bumpers":
+                    _measure_source(db, item, src, probe)
                 delete(item, src, st)
                 done(item, "skipped")
                 continue
