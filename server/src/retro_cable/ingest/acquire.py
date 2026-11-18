@@ -742,6 +742,32 @@ def release_imported(
         report.failed.append({"id": "queue", "title": "", "reason": f"releasing: {err}"})
 
 
+def release(request: Request | None, livetv_tv: Path, dry_run: bool) -> InstanceReport:
+    """release_imported on its own: `python -m retro_cable.ingest release`, which the rig runs
+    right after normalize. Acquire runs before normalize, when the files Sonarr imported again
+    since the last cycle are back, so it releases nothing; normalize deletes them, and Sonarr
+    imports them again before the next cycle (120 episodes of 8 packs, every cycle, Nov 18).
+    Right after normalize they are gone. Like acquire, it refuses an instance whose root
+    folders aren't exactly /tv."""
+    report = InstanceReport(SONARR)
+    if request is None:
+        report.error = f"set {SONARR_API.env}_URL and {SONARR_API.env}_KEY"
+        return report
+    try:
+        roots = sorted(
+            str(r.get("path", "")).rstrip("/") or "/"
+            for r in request("GET", "/api/v3/rootfolder", None, None) or []
+        )
+    except _ERRORS as err:
+        report.error = f"{SONARR}: {err}"
+        return report
+    if roots != [SONARR_ROOT]:
+        report.error = f"{SONARR}'s root folders are {roots}: not releasing"
+        return report
+    release_imported(request, livetv_tv, report, dry_run)
+    return report
+
+
 SEARCH_EVERY = timedelta(hours=23)  # about daily, with the worker's 6-hour passes
 _NO_INDEXERS = re.compile(
     r"^(All (search-capable )?indexers are (temporarily )?unavailable|No indexers available)",
