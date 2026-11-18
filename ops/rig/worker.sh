@@ -11,6 +11,7 @@ set -euo pipefail
 #      NVENC while the GPU is idle and x264 otherwise, writing a JSON sidecar per encode
 #      and manifest.json for the mini (ingest/manifest.py). Originals under
 #      RC_DELETE_SOURCES_UNDER (the downloads) are deleted once their encode is whole;
+#      then release the sonarr-livetv downloads whose imports it just deleted (RC_ACQUIRE=1);
 #   4. join TV movies TheTVDB files as episodes of a series from those episodes' encodes
 #      (ingest/assemble.py), once all of them are converted;
 #   5. sleep, then look again for new files. Each normalize run gets RC_NORMALIZE_MINUTES
@@ -89,6 +90,15 @@ cycle() {
     mv "$data/last-normalize.json.part" "$data/last-normalize.json"
     log "normalize failed"
     status=1
+  fi
+  # Release the downloads whose imports normalize just deleted, before Sonarr imports them
+  # again from the seeding torrent (acquire, earlier, still saw last cycle's re-imports).
+  if [[ ${RC_ACQUIRE:-0} == 1 ]]; then
+    if ingest release --livetv-tv "$livetv_tv" >"$data/last-release.json"; then
+      log "release done ($data/last-release.json)"
+    else
+      log "release failed or refused ($data/last-release.json)"
+    fi
   fi
   # TV movies TheTVDB files as episodes (overrides.yaml episodes_of): joined from their
   # episodes' encodes once all are converted (ingest/assemble.py).

@@ -34,7 +34,7 @@ from retro_cable.catalog import Catalog, CatalogError, load_catalog
 from retro_cable.catalog.overlay import apply_overlay
 from retro_cable.db import connect, migrate
 from retro_cable.ingest import manifest
-from retro_cable.ingest.acquire import acquire
+from retro_cable.ingest.acquire import acquire, release
 from retro_cable.ingest.assemble import AssembleStats, assemble
 from retro_cable.ingest.gpu import choose_encoder, comfy_busy
 from retro_cable.ingest.http import Request, json_request
@@ -81,6 +81,7 @@ def _parser() -> argparse.ArgumentParser:
             "tmdb",
             "scan",
             "acquire",
+            "release",
             "normalize",
             "assemble",
             "manifest",
@@ -120,7 +121,8 @@ def _parser() -> argparse.ArgumentParser:
     acq = parser.add_argument_group("acquire")
     acq.add_argument("--livetv-tv", type=Path, default=None,
                      help="sonarr-livetv's /tv here: release finished downloads whose "
-                          "imports are all encoded and deleted (the rig)")  # fmt: skip
+                          "imports are all encoded and deleted (the rig; release needs "
+                          "it)")  # fmt: skip
     idx = parser.add_argument_group("index-media")
     idx.add_argument("--manifest-file", type=Path, default=None,
                      help="default <media dir>/manifest.json")  # fmt: skip
@@ -179,6 +181,11 @@ def main(argv: list[str]) -> int:
     elif args.job == "scan" and not (args.tv or args.movies):
         print("scan needs --tv DIR and/or --movies DIR", file=sys.stderr)
         return 2
+    elif args.job == "release":
+        if args.livetv_tv is None:
+            print("release needs --livetv-tv DIR", file=sys.stderr)
+            return 2
+        return _release(args)
     needs_catalog = ("plex", "tmdb", "scan", "acquire", "assemble")
     if args.job in needs_catalog or (args.job == "normalize" and not args.all):
         try:
@@ -306,6 +313,13 @@ def _acquire(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace)
                      now=datetime.now(UTC), livetv_tv=args.livetv_tv, search=search)  # fmt: skip
     print(json.dumps(asdict(report), indent=2))
     return 0 if report.ok else 1
+
+
+def _release(args: argparse.Namespace) -> int:
+    # The rig runs it right after normalize (see acquire.release); it needs no database.
+    report = release(_arr("SONARR"), args.livetv_tv, args.dry_run)
+    print(json.dumps(asdict(report), indent=2))
+    return 0 if report.error is None else 1
 
 
 def _assemble(db: sqlite3.Connection, catalog: Catalog, args: argparse.Namespace) -> object:
