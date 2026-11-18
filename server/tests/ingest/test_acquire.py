@@ -15,7 +15,7 @@ import pytest
 from retro_cable.catalog import load_catalog
 from retro_cable.db import connect, migrate
 from retro_cable.ingest import cli
-from retro_cable.ingest.acquire import Wanted, acquire, wanted
+from retro_cable.ingest.acquire import Wanted, acquire, release, wanted
 from tests.conftest import MakeCatalog
 
 
@@ -1140,3 +1140,57 @@ def test_nothing_is_released_without_the_download_folder(
     sonarr = FakeArr("series", lookups=SONARR_LOOKUPS, queue=_pack(10, "done"), history=history)
     _trim(library, make_catalog, sonarr)
     assert "/api/v3/history" not in sonarr.gets and sonarr.deleted == []
+
+
+def test_downloads_are_released_after_normalize_deletes_their_imports(tmp_path: Path) -> None:
+    """Acquire runs before normalize, so it finds the files Sonarr imported again since the
+    last cycle and releases nothing; normalize then deletes them, and Sonarr imports them
+    again before the next cycle (120 episodes of 8 packs, every cycle, Nov 18). The rig
+    releases once more right after normalize, while they are gone."""
+    tv = tmp_path / "livetv-tv"
+    (tv / "Other (2001)").mkdir(parents=True)
+    history = {"done": ["/tv/Show (1999)/Season 01/S01E01.mkv"]}
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS, queue=_pack(10, "done"), history=history)
+    out = asdict(release(sonarr, tv, dry_run=False))
+    assert out["released"] == [{"title": "Pack done", "imported": 1}] and out["error"] is None
+    assert [path for path, _ in sonarr.deleted] == ["/api/v3/queue/10"]
+
+    dry = FakeArr("series", lookups=SONARR_LOOKUPS, queue=_pack(10, "done"), history=history)
+    assert asdict(release(dry, tv, dry_run=True))["released"] and dry.deleted == []
+
+
+def test_release_refuses_an_instance_that_is_unset_or_not_the_live_tv_one(tmp_path: Path) -> None:
+    tv = tmp_path / "livetv-tv"
+    (tv / "Other (2001)").mkdir(parents=True)
+    assert release(None, tv, dry_run=False).error == (
+        "set RC_SONARR_LIVETV_URL and RC_SONARR_LIVETV_KEY"
+    )
+    plex = FakeArr("series", lookups=SONARR_LOOKUPS, queue=_pack(10, "done"),
+                   history={"done": ["/tv/Show (1999)/Season 01/S01E01.mkv"]},
+                   roots=["/data/tv"])  # fmt: skip
+    out = release(plex, tv, dry_run=False)
+    assert out.error and "not releasing" in out.error
+    assert out.released == [] and plex.deleted == [] and "/api/v3/queue" not in plex.gets
+
+
+def test_release_cli_prints_what_it_released_and_never_the_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    sonarr = FakeArr("series", lookups=SONARR_LOOKUPS, queue=_pack(10, "done"),
+                     history={"done": ["/tv/Show (1999)/Season 01/S01E01.mkv"]})  # fmt: skip
+    monkeypatch.setattr(cli, "json_request", lambda url, headers, timeout=30: sonarr)
+    monkeypatch.setenv("RC_SONARR_LIVETV_URL", "http://sonarr:8990")
+    monkeypatch.setenv("RC_SONARR_LIVETV_KEY", "sonarr-secret-key")
+    tv = tmp_path / "livetv-tv"
+    (tv / "Other (2001)").mkdir(parents=True)
+    args = ["release", "--db", str(tmp_path / "rig.db"), "--livetv-tv", str(tv)]
+    assert cli.main(args) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["released"] == [{"title": "Pack done", "imported": 1}]
+    assert "secret" not in captured.out + captured.err
+
+    assert cli.main(["release", "--db", str(tmp_path / "rig.db")]) == 2, "needs --livetv-tv"
+    monkeypatch.delenv("RC_SONARR_LIVETV_URL")
+    assert cli.main(args) == 1
