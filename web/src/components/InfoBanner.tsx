@@ -1,6 +1,7 @@
 import type { ChannelInfo, GuideSlot, TunedSlot } from "../api/client";
 import { programLabel } from "../lib/program";
 import { formatShortTime } from "../lib/time";
+import { ALL_YEARS, yearLabel } from "../lib/years";
 
 interface InfoBannerProps {
   channel: ChannelInfo;
@@ -80,7 +81,7 @@ export function InfoBanner({ channel, slot, next, now, year, timeZone, onGuide, 
           Guide
         </button>
         <button type="button" className="btn btn-gold" data-focus-key="banner-year" onClick={onYear}>
-          Year {year}
+          {year === ALL_YEARS ? yearLabel(year) : `Year ${String(year)}`}
         </button>
       </div>
     </div>

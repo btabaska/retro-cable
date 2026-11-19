@@ -1,5 +1,81 @@
 {
   "$defs": {
+    "EpisodesOf": {
+      "additionalProperties": false,
+      "description": "A TV movie TheTVDB files as episodes of a series (Drake & Josh: Really Big Shrimp is\nDrake & Josh S04E17-E18). It comes down with the series, never from Radarr (with\n`tvdb_id`, acquire asks Sonarr for those seasons), and the rig joins those episodes'\nencodes into the movie (`ingest assemble`).",
+      "properties": {
+        "episodes": {
+          "description": "In airing order; a file holding several is listed once",
+          "items": {
+            "pattern": "^S\\d{1,3}E\\d{1,4}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Episodes",
+          "type": "array"
+        },
+        "show": {
+          "description": "The series' id in the library (its folder title's slug)",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Show",
+          "type": "string"
+        },
+        "tvdb_id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The series' TheTVDB id, when no channel carries it: acquire asks Sonarr for the seasons holding these episodes",
+          "title": "Tvdb Id"
+        }
+      },
+      "required": [
+        "show",
+        "episodes"
+      ],
+      "title": "EpisodesOf",
+      "type": "object"
+    },
+    "PartOf": {
+      "additionalProperties": false,
+      "description": "A show TheTVDB files as seasons of another series (Justice League Unlimited is\nJustice League seasons 3-5). The library keeps the series' files under its own id; the\nscheduler reads these seasons as this show, and acquire asks Sonarr for just them.",
+      "properties": {
+        "seasons": {
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "title": "Seasons",
+          "type": "array"
+        },
+        "show": {
+          "description": "The series' id in the library (its folder title's slug)",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "title": "Show",
+          "type": "string"
+        },
+        "tvdb_id": {
+          "description": "The series' TheTVDB id, for Sonarr",
+          "minimum": 1,
+          "title": "Tvdb Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "show",
+        "tvdb_id",
+        "seasons"
+      ],
+      "title": "PartOf",
+      "type": "object"
+    },
     "ShowOverride": {
       "additionalProperties": false,
       "properties": {
@@ -14,6 +90,18 @@
           },
           "title": "Episodes",
           "type": "object"
+        },
+        "episodes_of": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EpisodesOf"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A TV movie made of a series' episodes (TheTVDB's filing)"
         },
         "exclude": {
           "default": false,
@@ -34,6 +122,18 @@
           },
           "title": "Holiday Tags",
           "type": "object"
+        },
+        "part_of": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PartOf"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Seasons of another series (TheTVDB files them as one)"
         },
         "plex_title": {
           "anyOf": [

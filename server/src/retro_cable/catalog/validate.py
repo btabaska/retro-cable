@@ -89,6 +89,16 @@ def _check_carriage(catalog: Catalog, channel_ids: set[str]) -> list[str]:
     return errors
 
 
+# Override fields that only help find a show's files and downloads.
+_FINDING = {"show", "tmdb_id", "year", "plex_title", "part_of", "episodes_of"}
+
+
+def _episode(key: str) -> str:
+    """S4E7 and S04E07 are the same episode."""
+    season, episode = (int(n) for n in key[1:].split("E"))
+    return f"S{season:02d}E{episode:02d}"
+
+
 def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
     errors: list[str] = []
     carried = {c.show for c in catalog.carriage.carriage}
@@ -103,12 +113,37 @@ def _check_shows(catalog: Catalog, holiday_ids: set[str]) -> list[str]:
         if not FIRST_DAY <= s.premiere <= LAST_DAY:
             errors.append(f"{s.show} on {s.channel}: premiere must be within 1990-2010")
     seen: set[str] = set()
+    claimed: dict[tuple[str, int], str] = {}
     for o in catalog.overrides.shows:
         if o.show in seen:
             errors.append(f"overrides: '{o.show}' is listed twice")
         seen.add(o.show)
-        if o.show not in carried:
+        # Only finding a title (_FINDING) may name a show the YAML doesn't carry: the
+        # channel builder's shows are carried by /admin channels.
+        if o.show not in carried and o.model_fields_set - _FINDING:
             errors.append(f"overrides: '{o.show}' has no carriage on any channel")
+        if o.part_of is not None:
+            if o.part_of.show == o.show:
+                errors.append(f"overrides: '{o.show}' can't be part of itself")
+            for season in o.part_of.seasons:
+                other = claimed.setdefault((o.part_of.show, season), o.show)
+                if other != o.show:
+                    errors.append(
+                        f"overrides: {o.part_of.show} season {season} airs as both"
+                        f" {other} and {o.show}"
+                    )
+        if o.episodes_of is not None:
+            if o.episodes_of.show == o.show:
+                errors.append(f"overrides: '{o.show}' can't be made of its own episodes")
+            keys = [_episode(e) for e in o.episodes_of.episodes]
+            errors.extend(
+                f"overrides: '{o.show}' lists {k} twice"
+                for k in sorted({k for k in keys if keys.count(k) > 1})
+            )
+            if o.part_of is not None:
+                errors.append(
+                    f"overrides: '{o.show}' is part_of a series or episodes_of one, not both"
+                )
         for ep, tags in o.holiday_tags.items():
             errors.extend(
                 f"{o.show} {ep}: unknown holiday '{t}'" for t in tags if t not in holiday_ids
@@ -161,6 +196,28 @@ def _check_templates(catalog: Catalog) -> list[str]:
     return errors
 
 
+def _check_power_hours(catalog: Catalog) -> list[str]:
+    """Power hours (M5, from the station manager): a known non-movie channel, at most one
+    each, pooling shows the channel carries."""
+    errors: list[str] = []
+    kinds = {c.id: c.type for c in catalog.channels.channels}
+    shows = {(c.channel, c.show) for c in catalog.carriage.carriage if c.kind == "show"}
+    seen: set[str] = set()
+    for ph in catalog.power_hours:
+        if ph.channel not in kinds:
+            errors.append(f"power hour: unknown channel '{ph.channel}'")
+            continue
+        if kinds[ph.channel] == "movie":
+            errors.append(f"power hour: '{ph.channel}' is a movie channel")
+        if ph.channel in seen:
+            errors.append(f"power hour: '{ph.channel}' has two")
+        seen.add(ph.channel)
+        for e in ph.pool:
+            if (ph.channel, e.show) not in shows:
+                errors.append(f"power hour: '{e.show}' is not carried on {ph.channel}")
+    return errors
+
+
 def validate(catalog: Catalog) -> list[str]:
     """Every problem in a loaded catalog, as human-readable lines; empty means valid."""
     channel_ids = {c.id for c in catalog.channels.channels}
@@ -171,6 +228,7 @@ def validate(catalog: Catalog) -> list[str]:
         *_check_carriage(catalog, channel_ids),
         *_check_shows(catalog, holiday_ids),
         *_check_templates(catalog),
+        *_check_power_hours(catalog),
     ]
 
 

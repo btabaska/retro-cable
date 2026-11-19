@@ -17,9 +17,10 @@ from fastapi.responses import FileResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
-from retro_cable import __version__, media, tv
+from retro_cable import __version__, media, tv, watch
 from retro_cable.admin import media as admin_media
 from retro_cable.admin import router as admin
+from retro_cable.admin import station as admin_station
 from retro_cable.admin import store
 from retro_cable.catalog import Catalog, load_catalog
 from retro_cable.catalog.overlay import Overlay, apply_overlay
@@ -86,6 +87,7 @@ class _Schedules:
         self.settings = settings
         self._stamp: tuple[object, ...] | None = None
         self._scheduler: Scheduler | None = None
+        self._all_years: Scheduler | None = None  # built on first use, from the same inputs
         self._base: Catalog | None = None
         self._library = Library()
         self._lock = threading.RLock()
@@ -122,7 +124,19 @@ class _Schedules:
 
     def invalidate(self) -> None:
         with self._lock:
-            self._scheduler = None
+            self._scheduler = self._all_years = None
+
+    def write(self, fn: Callable[[sqlite3.Connection], None]) -> None:
+        """Run a small write that no schedule depends on (a viewing report) on the watched
+        connection itself. `data_version` moves only for commits by other connections, so
+        the TV's reports every minute never make the next /tune rebuild every schedule."""
+        with self._lock:
+            if not self.settings.db_path.exists():
+                self.settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+                connect(self.settings.db_path).close()
+            self._db_stamp()  # opens (and migrates) the watched connection if need be
+            assert self._watch is not None
+            fn(self._watch)
 
     @property
     def base(self) -> Catalog:
@@ -135,7 +149,19 @@ class _Schedules:
         self()
         return self._library
 
-    def __call__(self) -> Scheduler:
+    def __call__(self, all_years: bool = False) -> Scheduler:
+        """The scheduler for the current inputs; with `all_years`, its All Years twin."""
+        with self._lock:
+            dated = self._dated()
+            if not all_years:
+                return dated
+            if self._all_years is None:
+                self._all_years = Scheduler(
+                    dated.catalog, self._library, seed=self.settings.seed, all_years=True
+                )
+            return self._all_years
+
+    def _dated(self) -> Scheduler:
         with self._lock:
             stamp = self._stamp_now()
             if self._scheduler is not None and stamp == self._stamp:
@@ -147,6 +173,7 @@ class _Schedules:
                 library = load_library(self._watch, allow_short=self.settings.allow_short_media)
                 overlay = store.head(self._watch).overlay
             self._base, self._library = catalog, library
+            self._all_years = None
             self._scheduler = Scheduler(
                 apply_overlay(catalog, overlay), library, seed=self.settings.seed
             )
@@ -205,6 +232,8 @@ def create_app(
     app.include_router(tv.router(schedules, clock, sign))
     app.include_router(admin.router(schedules, clock, config.db_path, config.seed))
     app.include_router(admin_media.router(config.media_dir, clock))
+    app.include_router(admin_station.router(config.db_path))
+    app.include_router(watch.router(schedules, clock))
 
     @app.get("/media/{path:path}", name="getMedia", include_in_schema=False)
     def get_media(

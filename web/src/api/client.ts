@@ -1,4 +1,5 @@
 import createClient from "openapi-fetch";
+import { postWatch, type SendWatch } from "../lib/watch";
 import type { components, paths } from "./generated/schema";
 
 export type ServerVersion = components["schemas"]["Version"];
@@ -46,6 +47,8 @@ export interface TvApi {
   getLineup: typeof getLineup;
   getGuide: typeof getGuide;
   tune: typeof tune;
+  /** Viewing reports for the station manager (M5); fire and forget. Absent: none sent. */
+  reportWatch?: SendWatch;
 }
 
-export const liveApi: TvApi = { getServerVersion, getLineup, getGuide, tune };
+export const liveApi: TvApi = { getServerVersion, getLineup, getGuide, tune, reportWatch: postWatch };
