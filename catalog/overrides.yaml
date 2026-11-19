@@ -29,7 +29,7 @@ shows:
   - { show: bill-nye-the-science-guy, tmdb_id: "tv:3483", year: 1993 }
   - { show: brink, tmdb_id: "movie:15043", year: 1998 }
   - { show: camp-rock, tmdb_id: "movie:13655", year: 2008 }
-  - { show: cardcaptors, tmdb_id: "tv:35790", year: 2000 }
+  - { show: cardcaptors, tmdb_id: "tv:35790", year: 2000, plex_title: "Cardcaptor Sakura" }  # TheTVDB title (sonarr-livetv folder)
   - { show: clifford-the-big-red-dog, tmdb_id: "tv:8379", year: 2000 }
   - { show: codename-kids-next-door, tmdb_id: "tv:2660", year: 2002 }
   - { show: courage-the-cowardly-dog, tmdb_id: "tv:2085", year: 1999 }
@@ -86,7 +86,7 @@ shows:
   - { show: teen-titans, tmdb_id: "tv:604", year: 2003 }
   - { show: that-70s-show, tmdb_id: "tv:52", year: 1998 }
   - { show: thats-so-raven, tmdb_id: "tv:4602", year: 2003 }
-  - { show: the-adventures-of-jimmy-neutron, tmdb_id: "tv:2129", year: 2002 }
+  - { show: the-adventures-of-jimmy-neutron, tmdb_id: "tv:2129", year: 2002, plex_title: "The Adventures of Jimmy Neutron Boy Genius" }  # TheTVDB title (sonarr-livetv folder)
   - { show: the-cheetah-girls, tmdb_id: "movie:32293", year: 2003 }
   - { show: the-fairly-oddparents, tmdb_id: "tv:4630", year: 2001 }
   - { show: the-flintstones, tmdb_id: "tv:1996", year: 1960 }
