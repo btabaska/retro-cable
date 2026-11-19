@@ -1,6 +1,19 @@
 # Status
 
-**Current phase:** Phase 8 (operations), started Nov 11 2026 while the rig converts the Live TV backlog: nightly backups with a restore test and the Sunday report are in review as `m6/operations`, stacked on M5. Before that, Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it, M4 (Live TV downloads) on top of M3, and M5 (the weekly station manager) on top of M4. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+**Current phase:** Phase 9 (the Apple TV app), started Nov 11 2026: the app is built and in review as `m9/tvos`, waiting for Brandon to sideload it. Alongside it, Phase 8 (operations), started Nov 11 2026 while the rig converts the Live TV backlog: nightly backups with a restore test and the Sunday report are in review as `m6/operations`, stacked on M5. Before that, Milestone M2: real media on the mini; M3 (the first slice of Phase 11's channel builder) is in review on top of it, M4 (Live TV downloads) on top of M3, and M5 (the weekly station manager) on top of M4. M1 was approved by Brandon on Nov 2 2026. Phases 3–7 and 10 (part) are still in review as a stacked set of PRs; M2 is #16 (`m2/integration` = #14 + #15 + #3).
+
+## Phase 9: the Apple TV app (in review, `m9/tvos`, stacked on `m7/descriptions` at `c8e0e3d`)
+
+Brandon (Nov 11 2026): an Apple TV app with the browser's TV screens, sideloaded from Xcode with a free Apple ID (7 days a build), on his Apple TV 4K (2nd gen, tvOS 18+). Specs: `tvos.md` (TV-1 ... TV-44), `docs/design/tvos.md` (D-1 ... D-14). Build log: `tvos/HANDOFF.md`; Brandon's sideload guide: `tvos/README.md`. No server change: the app uses the API as it is.
+
+- [x] `RetroCableKit` (Swift package, tvOS 18 + macOS 14, Swift 6 strict concurrency): API client and models checked against `server/openapi.json`, design tokens as Swift constants with a staleness test, ports of the web's pure logic and its tests, the tuner, banner, guide grid, year picker and watch reporter; 236 tests on macOS (`make test-tvos`)
+- [x] App (SwiftUI + AVKit, XcodeGen `tvos/project.yml`): power on, no signal, Live TV with one `AVPlayer` (aspect-fit on black, no system transport UI), the info banner and clock, Siri Remote mapping, the guide with details and the live PiP, the year picker with the two-column dial; Arimo and Archivo Narrow bundled (`make tvos`)
+- [x] XCUITests for the browser's flow (launch → banner → guide → tune → change year), the remote, no signal and the background round trip, run in the "RC Apple TV" simulator against the homelab (`make test-tvos-ui`); screenshots of every screen in `tvos/build/screens/` (gitignored)
+- [x] Five new color tokens (glow, track, divider, digits, filler) in `design/tokens.json`; `make lint` and `make test` unchanged and green
+- [ ] Brandon: sideload onto the Apple TV (`tvos/README.md`) and the hands-on checks: TV-2, TV-5, TV-6, TV-7, TV-8 (an evening), TV-27, TV-34, TV-39, TV-40 (p95 tune time over 20 flips), TV-43 (same program as the browser at the same moment)
+- [x] Review round 1 (Nov 12): the RC app icon, the Personal Team kept in a gitignored `tvos/Local.xcconfig`, "Tuning…" bars during a /tune outage, a true 5 s retry cadence, the TV-on white line, no lone "…" in narrow guide cells; the UI tests pass against the Docker test stack (`RC_SERVER_URL`)
+- [ ] A long run across simulated midnight, and a pixel overlay of the tvOS screenshots on the web references (D-14; eyeballed so far)
+- Not in this build, by decision: likes (hold Select), a year-picker shortcut on Live TV, the app icon, TestFlight and fastlane (they need the paid account)
 
 ## Phase 8 (part): backups and the Sunday report (in review, `m6/operations`, stacked on #24)
 
