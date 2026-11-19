@@ -1,0 +1,21 @@
+[Unit]
+Description=Retro Cable Sunday report (python -m retro_cable.report run)
+Documentation=file:///opt/retro-cable/docs/specs/ops.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+# The homelab's failure alert (a push on the ntfy `backups` topic); a host without that
+# template unit only logs that it is missing.
+OnFailure=ntfy-notify@%n.service
+
+[Service]
+Type=oneshot
+# Installed by ops/systemd/install.sh, which sets User= to the checkout's owner (the user who
+# runs deploy.sh and docker) and the checkout's path if it isn't /opt/retro-cable.
+User=CHECKOUT_OWNER
+WorkingDirectory=/opt/retro-cable
+# Waits for a running deploy (shared lock), then runs the job inside the api container.
+ExecStart=/opt/retro-cable/ops/weekly-report.sh
+# Seconds: it reads the database and the rig's progress file, then posts one ntfy message.
+TimeoutStartSec=45min
+Nice=10

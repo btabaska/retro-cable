@@ -4,6 +4,9 @@ Documentation=file:///opt/retro-cable/docs/specs/ops.md
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
+# The homelab's failure alert (a push on the ntfy `backups` topic); a host without that
+# template unit only logs that it is missing.
+OnFailure=ntfy-notify@%n.service
 
 [Service]
 Type=oneshot

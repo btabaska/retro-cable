@@ -1,0 +1,14 @@
+[Unit]
+Description=Retro Cable nightly backup, 1 AM New York time
+Documentation=file:///opt/retro-cable/docs/specs/ops.md
+
+[Timer]
+# Before the mini's restic run (about 1:40 AM, to Backblaze B2), so the offsite snapshot holds
+# this night's backup, and before the Sunday 2 AM station manager.
+OnCalendar=*-*-* 01:00:00 America/New_York
+# A night missed while the mini was off runs at the next boot.
+Persistent=true
+Unit=retro-cable-backup.service
+
+[Install]
+WantedBy=timers.target
