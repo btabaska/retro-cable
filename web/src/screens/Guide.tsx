@@ -150,7 +150,11 @@ export function Guide({ api, year, now, timeZone, channelId, onTune, onYear, onB
                     }`}
               </span>
             </div>
-            {slot.kind !== "filler" && <div className="details-synopsis">{episodeLabel(slot) || slot.title}</div>}
+            {slot.kind !== "filler" && (
+              <div className="details-synopsis" data-testid="details-synopsis">
+                {slot.description || episodeLabel(slot) || slot.title}
+              </div>
+            )}
           </>
         ) : (
           <div className="details-title">{failed ? "No signal" : "Loading the guide…"}</div>

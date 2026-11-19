@@ -1,6 +1,7 @@
 """The TV endpoints the browser and tvOS apps call: the dial, the guide and tuning in."""
 
 import calendar
+import re
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from typing import Annotated, Literal, Protocol
@@ -59,6 +60,25 @@ class Lineup(BaseModel):
     channels: list[ChannelInfo]
 
 
+SHORT_DESCRIPTION = 200  # characters: two lines on the info banner
+
+
+def short_description(text: str, limit: int = SHORT_DESCRIPTION) -> str:
+    """The first sentences of a description that fit in `limit` characters, or, when the first
+    sentence alone is longer, its words up to the limit and an ellipsis. A comma or semicolon
+    missing its space (`door,to`, common in Plex's text) gets one."""
+    text = re.sub(r"(?<=[a-z])([,;])(?=[A-Za-z])", r"\1 ", " ".join(text.split()))
+    if len(text) <= limit:
+        return text
+    kept = ""
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        joined = f"{kept} {sentence}".strip()
+        if len(joined) > limit:
+            break
+        kept = joined
+    return kept or text[: limit - 1].rsplit(" ", 1)[0].rstrip(",;:-") + "…"
+
+
 class GuideSlot(BaseModel):
     kind: Literal["episode", "movie", "bumper", "filler"]
     start: datetime
@@ -76,6 +96,11 @@ class GuideSlot(BaseModel):
         description="Holiday id this program is tagged for while that holiday is in force"
     )
     holiday_name: str | None = Field(description="Display name of `holiday`, e.g. Halloween")
+    description: str = Field(
+        default="",
+        description=f"A short description of the episode or movie (whole sentences, at most"
+        f" {SHORT_DESCRIPTION} characters); empty when unknown",
+    )
 
 
 class TunedSlot(GuideSlot):
@@ -151,6 +176,7 @@ def guide_slot(s: Scheduler, slot: Slot) -> dict[str, object]:
         "transplant": slot.transplant,
         "holiday": slot.holiday,
         "holiday_name": s.tagger.holidays[slot.holiday].name if slot.holiday else None,
+        "description": short_description(slot.summary),
     }
 
 
