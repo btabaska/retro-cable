@@ -257,6 +257,86 @@
         "title": "AdminState",
         "type": "object"
       },
+      "BackupLine": {
+        "properties": {
+          "last_backup_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Backup At"
+          },
+          "last_backup_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Backup Bytes"
+          },
+          "ok": {
+            "description": "A backup in the last 36 hours whose restore test passed",
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "restore_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restore At"
+          },
+          "restore_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restore Ok"
+          },
+          "restore_problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Restore Problems",
+            "type": "array"
+          },
+          "schedule_warnings": {
+            "description": "What the restore test's scheduler checks found in the data (not failures)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Schedule Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "last_backup_at",
+          "last_backup_bytes",
+          "restore_ok",
+          "restore_at",
+          "restore_problems"
+        ],
+        "title": "BackupLine",
+        "type": "object"
+      },
       "CarriageTune": {
         "additionalProperties": false,
         "description": "A weight multiplier for one show on one channel: every carriage window of it, so the\nall-day rotation, tag pools and empty block parts.",
@@ -501,6 +581,29 @@
         "title": "ChannelInfo",
         "type": "object"
       },
+      "ChannelRow": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "seconds"
+        ],
+        "title": "ChannelRow",
+        "type": "object"
+      },
       "ChannelSignal": {
         "properties": {
           "channel": {
@@ -596,6 +699,47 @@
           "catalog_version"
         ],
         "title": "CheckResult",
+        "type": "object"
+      },
+      "ConversionLine": {
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "hours_left": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "At the median of recent files",
+            "title": "Hours Left"
+          },
+          "left": {
+            "title": "Left",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "done",
+          "total",
+          "left",
+          "failed",
+          "hours_left"
+        ],
+        "title": "ConversionLine",
         "type": "object"
       },
       "DraftRequest": {
@@ -1085,6 +1229,59 @@
         "title": "LibraryEntry",
         "type": "object"
       },
+      "LibraryLine": {
+        "properties": {
+          "empty": {
+            "description": "Their titles, A to Z (up to 30)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Empty",
+            "type": "array"
+          },
+          "empty_count": {
+            "description": "Carried titles with nothing that can air yet",
+            "title": "Empty Count",
+            "type": "integer"
+          },
+          "episodes": {
+            "description": "Episodes that can air",
+            "title": "Episodes",
+            "type": "integer"
+          },
+          "episodes_added": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Since the last report; None for the first",
+            "title": "Episodes Added"
+          },
+          "movies": {
+            "title": "Movies",
+            "type": "integer"
+          },
+          "shows": {
+            "description": "Shows with at least one episode that can air",
+            "title": "Shows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "episodes",
+          "shows",
+          "movies",
+          "episodes_added",
+          "empty_count",
+          "empty"
+        ],
+        "title": "LibraryLine",
+        "type": "object"
+      },
       "LibraryList": {
         "properties": {
           "items": {
@@ -1535,6 +1732,28 @@
         "title": "PreviewDay",
         "type": "object"
       },
+      "Reports": {
+        "properties": {
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/StoredReport"
+            },
+            "title": "Reports",
+            "type": "array"
+          },
+          "schedule": {
+            "description": "When the report runs, in words",
+            "title": "Schedule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schedule",
+          "reports"
+        ],
+        "title": "Reports",
+        "type": "object"
+      },
       "RunReport": {
         "properties": {
           "after": {
@@ -1650,6 +1869,40 @@
         "title": "SaveResult",
         "type": "object"
       },
+      "ShowRow": {
+        "properties": {
+          "channel": {
+            "description": "The channel's name",
+            "title": "Channel",
+            "type": "string"
+          },
+          "completion": {
+            "title": "Completion",
+            "type": "number"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "integer"
+          },
+          "show": {
+            "title": "Show",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "show",
+          "title",
+          "channel",
+          "seconds",
+          "completion"
+        ],
+        "title": "ShowRow",
+        "type": "object"
+      },
       "ShowSignal": {
         "properties": {
           "channel": {
@@ -1760,6 +2013,34 @@
         "title": "Signals",
         "type": "object"
       },
+      "StationLine": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "week_of": {
+            "title": "Week Of",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "summary",
+          "week_of"
+        ],
+        "title": "StationLine",
+        "type": "object"
+      },
       "StationRunRow": {
         "properties": {
           "can_undo": {
@@ -1850,6 +2131,34 @@
           "runs"
         ],
         "title": "StationRuns",
+        "type": "object"
+      },
+      "StoredReport": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "report": {
+            "$ref": "#/components/schemas/WeeklyReport"
+          },
+          "week_of": {
+            "title": "Week Of",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "week_of",
+          "report"
+        ],
+        "title": "StoredReport",
         "type": "object"
       },
       "Tune": {
@@ -2117,6 +2426,58 @@
         "title": "Version",
         "type": "object"
       },
+      "Viewing": {
+        "properties": {
+          "busiest_hour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Local HH:MM of the busiest hour",
+            "title": "Busiest Hour"
+          },
+          "last_week_seconds": {
+            "title": "Last Week Seconds",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "integer"
+          },
+          "sessions": {
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "top_channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelRow"
+            },
+            "title": "Top Channels",
+            "type": "array"
+          },
+          "top_shows": {
+            "items": {
+              "$ref": "#/components/schemas/ShowRow"
+            },
+            "title": "Top Shows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "seconds",
+          "sessions",
+          "last_week_seconds",
+          "top_shows",
+          "top_channels",
+          "busiest_hour"
+        ],
+        "title": "Viewing",
+        "type": "object"
+      },
       "WatchReport": {
         "additionalProperties": false,
         "description": "One program watched on one channel, so far.",
@@ -2242,6 +2603,84 @@
           "runtime"
         ],
         "title": "WatchReport",
+        "type": "object"
+      },
+      "WeeklyReport": {
+        "properties": {
+          "backups": {
+            "$ref": "#/components/schemas/BackupLine"
+          },
+          "conversion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversionLine"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "headline": {
+            "description": "The report in a few lines, as pushed",
+            "items": {
+              "type": "string"
+            },
+            "title": "Headline",
+            "type": "array"
+          },
+          "library": {
+            "$ref": "#/components/schemas/LibraryLine"
+          },
+          "pending": {
+            "description": "What waits for Brandon",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pending",
+            "type": "array"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "station": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StationLine"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          },
+          "viewing": {
+            "$ref": "#/components/schemas/Viewing"
+          },
+          "week_of": {
+            "description": "YYYY-MM-DD, the Sunday the reported week starts",
+            "title": "Week Of",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week_of",
+          "since",
+          "until",
+          "viewing",
+          "station",
+          "pending",
+          "library",
+          "conversion",
+          "backups",
+          "headline"
+        ],
+        "title": "WeeklyReport",
         "type": "object"
       }
     }
@@ -2707,6 +3146,54 @@
           }
         },
         "summary": "Adminpreview",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/reports": {
+      "get": {
+        "description": "The latest Sunday reports.",
+        "operationId": "adminReports",
+        "parameters": [
+          {
+            "description": "Newest first",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "description": "Newest first",
+              "maximum": 52,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reports"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adminreports",
         "tags": [
           "admin"
         ]

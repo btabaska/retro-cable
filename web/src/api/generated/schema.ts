@@ -153,6 +153,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Adminreports
+         * @description The latest Sunday reports.
+         */
+        get: operations["adminReports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/state": {
         parameters: {
             query?: never;
@@ -433,6 +453,29 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /** BackupLine */
+        BackupLine: {
+            /** Last Backup At */
+            last_backup_at: string | null;
+            /** Last Backup Bytes */
+            last_backup_bytes: number | null;
+            /**
+             * Ok
+             * @description A backup in the last 36 hours whose restore test passed
+             */
+            ok: boolean;
+            /** Restore At */
+            restore_at: string | null;
+            /** Restore Ok */
+            restore_ok: boolean | null;
+            /** Restore Problems */
+            restore_problems: string[];
+            /**
+             * Schedule Warnings
+             * @description What the restore test's scheduler checks found in the data (not failures)
+             */
+            schedule_warnings?: string[];
+        };
         /**
          * CarriageTune
          * @description A weight multiplier for one show on one channel: every carriage window of it, so the
@@ -537,6 +580,15 @@ export interface components {
              */
             type: "network" | "marathon" | "movie";
         };
+        /** ChannelRow */
+        ChannelRow: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Seconds */
+            seconds: number;
+        };
         /** ChannelSignal */
         ChannelSignal: {
             /** Channel */
@@ -574,6 +626,22 @@ export interface components {
             ok: boolean;
             /** Warnings */
             warnings: components["schemas"]["CheckIssue"][];
+        };
+        /** ConversionLine */
+        ConversionLine: {
+            /** Done */
+            done: number;
+            /** Failed */
+            failed: number;
+            /**
+             * Hours Left
+             * @description At the median of recent files
+             */
+            hours_left: number | null;
+            /** Left */
+            left: number;
+            /** Total */
+            total: number;
         };
         /** DraftRequest */
         DraftRequest: {
@@ -775,6 +843,36 @@ export interface components {
              */
             year?: number | null;
         };
+        /** LibraryLine */
+        LibraryLine: {
+            /**
+             * Empty
+             * @description Their titles, A to Z (up to 30)
+             */
+            empty: string[];
+            /**
+             * Empty Count
+             * @description Carried titles with nothing that can air yet
+             */
+            empty_count: number;
+            /**
+             * Episodes
+             * @description Episodes that can air
+             */
+            episodes: number;
+            /**
+             * Episodes Added
+             * @description Since the last report; None for the first
+             */
+            episodes_added: number | null;
+            /** Movies */
+            movies: number;
+            /**
+             * Shows
+             * @description Shows with at least one episode that can air
+             */
+            shows: number;
+        };
         /** LibraryList */
         LibraryList: {
             /** Items */
@@ -974,6 +1072,16 @@ export interface components {
             /** Weekday */
             weekday: string;
         };
+        /** Reports */
+        Reports: {
+            /** Reports */
+            reports: components["schemas"]["StoredReport"][];
+            /**
+             * Schedule
+             * @description When the report runs, in words
+             */
+            schedule: string;
+        };
         /** RunReport */
         RunReport: {
             /** @description The tuning it applied or proposes */
@@ -1020,6 +1128,22 @@ export interface components {
             /** Message */
             message: string;
             state: components["schemas"]["AdminState"];
+        };
+        /** ShowRow */
+        ShowRow: {
+            /**
+             * Channel
+             * @description The channel's name
+             */
+            channel: string;
+            /** Completion */
+            completion: number;
+            /** Seconds */
+            seconds: number;
+            /** Show */
+            show: string;
+            /** Title */
+            title: string;
         };
         /** ShowSignal */
         ShowSignal: {
@@ -1074,6 +1198,17 @@ export interface components {
              */
             year: number | null;
         };
+        /** StationLine */
+        StationLine: {
+            /** Id */
+            id: number;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string;
+            /** Week Of */
+            week_of: string;
+        };
         /** StationRunRow */
         StationRunRow: {
             /**
@@ -1118,6 +1253,19 @@ export interface components {
             auto_apply: boolean;
             /** Runs */
             runs: components["schemas"]["StationRunRow"][];
+        };
+        /** StoredReport */
+        StoredReport: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            report: components["schemas"]["WeeklyReport"];
+            /** Week Of */
+            week_of: string;
         };
         /** Tune */
         Tune: {
@@ -1214,6 +1362,24 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** Viewing */
+        Viewing: {
+            /**
+             * Busiest Hour
+             * @description Local HH:MM of the busiest hour
+             */
+            busiest_hour: string | null;
+            /** Last Week Seconds */
+            last_week_seconds: number;
+            /** Seconds */
+            seconds: number;
+            /** Sessions */
+            sessions: number;
+            /** Top Channels */
+            top_channels: components["schemas"]["ChannelRow"][];
+            /** Top Shows */
+            top_shows: components["schemas"]["ShowRow"][];
+        };
         /**
          * WatchReport
          * @description One program watched on one channel, so far.
@@ -1271,6 +1437,39 @@ export interface components {
              * @description Simulated year 1990-2010, or 0 for All Years
              */
             year: number;
+        };
+        /** WeeklyReport */
+        WeeklyReport: {
+            backups: components["schemas"]["BackupLine"];
+            conversion: components["schemas"]["ConversionLine"] | null;
+            /**
+             * Headline
+             * @description The report in a few lines, as pushed
+             */
+            headline: string[];
+            library: components["schemas"]["LibraryLine"];
+            /**
+             * Pending
+             * @description What waits for Brandon
+             */
+            pending: string[];
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            station: components["schemas"]["StationLine"] | null;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+            viewing: components["schemas"]["Viewing"];
+            /**
+             * Week Of
+             * @description YYYY-MM-DD, the Sunday the reported week starts
+             */
+            week_of: string;
         };
     };
     responses: never;
@@ -1648,6 +1847,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Preview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adminReports: {
+        parameters: {
+            query?: {
+                /** @description Newest first */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reports"];
                 };
             };
             /** @description Validation Error */
