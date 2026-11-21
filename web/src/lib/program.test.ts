@@ -17,6 +17,7 @@ const base: GuideSlot = {
   transplant: false,
   holiday: null,
   holiday_name: null,
+  description: "",
 };
 
 describe("kicker", () => {

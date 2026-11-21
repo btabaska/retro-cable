@@ -31,6 +31,7 @@ const slot: TunedSlot = {
   transplant: false,
   holiday: null,
   holiday_name: null,
+  description: "",
   media_url: null,
 };
 

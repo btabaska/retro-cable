@@ -27,6 +27,7 @@ class Program:
     air_date: date | None
     seconds: int
     path: str  # relative to the media root
+    summary: str = ""  # the description, from Plex or TMDB; empty when unknown
 
 
 @dataclass(frozen=True)
@@ -165,6 +166,7 @@ def _episode(r: sqlite3.Row) -> Program:
         air_date=_date(r["air_date"]),
         seconds=r["play_seconds"],
         path=r["play_path"],
+        summary=r["summary"] or "",
     )
 
 
@@ -178,7 +180,7 @@ def load_library(db: sqlite3.Connection, *, allow_short: bool = False) -> Librar
     held: dict[str, list[sqlite3.Row]] = defaultdict(list)
     for r in db.execute(
         "SELECT * FROM (SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.title,"
-        f" e.air_date, e.source_seconds, {_PLAYABLE} FROM episodes e"
+        f" e.air_date, e.summary, e.source_seconds, {_PLAYABLE} FROM episodes e"
         " JOIN shows s ON s.id = e.show_id)" + _READY
     ):
         if allow_short or not is_short(r["play_seconds"], r["expected_seconds"]):
@@ -203,10 +205,11 @@ def load_library(db: sqlite3.Connection, *, allow_short: bool = False) -> Librar
             air_date=_date(r["premiere_date"]) or _year_end(r["year"]),
             seconds=r["play_seconds"],
             path=r["play_path"],
+            summary=r["summary"] or "",
         )
         for r in db.execute(
-            f"SELECT * FROM (SELECT id, title, premiere_date, year, {_PLAYABLE} FROM movies)"
-            + ready
+            "SELECT * FROM (SELECT id, title, premiere_date, year, summary,"
+            f" {_PLAYABLE} FROM movies)" + ready
         )
     }
     bumpers: dict[str, list[Bumper]] = defaultdict(list)

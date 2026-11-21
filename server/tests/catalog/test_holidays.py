@@ -124,3 +124,64 @@ def test_seasonal_items(tagger: Tagger) -> None:
         "peanuts-holiday-specials", "episode", "Peanuts holiday specials", {"christmas"}
     )
     assert not tagger.is_seasonal("the-simpsons", "episode", "The Simpsons", {"halloween"})
+
+
+# --- descriptions (Nov 11 2026) ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        # Real descriptions whose titles carry no keyword.
+        ("It's Halloween night and the kids meet a boy who thinks his house is haunted.",
+         {"halloween"}),
+        ("Feeling sorry for Ralph, Lisa sends him a Valentine card.", {"valentines"}),
+        ("As Valentine's Day approaches, Bender's romance with the ship puts the crew at risk.",
+         {"valentines"}),
+        ("Cartman decides to bring Christmas to the Iraqis.", {"christmas"}),
+        ("The Titans' Fourth of July festivities are interrupted.", {"independence-day"}),
+        # Names and characters are not the holiday.
+        ("Lisa's teacher, ex-child star Vicki Valentine, specializes in tap.", set()),
+        ("Cartman swears he's seen a leprechaun.", set()),
+        ("", set()),
+    ],
+)  # fmt: skip
+def test_an_episode_is_tagged_from_its_description_too(
+    tagger: Tagger, description: str, expected: set[str]
+) -> None:
+    got = tagger.tags("s", "episode", "Some Show", "An Ordinary Title", 1, 1, description)
+    assert got == expected
+
+
+def test_a_movie_is_never_tagged_from_its_description(tagger: Tagger) -> None:
+    """A tagged movie airs only in its holiday's season; a passing mention in its blurb
+    would take it off the air most of the year."""
+    blurb = "A boy wishes for snow on the first day of Christmas break."
+    assert tagger.tags("brink", "movie", "Brink!", summary=blurb) == frozenset()
+
+
+def test_overrides_still_win_over_a_description(make_catalog: object) -> None:
+    from collections.abc import Callable
+
+    make: Callable[..., Path] = make_catalog  # type: ignore[assignment]
+    catalog = load_catalog(
+        make(overrides="shows:\n  - show: the-simpsons\n    holiday_tags:\n      S8E1: []\n")
+    )
+    t = Tagger(catalog)
+    got = t.tags("the-simpsons", "episode", "The Simpsons", "x", 8, 1, "It's Christmas Eve.")
+    assert got == frozenset()
+
+
+def test_keyword_matches_are_remembered_across_rebuilds() -> None:
+    """The scheduler builds a new Tagger on every rebuild (any database change), and scanning
+    thousands of descriptions each time cost the mini half a second per rebuild (Nov 11 2026).
+    The same text under the same holiday words is matched once."""
+    from retro_cable.catalog.holidays import _matches
+
+    catalog = load_catalog(REPO_CATALOG)
+    text = "A brand new description about a snow day that nobody has tagged before, 7d1e."
+    Tagger(catalog).tags("s", "episode", "Show", "Title", 1, 1, text)
+    before = _matches.cache_info()
+    assert Tagger(catalog).tags("s", "episode", "Show", "Title", 1, 1, text) == frozenset()
+    after = _matches.cache_info()
+    assert after.hits >= before.hits + 2 and after.misses == before.misses  # title and text

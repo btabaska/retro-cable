@@ -43,6 +43,7 @@ const slot = (title: string, start: string, end: string): TunedSlot => ({
   transplant: false,
   holiday: null,
   holiday_name: null,
+  description: title === "The Simpsons" ? "Homer goes back to college." : "",
   media_url: null,
 });
 
@@ -152,8 +153,10 @@ describe("App", () => {
     await user.keyboard("{Enter}");
     expect(await screen.findByTestId("guide")).toBeInTheDocument();
     expect(await screen.findByTestId("details-title")).toHaveTextContent("The Simpsons");
+    expect(screen.getByTestId("details-synopsis")).toHaveTextContent("Homer goes back to college.");
     await user.keyboard("{ArrowDown}");
     expect(screen.getByTestId("details-title")).toHaveTextContent("Friends");
+    expect(screen.getByTestId("details-synopsis")).toHaveTextContent("Pilot · S1 E1"); // no description
     await user.keyboard("{Enter}");
     expect(await screen.findByTestId("banner-number")).toHaveTextContent("04");
   });

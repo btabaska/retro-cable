@@ -72,6 +72,7 @@ function fakeApi(): AdminApi & { channels: AdminChannelRow[] } {
             transplant: false,
             holiday: null,
             holiday_name: null,
+            description: "",
           },
           {
             kind: "episode",
@@ -88,6 +89,7 @@ function fakeApi(): AdminApi & { channels: AdminChannelRow[] } {
             transplant: false,
             holiday: "halloween",
             holiday_name: "Halloween",
+            description: "",
           },
         ],
       },

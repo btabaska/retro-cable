@@ -736,6 +736,12 @@ export interface components {
             /** Air Date */
             air_date: string | null;
             /**
+             * Description
+             * @description A short description of the episode or movie (whole sentences, at most 200 characters); empty when unknown
+             * @default
+             */
+            description: string;
+            /**
              * End
              * Format: date-time
              */
@@ -1285,6 +1291,12 @@ export interface components {
         TunedSlot: {
             /** Air Date */
             air_date: string | null;
+            /**
+             * Description
+             * @description A short description of the episode or movie (whole sentences, at most 200 characters); empty when unknown
+             * @default
+             */
+            description: string;
             /**
              * End
              * Format: date-time
