@@ -124,6 +124,12 @@ shows:
   - { show: lupin-the-3rd-part-iv-the-italian-adventure, year: 2017, part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [4] } }
   - { show: pokemon-horizons-the-series, year: 2024, part_of: { show: pokemon, tvdb_id: 76703, seasons: [20] } }
   - { show: the-new-scooby-and-scrappy-doo-show, year: 1983, part_of: { show: scooby-doo-and-scrappy-doo, tvdb_id: 78740, seasons: [5] } }
+  # One series for the NAS's `Lupin III` and Sonarr's `Lupin III (1971)`, so its parts come from both.
+  - { show: lupin-iii, plex_title: "Lupin III" }
+
+  # Sonarr/Radarr folder titles for /admin-carried items whose titles differ (Nov 21 2026).
+  - { show: rapunzels-tangled-adventure-tangled-the-series, plex_title: "Rapunzels Tangled Adventure" }
+  - { show: kim-possible-2019-film, plex_title: "Kim Possible (2019)" }  # the year keeps it off the series
 
   # TV movies TheTVDB files as episodes of their series (episodes_of, Nov 8 2026): they come
   # down with the series and the rig joins those episodes' encodes (ingest assemble).
