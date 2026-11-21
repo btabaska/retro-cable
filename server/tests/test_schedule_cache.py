@@ -99,6 +99,19 @@ def test_an_admin_write_rebuilds_once_and_shows_up(client: TestClient, builds: B
     assert builds.count == before + 1
 
 
+def test_all_years_is_built_once_and_follows_writes(client: TestClient, builds: Builds) -> None:
+    client.get("/channels", params={"year": 2000})
+    before = builds.count
+    for _ in range(2):
+        client.get("/channels", params={"year": 0})
+    assert builds.count == before + 1  # the All Years twin, built on first use
+    saved = client.post("/admin/channels", json={"draft": toons(), "year": 2000})
+    assert saved.status_code == 200, saved.text
+    ids = [c["id"] for c in client.get("/channels", params={"year": 0}).json()["channels"]]
+    assert saved.json()["channel_id"] in ids
+    assert builds.count == before + 3  # one rebuild of each
+
+
 def test_a_write_from_another_process_is_picked_up(
     client: TestClient, db_path: Path, builds: Builds
 ) -> None:
@@ -159,3 +172,23 @@ def test_a_commit_still_in_the_wal_is_picked_up(client: TestClient, db_path: Pat
     titles = [i["title"] for i in client.get("/admin/library").json()["items"]]
     writer.close()
     assert "Recess" in titles
+
+
+def test_viewing_reports_do_not_rebuild_the_scheduler(
+    client: TestClient, builds: Builds, db_path: Path
+) -> None:
+    """The TV reports what it plays every minute (M5); that must never cost the next /tune a
+    rebuild of every schedule."""
+    assert client.get("/tune/ktvu", params={"year": 1998}).status_code == 200
+    warm = builds.count
+    report = {
+        "session": "cache-check-1", "channel": "ktvu", "item": "the-simpsons",
+        "kind": "episode", "year": 1998, "seconds": 60, "runtime": 1320,
+    }  # fmt: skip
+    for seconds in (60, 120, 180):
+        assert client.post("/watch", json={**report, "seconds": seconds}).status_code == 204
+        assert client.get("/tune/ktvu", params={"year": 1998}).status_code == 200
+    assert builds.count == warm
+    db = connect(db_path)
+    assert db.execute("SELECT COUNT(*) FROM watch_sessions").fetchone()[0] == 1
+    db.close()

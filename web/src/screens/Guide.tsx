@@ -5,6 +5,7 @@ import { useKeys } from "../hooks/useKeys";
 import { cellIndexAt, cellSize, HALF_HOUR_MS, layoutRow, WINDOW_MS, windowStartFor } from "../lib/guide";
 import { kicker } from "../lib/program";
 import { formatAirDate, formatClock, formatGuideDay, formatLongDate, formatShortTime, zonedParts } from "../lib/time";
+import { yearLabel } from "../lib/years";
 
 const VISIBLE_ROWS = 7;
 const AHEAD_HOURS = 12;
@@ -107,7 +108,7 @@ export function Guide({ api, year, now, timeZone, channelId, onTune, onYear, onB
             <div className="clock-date">{formatLongDate(now, timeZone)}</div>
           </div>
           <div className="year-badge" data-testid="year-badge">
-            {year}
+            {yearLabel(year)}
           </div>
         </div>
       </header>

@@ -33,6 +33,7 @@ const entry = (over: Partial<LibraryEntry>): LibraryEntry => ({
   last_year: 2004,
   episodes: 67,
   channels: [],
+  shifted: false,
   ...over,
 });
 

@@ -155,6 +155,30 @@ test("the Media tab shows conversion progress or says it isn't available", async
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
+test("the Station tab lists the station manager's runs", async ({ page }) => {
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Station" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Station manager" })).toBeFocused();
+  await expectSlow(page.getByTestId("station-mode")).toContainText("Runs Sundays at 2 AM");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test("the TV reports what was watched to the server", async ({ request }) => {
+  const report = {
+    session: `e2e${Date.now()}`,
+    channel: "ktvu",
+    item: "the-simpsons",
+    kind: "episode",
+    year: 1998,
+    offset: 0,
+    seconds: 30,
+    runtime: 1320,
+    ended: "tune_away",
+  };
+  expect((await request.post("/api/watch", { data: report })).status()).toBe(204);
+  expect((await request.post("/api/watch", { data: { ...report, seconds: -1 } })).status()).toBe(422);
+});
+
 test("week-preview day chips fit at 360 px", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 780 });
   await page.goto("/admin");

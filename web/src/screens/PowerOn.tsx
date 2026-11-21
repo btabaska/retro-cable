@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ServerVersion } from "../api/client";
 import { useKeys } from "../hooks/useKeys";
+import { yearLabel } from "../lib/years";
 
 interface PowerOnProps {
   year: number;
@@ -37,7 +38,7 @@ export function PowerOn({ year, loadVersion, onPower }: PowerOnProps) {
   return (
     <div className="power" data-testid="power-on" onClick={onPower}>
       <div className="power-wordmark">RETRO CABLE</div>
-      <div className="power-sub">Mountain View, CA · {year}</div>
+      <div className="power-sub">Mountain View, CA · {yearLabel(year)}</div>
       <button type="button" className="btn btn-gold power-button" autoFocus>
         Press ENTER to turn on the TV
       </button>

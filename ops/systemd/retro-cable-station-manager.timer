@@ -1,0 +1,12 @@
+[Unit]
+Description=Retro Cable weekly station manager, Sundays at 2 AM New York time
+Documentation=file:///opt/retro-cable/docs/specs/ops.md
+
+[Timer]
+OnCalendar=Sun *-*-* 02:00:00 America/New_York
+# A Sunday missed while the mini was off runs at the next boot.
+Persistent=true
+Unit=retro-cable-station-manager.service
+
+[Install]
+WantedBy=timers.target

@@ -154,6 +154,34 @@ TmdbRef = Annotated[str, Field(pattern=TMDB_REF, description="A TMDB id: tv:N or
 FirstYear = Annotated[int, Field(ge=1900, le=2100)]
 
 
+class PartOf(Model):
+    """A show TheTVDB files as seasons of another series (Justice League Unlimited is
+    Justice League seasons 3-5). The library keeps the series' files under its own id; the
+    scheduler reads these seasons as this show, and acquire asks Sonarr for just them."""
+
+    show: Slug = Field(description="The series' id in the library (its folder title's slug)")
+    tvdb_id: int = Field(ge=1, description="The series' TheTVDB id, for Sonarr")
+    seasons: list[Annotated[int, Field(ge=0)]] = Field(min_length=1)
+
+
+class EpisodesOf(Model):
+    """A TV movie TheTVDB files as episodes of a series (Drake & Josh: Really Big Shrimp is
+    Drake & Josh S04E17-E18). It comes down with the series, never from Radarr (with
+    `tvdb_id`, acquire asks Sonarr for those seasons), and the rig joins those episodes'
+    encodes into the movie (`ingest assemble`)."""
+
+    show: Slug = Field(description="The series' id in the library (its folder title's slug)")
+    tvdb_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="The series' TheTVDB id, when no channel carries it: acquire asks Sonarr"
+        " for the seasons holding these episodes",
+    )
+    episodes: list[EpisodeKey] = Field(
+        min_length=1, description="In airing order; a file holding several is listed once"
+    )
+
+
 class ShowOverride(Model):
     show: Slug
     plex_title: str | None = Field(default=None, description="Plex title if not the carriage title")
@@ -173,6 +201,12 @@ class ShowOverride(Model):
     year: FirstYear | None = Field(
         default=None,
         description="Year it first aired (a movie: released), for acquire's title+year lookup",
+    )
+    part_of: PartOf | None = Field(
+        default=None, description="Seasons of another series (TheTVDB files them as one)"
+    )
+    episodes_of: EpisodesOf | None = Field(
+        default=None, description="A TV movie made of a series' episodes (TheTVDB's filing)"
     )
 
 
@@ -233,6 +267,64 @@ class Template(Model):
 
 class TemplatesFile(Model):
     templates: list[Template] = []
+
+
+# --- station manager tuning (admin overlay only, M5) -----------------------------------------
+
+# A multiplier on a weight from the YAML (or /admin) catalog. The station manager keeps it
+# inside each channel's authenticity cap; this range is the hard limit.
+TuneFactor = Annotated[float, Field(ge=0.2, le=5.0, description="Multiplier on the base weight")]
+
+
+class PowerHour(Model):
+    """Brandon's busiest viewing hour(s) as a day-part on one channel, every day, ahead of the
+    channel's templates (or its all-day rotation). Like any part it starts when the program
+    already running ends. When none of its shows can air on a date, the usual part plays."""
+
+    channel: Slug
+    start: ClockTime = Field(description="Local HH:MM it begins")
+    hours: int = Field(default=1, ge=1, le=3)
+    pool: list[Pool] = Field(min_length=1, description="The channel's top shows, by weight")
+
+    @model_validator(mode="after")
+    def _same_day_and_shows_only(self) -> "PowerHour":
+        if int(self.start[:2]) + self.hours > 24:
+            raise ValueError("a power hour ends by midnight")
+        if any(p.show is None for p in self.pool):
+            raise ValueError("a power hour pool names shows, not tags")
+        return self
+
+
+class CarriageTune(Model):
+    """A weight multiplier for one show on one channel: every carriage window of it, so the
+    all-day rotation, tag pools and empty block parts."""
+
+    channel: Slug
+    show: Slug
+    factor: TuneFactor
+
+
+class PoolTune(Model):
+    """A weight multiplier for one show in a template's parts that start at `start` (the same
+    day-part on every weekday it appears)."""
+
+    template: Slug
+    start: ClockTime
+    show: Slug
+    factor: TuneFactor
+
+
+class Tuning(Model):
+    """What the weekly station manager changes (M5): weights and power hours, never which
+    shows are carried, their dates, launches, premieres or holidays."""
+
+    carriage: list[CarriageTune] = Field(default_factory=list)
+    pools: list[PoolTune] = Field(default_factory=list)
+    power_hours: list[PowerHour] = Field(default_factory=list)
+
+    @property
+    def empty(self) -> bool:
+        return not (self.carriage or self.pools or self.power_hours)
 
 
 FILE_MODELS: dict[str, type[Model]] = {

@@ -24,7 +24,7 @@ import re
 import sqlite3
 import subprocess
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
@@ -59,6 +59,7 @@ class Stream:
     width: int
     height: int
     sar: Fraction
+    codec: str = ""  # ffprobe's codec_name: h264, hevc
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,32 @@ class Probe:
     duration: float
     video: Stream | None
     audio_index: int | None
+    # The first audio language when every track names one and none is English (a dub-only
+    # rip): build_command refuses it rather than air it.
+    foreign_audio: str | None = None
+
+
+ENGLISH = ("eng", "en")
+# The languages US shows are dubbed into: each one's ISO 639-2 and 639-1 codes. Any other tag
+# ("", "und", or "iii") says nothing: the track may be English.
+_DUBS = (
+    ("fre", "fra", "fr"), ("ger", "deu", "de"), ("spa", "es"), ("ita", "it"), ("por", "pt"),
+    ("jpn", "ja"), ("rus", "ru"), ("pol", "pl"), ("dut", "nld", "nl"), ("swe", "sv"),
+    ("nor", "nob", "nno", "no", "nb"), ("dan", "da"), ("fin", "fi"), ("cze", "ces", "cs"),
+    ("slo", "slk", "sk"), ("hun", "hu"), ("tur", "tr"), ("kor", "ko"),
+    ("chi", "zho", "zh", "cmn", "yue"), ("hin", "hi"), ("ara", "ar"), ("heb", "he"),
+    ("gre", "ell", "el"), ("ukr", "uk"), ("rum", "ron", "ro"), ("bul", "bg"), ("hrv", "hr"),
+    ("srp", "sr"), ("slv", "sl"), ("tha", "th"), ("vie", "vi"), ("ind", "id"),
+    ("may", "msa", "ms"), ("tam", "ta"), ("tel", "te"), ("per", "fas", "fa"), ("cat", "ca"),
+    ("est", "et"), ("lav", "lv"), ("lit", "lt"), ("ice", "isl", "is"), ("fil", "tgl", "tl"),
+)  # fmt: skip
+_SAME_LANGUAGE = {code: frozenset(group) for group in _DUBS for code in group}
+DUB_LANGUAGES = frozenset(_SAME_LANGUAGE)
+
+
+def _language(tag: str) -> str:
+    """The base language of a tag: "es-419" -> "es"."""
+    return tag.lower().split("-")[0]
 
 
 def _fraction(value: Any) -> Fraction:
@@ -76,11 +103,34 @@ def _fraction(value: Any) -> Fraction:
         return Fraction(1)
 
 
+def _stream_seconds(stream: dict[str, Any]) -> float | None:
+    """A stream's own length: `duration` (MP4) or a `DURATION` tag (MKV, `HH:MM:SS.ns`)."""
+    tags = stream.get("tags") or {}
+    tagged = [v for k, v in tags.items() if k.upper().startswith("DURATION")]
+    for value in [stream.get("duration"), *tagged]:
+        try:
+            *hm, sec = str(value).split(":")
+            minutes = 0
+            for x in hm:
+                minutes = minutes * 60 + int(x)
+            seconds = minutes * 60 + float(sec)
+        except ValueError:
+            continue
+        if seconds > 0:
+            return seconds
+    return None
+
+
 def parse_probe(data: dict[str, Any]) -> Probe:
-    """The first real video stream (not cover art) and the audio to keep (English if tagged)."""
+    """The first real video stream (not cover art) and the audio to keep (English if tagged;
+    `foreign_audio` when every track is tagged with another language).
+    The length is the longer of those two streams, so a subtitle that runs past the end
+    doesn't count; the container's length when they don't say, and never more than it."""
     video = None
+    lengths: dict[int, float | None] = {}
     audio: list[tuple[int, str]] = []
     for s in data.get("streams", []):
+        lengths[int(s.get("index", -1))] = _stream_seconds(s)
         kind = s.get("codec_type")
         if kind == "video" and video is None and not s.get("disposition", {}).get("attached_pic"):
             video = Stream(
@@ -88,23 +138,75 @@ def parse_probe(data: dict[str, Any]) -> Probe:
                 int(s["width"]),
                 int(s["height"]),
                 _fraction(s.get("sample_aspect_ratio")),
+                str(s.get("codec_name", "")),
             )
         elif kind == "audio":
             audio.append((int(s["index"]), str(s.get("tags", {}).get("language", ""))))
-    english = [i for i, lang in audio if lang.lower() in ("eng", "en")]
+    english = [i for i, lang in audio if _language(lang) in ENGLISH]
     pick = english[0] if english else (audio[0][0] if audio else None)
+    # Some muxers tag the audio with a word of the title ("No Free Rides" -> "nor", "Boy III" ->
+    # "iii"): a tag spelled by the title says nothing either.
+    title = str(data.get("format", {}).get("tags", {}).get("title", ""))
+    words = set(re.findall(r"[a-z]+", title.lower()))
+    named = audio and all(
+        _language(lang) in DUB_LANGUAGES and not words & _SAME_LANGUAGE[_language(lang)]
+        for _, lang in audio
+    )
+    foreign = audio[0][1] if named and not english else None
     duration = float(data.get("format", {}).get("duration") or 0)
-    return Probe(duration=duration, video=video, audio_index=pick)
+    kept = [lengths.get(i) for i in (video.index if video else None, pick) if i is not None]
+    if kept and all(kept):
+        longest = max(x for x in kept if x)
+        duration = min(duration, longest) if duration > 0 else longest
+    return Probe(duration=duration, video=video, audio_index=pick, foreign_audio=foreign)
+
+
+# How far before the container's end to look for the last picture and sound packets.
+PACKET_WINDOW = 600.0
 
 
 def probe(path: Path, ffprobe: str = "ffprobe") -> Probe:
+    """ffprobe's view of a file. When the kept streams don't say how long they are and another
+    stream (a subtitle) could have set the container's length, the length is where their last
+    packets end, read from the final ten minutes."""
     out = subprocess.run(
         [ffprobe, "-v", "error", "-of", "json", "-show_format", "-show_streams", str(path)],
         check=True,
         capture_output=True,
         text=True,
     ).stdout
-    return parse_probe(json.loads(out))
+    data = json.loads(out)
+    info = parse_probe(data)
+    streams = {int(s.get("index", -1)): s for s in data.get("streams", [])}
+    picture = info.video.index if info.video else None
+    kept = {i for i in (picture, info.audio_index) if i is not None}
+    if (
+        info.duration <= 0
+        or not kept
+        or all(_stream_seconds(streams[i]) for i in kept)
+        or set(streams) <= kept
+    ):
+        return info
+    start = max(info.duration - PACKET_WINDOW, 0.0)
+    out = subprocess.run(
+        [ffprobe, "-v", "error", "-read_intervals", f"{start:.3f}%",
+         "-show_entries", "packet=stream_index,pts_time,duration_time", "-of", "csv=p=0",
+         str(path)],
+        capture_output=True, text=True, check=False,
+    ).stdout  # fmt: skip
+    ends: dict[int, float] = {}
+    for line in out.splitlines():
+        try:
+            index, pts, length = line.split(",")[:3]
+            stream = int(index)
+            end = float(pts) + (float(length) if length not in ("", "N/A") else 0.0)
+        except ValueError:
+            continue
+        if stream in kept:
+            ends[stream] = max(end, ends.get(stream, 0.0))
+    if set(ends) != kept:
+        return info
+    return replace(info, duration=min(info.duration, max(ends.values())))
 
 
 def source_seconds(path: Path) -> float | None:
@@ -196,6 +298,35 @@ def no_crop(src: Path, info: Probe, max_seconds: float | None) -> Crop | None:
     return None
 
 
+def codec_args(codec: Codec, encoder: Encoder, *, audio: bool) -> list[str]:
+    """The video and audio encoder settings every encode shares (normalize, assemble)."""
+    args: list[str] = []
+    if codec == "hevc" and encoder == "nvenc":
+        args += ["-c:v", "hevc_nvenc", "-preset", "p7", "-tune", "hq", "-rc", "vbr", "-cq", "26",
+                "-b:v", "0", "-spatial-aq", "1", "-temporal-aq", "1", "-forced-idr", "1",
+                "-profile:v", "main"]  # fmt: skip
+    elif codec == "hevc":
+        args += ["-c:v", "libx265", "-preset", "fast", "-crf", "22",
+                "-x265-params", "log-level=error:forced-idr=1"]  # fmt: skip
+    elif encoder == "nvenc":
+        args += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0",
+                "-forced-idr", "1"]  # fmt: skip
+    else:
+        args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+    if codec == "hevc":
+        args += ["-maxrate", HEVC_MAXRATE, "-bufsize", HEVC_BUFSIZE, "-tag:v", "hvc1"]
+    else:
+        args += ["-maxrate", VIDEO_MAXRATE, "-bufsize", VIDEO_BUFSIZE, "-profile:v", "high"]
+    args += ["-pix_fmt", "yuv420p",
+            "-force_key_frames", f"expr:gte(t,n_forced*{KEYFRAME_SECONDS})"]  # fmt: skip
+    if audio:
+        audio_rate = "96k" if codec == "hevc" else "128k"
+        args += ["-c:a", "aac", "-b:a", audio_rate, "-ac", "2", "-ar", "48000"]
+    else:
+        args += ["-an"]
+    return args
+
+
 def build_command(
     src: Path,
     dst: Path,
@@ -208,6 +339,8 @@ def build_command(
 ) -> list[str]:
     if info.video is None:
         raise ValueError(f"{src.name}: no video stream")
+    if info.foreign_audio is not None:
+        raise ValueError(f"{src.name}: no English audio (only {info.foreign_audio})")
     width, height = info.video.width, info.video.height
     # bwdif only touches frames flagged interlaced (DVD and broadcast rips); progressive passes.
     filters = ["bwdif=mode=send_frame:deint=interlaced"]
@@ -224,29 +357,7 @@ def build_command(
     if info.audio_index is not None:
         cmd += ["-map", f"0:{info.audio_index}"]
     cmd += ["-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn", "-vf", vf]
-    if codec == "hevc" and encoder == "nvenc":
-        cmd += ["-c:v", "hevc_nvenc", "-preset", "p7", "-tune", "hq", "-rc", "vbr", "-cq", "26",
-                "-b:v", "0", "-spatial-aq", "1", "-temporal-aq", "1", "-forced-idr", "1",
-                "-profile:v", "main"]  # fmt: skip
-    elif codec == "hevc":
-        cmd += ["-c:v", "libx265", "-preset", "fast", "-crf", "22",
-                "-x265-params", "log-level=error:forced-idr=1"]  # fmt: skip
-    elif encoder == "nvenc":
-        cmd += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0",
-                "-forced-idr", "1"]  # fmt: skip
-    else:
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
-    if codec == "hevc":
-        cmd += ["-maxrate", HEVC_MAXRATE, "-bufsize", HEVC_BUFSIZE, "-tag:v", "hvc1"]
-    else:
-        cmd += ["-maxrate", VIDEO_MAXRATE, "-bufsize", VIDEO_BUFSIZE, "-profile:v", "high"]
-    cmd += ["-pix_fmt", "yuv420p",
-            "-force_key_frames", f"expr:gte(t,n_forced*{KEYFRAME_SECONDS})"]  # fmt: skip
-    if info.audio_index is not None:
-        audio_rate = "96k" if codec == "hevc" else "128k"
-        cmd += ["-c:a", "aac", "-b:a", audio_rate, "-ac", "2", "-ar", "48000"]
-    else:
-        cmd += ["-an"]
+    cmd += codec_args(codec, encoder, audio=info.audio_index is not None)
     cmd += ["-max_muxing_queue_size", "1024", "-movflags", "+faststart", "-f", "mp4", str(dst)]
     return cmd
 
@@ -444,6 +555,9 @@ class NormalizeStats:
     # Originals deleted after a whole, checked encode (`delete_sources_under`), relative to
     # that root, so the stats and the log name no host or share.
     deleted: list[str] = field(default_factory=list)
+    # Stopped at `limit` or `until` with items still to look at: the rig's worker scans again
+    # soon instead of sleeping (ops/rig/worker.sh).
+    unfinished: bool = False
     commands: list[list[str]] = field(default_factory=list)  # dry run only
 
 
@@ -460,6 +574,22 @@ def _record(
             f" media_source_mtime_ns = ?{measured} WHERE id = ?",
             (*values, item.rowid),
         )
+
+
+def _measure_source(db: sqlite3.Connection, item: Item, src: Path, probe: Prober) -> None:
+    """Record the length of a source encoded before lengths were recorded (Nov 18 2026: 433
+    Live TV originals kept for want of one), so its encode can be checked and its original
+    deleted. An encode it shows short is converted again on the next run."""
+    try:
+        seconds = probe(src).duration
+    except (subprocess.CalledProcessError, ValueError, KeyError, OSError):
+        return
+    if seconds > 0:
+        with transaction(db):
+            db.execute(
+                f"UPDATE {item.table} SET source_seconds = ? WHERE id = ?",
+                (math.floor(seconds), item.rowid),
+            )
 
 
 def check_encode(out: Probe, info: Probe, max_seconds: float | None) -> None:
@@ -572,6 +702,7 @@ def normalize(
     codec: Codec = "h264",
     max_seconds: float | None = None,
     limit: int | None = None,
+    until: datetime | None = None,
     force: bool = False,
     dry_run: bool = False,
     run: Runner = run_ffmpeg,
@@ -586,7 +717,8 @@ def normalize(
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     log: Callable[[str], None] | None = None,
 ) -> NormalizeStats:
-    """Encode every item that has no up-to-date output. `limit` caps the encodes in this run.
+    """Encode every item that has no up-to-date output. `limit` caps the encodes in this run,
+    and no item starts once `now()` reaches `until` (the one running then finishes).
 
     `encoder` is fixed, or asked once per item (the rig's GPU check, see ingest/gpu.py).
     `order` reorders the plan (see `prioritize`); `on_encoded` runs after each item is
@@ -620,7 +752,10 @@ def normalize(
 
     try:
         for item in items:
-            if limit is not None and stats.encoded >= limit:
+            if (limit is not None and stats.encoded >= limit) or (
+                until is not None and now() >= until
+            ):
+                stats.unfinished = True
                 break
             if item.source_deleted:  # the encode is all there is: never encoded again
                 if item.up_to_date_in_db() and (media_dir / item.target).is_file():
@@ -644,6 +779,8 @@ def normalize(
                 and (media_dir / item.target).is_file()
             ):
                 stats.skipped += 1
+                if may_delete and item.source_seconds is None and item.table != "bumpers":
+                    _measure_source(db, item, src, probe)
                 delete(item, src, st)
                 done(item, "skipped")
                 continue
@@ -662,6 +799,17 @@ def normalize(
         if watch is not None:
             watch.close()
     return stats
+
+
+def _reason(err: Exception) -> str:
+    """Why an encode failed, in one line: the tool that exited and its last error line."""
+    if isinstance(err, subprocess.CalledProcessError):
+        cmd = err.cmd[0] if isinstance(err.cmd, list | tuple) else str(err.cmd).split()[0]
+        said = (err.stderr or "").strip().splitlines() if isinstance(err.stderr, str) else []
+        return f"{Path(cmd).name} exited {err.returncode}" + (f": {said[-1]}" if said else "")
+    if isinstance(err, KeyError):
+        return f"missing {err}"
+    return str(err)
 
 
 def _encode(
@@ -699,7 +847,23 @@ def _encode(
         if watch is not None:
             watch.started(item, chosen)
         dst.parent.mkdir(parents=True, exist_ok=True)
-        run(cmd)
+        try:
+            run(cmd)
+        except subprocess.CalledProcessError as err:
+            # ffmpeg killed by a signal mid-NVENC (SIGSEGV on sound files, Nov 17 2026) is a
+            # driver hiccup, not the file: do it again at once on the CPU.
+            if chosen != "nvenc" or err.returncode >= 0:
+                raise
+            if progress:
+                progress(f"{item.label} crashed on nvenc ({_reason(err)}), again on x264")
+            tmp.unlink(missing_ok=True)
+            chosen = "x264"
+            cmd = build_command(src, tmp, info, chosen, max_seconds, crop=bars, codec=codec)
+            if progress:
+                progress(f"{item.label} [{chosen}]")
+            if watch is not None:
+                watch.started(item, chosen)
+            run(cmd)
         out = probe(tmp)
         check_encode(out, info, max_seconds)
         seconds = math.floor(out.duration)
@@ -707,8 +871,8 @@ def _encode(
     except (subprocess.CalledProcessError, ValueError, KeyError, OSError) as err:
         tmp.unlink(missing_ok=True)
         stats.failed.append(item.label)
-        if progress is not None and isinstance(err, ValueError):
-            progress(f"{item.label} failed: {err}")
+        if progress is not None:
+            progress(f"{item.label} failed: {_reason(err)}")
         return "failed"
     _record(db, item, seconds, source, st)
     stats.encoded += 1

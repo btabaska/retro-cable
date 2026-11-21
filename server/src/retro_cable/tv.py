@@ -3,15 +3,35 @@
 import calendar
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Protocol
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 from retro_cable.catalog.models import Channel
-from retro_cable.scheduler import ChannelOffAir, Scheduler, Slot, simulated_now
+from retro_cable.scheduler import (
+    ALL_YEARS,
+    FIRST_YEAR,
+    LAST_YEAR,
+    ChannelOffAir,
+    Scheduler,
+    Slot,
+    simulated_now,
+)
 
-Year = Annotated[int, Query(ge=1990, le=2010, description="Simulated year")]
+
+def check_year(year: int) -> int:
+    """A simulated year, 1990-2010, or 0 for All Years."""
+    if year != ALL_YEARS and not FIRST_YEAR <= year <= LAST_YEAR:
+        raise ValueError(f"year must be {FIRST_YEAR}-{LAST_YEAR}, or {ALL_YEARS} for All Years")
+    return year
+
+
+Year = Annotated[
+    int,
+    AfterValidator(check_year),
+    Query(description="Simulated year 1990-2010, or 0 for All Years (every channel and episode)"),
+]
 MonthDay = Annotated[
     str | None,
     Query(pattern=r"^\d{2}-\d{2}$", description="MM-DD; defaults to today's date"),
@@ -100,9 +120,12 @@ def info(s: Scheduler, channel: Channel, day: date) -> ChannelInfo:
 
 
 def resolve_date(real_now: datetime, s: Scheduler, year: int, month_day: str | None) -> date:
-    """The simulated date for `year` and an optional MM-DD (default: today's)."""
+    """The simulated date for `year` and an optional MM-DD (default: today's). All Years
+    dates are in the real year."""
     if month_day is None:
         return simulated_now(real_now, year, s.tz).date()
+    if year == ALL_YEARS:
+        year = real_now.astimezone(s.tz).year
     month, day = (int(x) for x in month_day.split("-"))
     if month == 2 and day == 29 and not calendar.isleap(year):
         day = 28
@@ -131,12 +154,21 @@ def guide_slot(s: Scheduler, slot: Slot) -> dict[str, object]:
     }
 
 
+class Schedules(Protocol):
+    """The app's schedule cache (app.py): the dated scheduler, or the All Years one."""
+
+    def __call__(self, all_years: bool = False) -> Scheduler: ...
+
+
 def router(
-    scheduler: Callable[[], Scheduler],
+    schedules: Schedules,
     clock: Callable[[], datetime],
     sign: Callable[[str], str],
 ) -> APIRouter:
     api = APIRouter()
+
+    def scheduler(year: int) -> Scheduler:
+        return schedules(all_years=year == ALL_YEARS)
 
     def sim_date(s: Scheduler, year: int, month_day: str | None) -> date:
         return resolve_date(clock(), s, year, month_day)
@@ -149,7 +181,7 @@ def router(
     @api.get("/channels", name="getChannels")
     def get_channels(year: Year, date_: Annotated[MonthDay, Query(alias="date")] = None) -> Lineup:
         """Every channel with its identity on that date; hidden ones have on_air false."""
-        s = scheduler()
+        s = scheduler(year)
         day = sim_date(s, year, date_)
         now = simulated_now(clock(), year, s.tz)
         if date_ is not None:
@@ -173,7 +205,7 @@ def router(
         hours: Annotated[float, Query(gt=0, le=36)] = 24,
     ) -> Guide:
         """Back-to-back slots for every channel on the dial, from `start` for `hours`."""
-        s = scheduler()
+        s = scheduler(year)
         day = sim_date(s, year, date_)
         hh, mm = (int(x) for x in start.split(":"))
         begin = datetime.combine(day, time(hh, mm), tzinfo=s.tz)
@@ -201,7 +233,7 @@ def router(
     @api.get("/tune/{channel_id}", name="tune", responses={404: {"description": "Not on the dial"}})
     def tune(channel_id: str, year: Year, count: Annotated[int, Query(ge=0, le=10)] = 3) -> Tune:
         """What is airing now on a channel, how far in, and what comes next."""
-        s = scheduler()
+        s = scheduler(year)
         now = simulated_now(clock(), year, s.tz)
         try:
             channel = s.catalog.channel(channel_id)

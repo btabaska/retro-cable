@@ -1,9 +1,11 @@
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from retro_cable.ingest import cli
+from retro_cable.ingest.assemble import AssembleStats
 from tests.conftest import MakeCatalog
 from tests.ingest.conftest import RecordedFetch
 
@@ -259,6 +261,50 @@ def test_priority_years_merge_the_catalog_and_the_minis_channels(
     assert "warning" in capsys.readouterr().err
 
 
+def test_a_series_converts_with_the_show_its_seasons_air_as(
+    tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """overrides.yaml part_of: Lupin III's files convert when a carried show is some of its
+    seasons, ranked by that show's earliest year (here only on the mini's /admin)."""
+    from retro_cable.catalog import load_catalog
+    from retro_cable.db import connect, migrate
+
+    db = connect(tmp_path / "rig.db")
+    migrate(db)
+    overrides = (
+        "shows:\n  - { show: lupin-the-3rd-part-ii,"
+        " part_of: { show: lupin-iii, tvdb_id: 71863, seasons: [2] } }\n"
+    )
+    catalog = load_catalog(make_catalog(overrides=overrides))
+    library = {"items": [{"id": "lupin-the-3rd-part-ii", "first_year": 2003,
+                          "channels": [{"id": "adult-swim"}]}]}  # fmt: skip
+    years = cli.priority_years(db, catalog, "http://mini/api/admin/library", lambda u: library)
+    assert years["lupin-iii"] == 2003
+    assert "lupin-iii" not in cli.priority_years(db, catalog)  # nothing carries part II
+
+
+def test_a_series_converts_with_the_tv_movie_made_of_its_episodes(
+    tmp_path: Path, make_catalog: MakeCatalog
+) -> None:
+    """overrides.yaml episodes_of: Heidi (1993) is a miniseries no channel carries; its
+    episodes convert because the movie made of them is carried (here on the mini's /admin)."""
+    from retro_cable.catalog import load_catalog
+    from retro_cable.db import connect, migrate
+
+    db = connect(tmp_path / "rig.db")
+    migrate(db)
+    overrides = (
+        "shows:\n  - { show: heidi-1993, episodes_of:"
+        " { show: heidi, tvdb_id: 338932, episodes: [S01E01, S01E02] } }\n"
+    )
+    catalog = load_catalog(make_catalog(overrides=overrides))
+    library = {"items": [{"id": "heidi-1993", "first_year": None, "kind": "movie",
+                          "channels": [{"id": "disney-movies"}]}]}  # fmt: skip
+    years = cli.priority_years(db, catalog, "http://mini/api/admin/library", lambda u: library)
+    assert years["heidi"] == years["heidi-1993"]
+    assert "heidi" not in cli.priority_years(db, catalog)  # nothing carries the movie
+
+
 def test_normalize_rig_flags_pass_a_chooser_an_order_and_a_manifest_hook(
     tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -276,4 +322,146 @@ def test_normalize_rig_flags_pass_a_chooser_an_order_and_a_manifest_hook(
     assert isinstance(watch, ProgressFile), "the rig reports progress for the Media tab"
     assert watch.path == tmp_path / "media/progress.json" and watch.auto
     assert CAPTURED["shows"] is None
+    assert CAPTURED["until"] is None, "no deadline unless asked"
     assert (tmp_path / "media/manifest.json").is_file(), "the final manifest is written"
+
+
+def test_normalize_for_minutes_sets_a_deadline(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "normalize", lambda db, media, **kw: _capture(kw))
+    before = datetime.now(UTC)
+    args = ["normalize", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog()),
+            "--media-dir", str(tmp_path / "media"), "--all", "--for-minutes", "90"]  # fmt: skip
+    assert cli.main(args) == 0
+    until = CAPTURED["until"]
+    assert isinstance(until, datetime)
+    assert before + timedelta(minutes=90) <= until <= datetime.now(UTC) + timedelta(minutes=90)
+
+
+def test_assemble_reads_the_minis_titles_and_writes_the_manifest(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    library = {"items": [{"id": "rbs", "title": "Really Big Shrimp", "channels": [{"id": "c"}]}]}
+    monkeypatch.setattr(cli, "_get_json", lambda url: library)
+    seen: dict[str, object] = {}
+
+    def fake(db, catalog, media, **kw):  # type: ignore[no-untyped-def]
+        seen.update(kw)
+        db.execute(
+            "INSERT INTO movies (id, title, media_path) VALUES ('rbs', 'RBS', 'movies/rbs.mp4')"
+        )
+        kw["on_assembled"]("rbs", "movies/rbs.mp4")
+        return AssembleStats(assembled=["rbs"])
+
+    monkeypatch.setattr(cli, "assemble", fake)
+    media = tmp_path / "media"
+    args = ["assemble", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog()),
+            "--media-dir", str(media), "--manifest",
+            "--priority-url", "http://mini/api/admin/library"]  # fmt: skip
+    assert cli.main(args) == 0
+    assert seen["extra"] == library["items"] and seen["dry_run"] is False
+    assert json.loads(capsys.readouterr().out)["assembled"] == ["rbs"]
+    assert (media / "movies/rbs.json").is_file()
+    movies = json.loads((media / "manifest.json").read_text())["movies"]
+    assert [m["id"] for m in movies] == ["rbs"]
+
+
+def test_scan_matches_shows_and_movies_on_the_minis_admin_channels(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    library = {"items": [{"id": "the-rugrats-movie", "title": "The Rugrats Movie",
+                          "kind": "movie", "channels": [{"id": "custom-nick"}]},
+                         {"id": "pokemon", "title": "Pok\u00e9mon", "kind": "show",
+                          "channels": [{"id": "cartoon-network"}]}]}  # fmt: skip
+    fetched: list[str] = []
+
+    def get(url: str) -> object:
+        fetched.append(url)
+        return library
+
+    monkeypatch.setattr(cli, "_get_json", get)
+    movies = tmp_path / "movies" / "The.Rugrats.Movie.1998.DVDRip.XviD"
+    movies.mkdir(parents=True)
+    (movies / "rugrats.avi").write_bytes(b"x")
+    season = tmp_path / "tv" / "Pok\u00e9mon (1997)" / "Season 07"
+    season.mkdir(parents=True)
+    (season / "Pok\u00e9mon (1997) - S07E01 - Seed.mkv").write_bytes(b"x")
+    args = ["scan", "--db", str(tmp_path / "rig.db"), "--catalog", str(make_catalog()),
+            "--tv", str(tmp_path / "tv"), "--movies", str(tmp_path / "movies"), "--no-probe",
+            "--priority-url", "http://mini/api/admin/library"]  # fmt: skip
+    assert cli.main(args) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["movies"]["movies"] == 1
+    assert out["tv"]["shows"] == 1 and out["tv"]["uncarried"] == []
+    assert len(fetched) == 1
+
+
+def test_arr_clients_wait_for_a_busy_instance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """sonarr-livetv answers slowly for hours while it imports season packs: its calls wait
+    two minutes (RC_ARR_TIMEOUT), not the default 30 s, before giving up."""
+    timeouts: list[float] = []
+    monkeypatch.setattr(cli, "json_request", lambda url, headers, timeout: timeouts.append(timeout))
+    monkeypatch.setenv("RC_SONARR_LIVETV_URL", "http://nas:8990")
+    monkeypatch.setenv("RC_SONARR_LIVETV_KEY", "k")
+    cli._arr("SONARR")
+    monkeypatch.setenv("RC_ARR_TIMEOUT", "45")
+    cli._arr("SONARR")
+    assert timeouts == [120, 45]
+
+
+def test_tmdb_fills_by_the_lineups_ids_from_the_catalog(
+    tmp_path: Path,
+    make_catalog: MakeCatalog,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from retro_cable.ingest.tmdb import TmdbStats
+
+    monkeypatch.setenv("TMDB_TOKEN", "s3cret")
+    monkeypatch.setattr(cli, "tmdb_http_fetch", lambda token: None)
+    monkeypatch.setattr(cli, "lineup_ids", lambda catalog: {"arthur": 789})
+    seen: list[object] = []
+
+    def fake_fill(db: object, source: object, now: object, lineup: object = None) -> TmdbStats:
+        seen.append(lineup)
+        return TmdbStats(shows=1)
+
+    monkeypatch.setattr(cli, "fill_gaps", fake_fill)
+    code = cli.main(["tmdb", "--db", str(tmp_path / "db.sqlite"), "--catalog", str(make_catalog())])
+
+    assert code == 0
+    assert seen == [{"arthur": 789}]
+    out = capsys.readouterr().out
+    assert json.loads(out)["shows"] == 1
+    assert "s3cret" not in out
+
+
+def test_tmdb_watch_fills_every_interval(
+    tmp_path: Path, make_catalog: MakeCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from retro_cable.ingest.tmdb import TmdbStats
+
+    monkeypatch.setenv("TMDB_TOKEN", "s3cret")
+    monkeypatch.setattr(cli, "tmdb_http_fetch", lambda token: None)
+    runs: list[object] = []
+
+    def fake_fill(db: object, source: object, now: object, lineup: object = None) -> TmdbStats:
+        runs.append(lineup)
+        return TmdbStats()
+
+    monkeypatch.setattr(cli, "fill_gaps", fake_fill)
+    naps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        naps.append(seconds)
+        if len(naps) == 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("time.sleep", sleep)
+    with pytest.raises(KeyboardInterrupt):
+        cli.main(["tmdb", "--watch", "21600", "--db", str(tmp_path / "db.sqlite"),
+                  "--catalog", str(make_catalog())])  # fmt: skip
+    assert (len(runs), naps) == (2, [21600, 21600])

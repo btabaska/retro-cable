@@ -143,6 +143,23 @@ def test_flags_media_shorter_than_half_its_expected_runtime(
     assert "### Shorter than half their runtime" in render_markdown(inv)
 
 
+def test_an_episode_with_a_two_part_runtime_is_not_listed_short(
+    db: sqlite3.Connection, make_catalog: MakeCatalog
+) -> None:
+    """A whole file as long as its show's other episodes airs (load_library) though its catalog
+    runtime is a two-part broadcast's, so it isn't listed as short media."""
+    db.execute("INSERT INTO episodes (show_id, season, episode) VALUES ('the-simpsons', 11, 2)")
+    db.execute(
+        "UPDATE episodes SET runtime_seconds = 1320, source_seconds = 1300, media_path = 'tv/x.mp4',"
+        " media_seconds = 1300 WHERE show_id = 'the-simpsons'"
+    )
+    db.execute(
+        "UPDATE episodes SET runtime_seconds = 2640 WHERE show_id = 'the-simpsons'"
+        " AND season = 10 AND episode = 1"
+    )
+    assert build_inventory(load_catalog(make_catalog()), db).gaps.short_media == []
+
+
 def test_markdown_has_a_table_per_channel_and_the_gaps(
     db: sqlite3.Connection, make_catalog: MakeCatalog
 ) -> None:

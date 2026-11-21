@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import type { ChannelInfo, Lineup, TvApi } from "../api/client";
 import { useKeys } from "../hooks/useKeys";
 import { moveFocus } from "../lib/focus";
+import { ALL_YEARS, FIRST_YEAR, LAST_YEAR, yearLabel } from "../lib/years";
 
-export const FIRST_YEAR = 1990;
-export const LAST_YEAR = 2010;
 const COLS = 7;
-const YEARS = Array.from({ length: LAST_YEAR - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i);
+// 1990-2010 fill three rows of seven; All Years has the fourth row to itself.
+const YEARS = [...Array.from({ length: LAST_YEAR - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i), ALL_YEARS];
 const FETCH_DELAY_MS = 120;
 const RETRY_MS = 1000;
 const MAX_RETRY_MS = 5000;
@@ -35,7 +35,7 @@ function longDate(lineup: Lineup): string {
   return `${lineup.weekday}, ${month} ${d ?? ""}, ${y ?? ""}`;
 }
 
-/** Pick the year: 1990-2010, with the dial for the focused year. */
+/** Pick the year: 1990-2010 or All Years, with the dial for the focused one. */
 export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
   const [focused, setFocused] = useState(year);
   const [lineups, setLineups] = useState<Record<number, Lineup>>({});
@@ -66,11 +66,11 @@ export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
   }, [api, focused, lineups, failures]);
 
   useKeys((event) => {
-    const index = focused - FIRST_YEAR;
+    const index = Math.max(0, YEARS.indexOf(focused));
     const rows = Math.ceil(YEARS.length / COLS);
     const next = moveFocus({ row: Math.floor(index / COLS), col: index % COLS }, event.key, { rows, cols: COLS });
     if (next) {
-      setFocused(Math.min(LAST_YEAR, FIRST_YEAR + next.row * COLS + next.col));
+      setFocused(YEARS[Math.min(YEARS.length - 1, next.row * COLS + next.col)] ?? focused);
       setFailures(0);
     } else if (event.key === "Enter") onPick(focused);
     else if (event.key === "Escape" || event.key === "Backspace") onBack();
@@ -96,9 +96,13 @@ export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
         <div className="year-left">
           <div className="year-kicker">Today on your TV is</div>
           <div className="year-date" data-testid="year-date">
-            {lineup ? longDate(lineup) : `${focused}`}
+            {lineup ? longDate(lineup) : yearLabel(focused)}
           </div>
-          <div className="year-sub">Each channel plays what had aired by this date, new episodes and reruns mixed.</div>
+          <div className="year-sub">
+            {focused === ALL_YEARS
+              ? "All Years: every channel on, airing every season of every show, whenever it first aired."
+              : "Each channel plays what had aired by this date, new episodes and reruns mixed."}
+          </div>
           <div className="year-grid" role="grid" aria-label="Years" ref={grid}>
             {YEARS.map((y) => (
               <button
@@ -106,7 +110,7 @@ export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
                 key={y}
                 role="gridcell"
                 aria-selected={y === focused}
-                className={`year-cell${y === focused ? " year-cell-focused" : ""}${y === year ? " year-cell-current" : ""}`}
+                className={`year-cell${y === ALL_YEARS ? " year-cell-all" : ""}${y === focused ? " year-cell-focused" : ""}${y === year ? " year-cell-current" : ""}`}
                 onClick={() => {
                   onPick(y);
                 }}
@@ -115,13 +119,13 @@ export function YearPicker({ api, year, onPick, onBack }: YearPickerProps) {
                   setFailures(0);
                 }}
               >
-                {y}
+                {yearLabel(y)}
               </button>
             ))}
           </div>
         </div>
         <div className="year-dial" data-testid="year-dial">
-          <div className="year-dial-title">On the dial in {focused}</div>
+          <div className="year-dial-title">On the dial in {yearLabel(focused)}</div>
           {lineup?.channels
             .slice()
             .sort((a, b) => a.number - b.number)

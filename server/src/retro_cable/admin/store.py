@@ -59,10 +59,23 @@ def _insert(
     return get(db, cur.lastrowid)
 
 
-def save(db: sqlite3.Connection, overlay: Overlay, note: str, now: datetime) -> Revision:
-    """Append `overlay` as the new head, its parent the current head."""
+class Conflict(Exception):
+    """The head moved since the caller read it (an edit in /admin during a long job)."""
+
+
+def save(
+    db: sqlite3.Connection,
+    overlay: Overlay,
+    note: str,
+    now: datetime,
+    expect_head: int | None = None,
+) -> Revision:
+    """Append `overlay` as the new head, its parent the current head. With `expect_head`,
+    refuse (Conflict) unless the head is still that revision."""
     with transaction(db):
         current = head(db)
+        if expect_head is not None and current.id != expect_head:
+            raise Conflict(f"the head is revision {current.id}, not {expect_head}")
         if current.id == 0:
             # Record the empty starting point, so the first save can be undone like any other.
             current = _insert(db, None, Overlay(), "start", now)

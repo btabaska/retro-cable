@@ -3,10 +3,14 @@
 import sqlite3
 from collections import defaultdict
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
+from statistics import median
 from types import MappingProxyType
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from retro_cable.catalog.parts import Part
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,24 @@ class Library:
             show_years=MappingProxyType(dict(show_years or {})),
         )
 
+    def split(self, parts: Mapping[tuple[str, int], "Part"]) -> "Library":
+        """Seasons another show claims (catalog.parts) as that show, with its title and year;
+        the series keeps the rest."""
+        if not parts:
+            return self
+        episodes: dict[str, list[Program]] = defaultdict(list)
+        years = dict(self.show_years)
+        for show, eps in self.episodes.items():
+            for p in eps:
+                part = parts.get((show, p.season)) if p.season is not None else None
+                if part is None:
+                    episodes[show].append(p)
+                    continue
+                episodes[part.show].append(replace(p, show=part.show, title=part.title))
+                if part.year is not None:
+                    years[part.show] = part.year
+        return Library.build(episodes, self.movies, self.bumpers, years)
+
 
 def _date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
@@ -90,6 +112,15 @@ EXPECTED_SECONDS = "MAX(COALESCE(runtime_seconds, 0), COALESCE(source_seconds, 0
 # review aired 2-minute samples as 22-minute episodes). It never reaches the schedule unless
 # short media is allowed explicitly (RC_ALLOW_SHORT_MEDIA, for trials and demos).
 SHORT_MEDIA_RATIO = 0.5
+# With no runtime known, a truncated download measures whole against itself. An episode
+# under a quarter of its show's median length is held back too, once the show has
+# SHOW_MEDIAN_MIN episodes to judge by (Leverage Redemption S01E13 was a 62 s clip).
+SHOW_MEDIAN_RATIO = 0.25
+SHOW_MEDIAN_MIN = 5
+# TMDB gives some finales the runtime of their two-part broadcast (Lost "Exodus 2", 5220 s)
+# while each part is a 43-minute file. A whole file (not short of its own source) at least
+# this share of its show's median airs though it is under half its runtime (Nov 17 2026).
+SHOW_WHOLE_RATIO = 0.75
 _PLAYABLE = f"{_PLAY_PATH}, {PLAY_SECONDS} AS play_seconds, {EXPECTED_SECONDS} AS expected_seconds"
 _BUMPER_PLAYABLE = (
     f"{_PLAY_PATH}, CASE WHEN media_path IS NOT NULL THEN media_seconds ELSE runtime_seconds END"
@@ -110,28 +141,57 @@ def _ready(allow_short: bool) -> str:
     return _READY + f" AND play_seconds >= expected_seconds * {SHORT_MEDIA_RATIO}"
 
 
+def _typical(programs: list[Program]) -> list[Program]:
+    """A show's episodes without those far shorter than its median (see SHOW_MEDIAN_RATIO)."""
+    if len(programs) < SHOW_MEDIAN_MIN:
+        return programs
+    floor = median(p.seconds for p in programs) * SHOW_MEDIAN_RATIO
+    return [p for p in programs if p.seconds >= floor]
+
+
+def _whole(r: sqlite3.Row) -> bool:
+    """Not short of its own source: the source's measured length is the only expectation."""
+    return not is_short(r["play_seconds"], r["source_seconds"] or 0)
+
+
+def _episode(r: sqlite3.Row) -> Program:
+    return Program(
+        show=r["show_id"],
+        kind="episode",
+        title=r["show_title"],
+        season=r["season"],
+        episode=r["episode"],
+        episode_title=r["title"],
+        air_date=_date(r["air_date"]),
+        seconds=r["play_seconds"],
+        path=r["play_path"],
+    )
+
+
 def load_library(db: sqlite3.Connection, *, allow_short: bool = False) -> Library:
     """Playable programs with a known runtime. Missing or raw files never reach the schedule,
-    nor (unless `allow_short`) files shorter than half their expected runtime."""
+    nor (unless `allow_short`) files shorter than half their expected runtime or than a
+    quarter of their show's median episode. A whole episode under half a two-part runtime
+    still airs at three quarters of its show's median (SHOW_WHOLE_RATIO)."""
     ready = _ready(allow_short)
     episodes: dict[str, list[Program]] = defaultdict(list)
+    held: dict[str, list[sqlite3.Row]] = defaultdict(list)
     for r in db.execute(
         "SELECT * FROM (SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.title,"
-        f" e.air_date, {_PLAYABLE} FROM episodes e JOIN shows s ON s.id = e.show_id)" + ready
+        f" e.air_date, e.source_seconds, {_PLAYABLE} FROM episodes e"
+        " JOIN shows s ON s.id = e.show_id)" + _READY
     ):
-        episodes[r["show_id"]].append(
-            Program(
-                show=r["show_id"],
-                kind="episode",
-                title=r["show_title"],
-                season=r["season"],
-                episode=r["episode"],
-                episode_title=r["title"],
-                air_date=_date(r["air_date"]),
-                seconds=r["play_seconds"],
-                path=r["play_path"],
-            )
-        )
+        if allow_short or not is_short(r["play_seconds"], r["expected_seconds"]):
+            episodes[r["show_id"]].append(_episode(r))
+        elif _whole(r):
+            held[r["show_id"]].append(r)
+    if not allow_short:
+        for show, rows in held.items():
+            usual = episodes[show]
+            if len(usual) >= SHOW_MEDIAN_MIN:
+                floor = median(p.seconds for p in usual) * SHOW_WHOLE_RATIO
+                usual += [_episode(r) for r in rows if r["play_seconds"] >= floor]
+        episodes = defaultdict(list, {k: _typical(v) for k, v in episodes.items() if v})
     movies = {
         r["id"]: Program(
             show=r["id"],
