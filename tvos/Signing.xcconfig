@@ -1,0 +1,9 @@
+// Signing for the Apple TV app. Committed with no team: Brandon's Personal Team id goes in
+// tvos/Local.xcconfig (gitignored), one line, set once:
+//
+//   DEVELOPMENT_TEAM = ABCDE12345
+//
+// `make tvos` regenerates the Xcode project from project.yml, which would clear a team picked in
+// Xcode; a team set in Local.xcconfig survives. See tvos/README.md, section 3.
+DEVELOPMENT_TEAM =
+#include? "Local.xcconfig"

@@ -1,0 +1,34 @@
+{
+  "channel": {"id": "kfix", "name": "KFIX (Fixture)", "type": "network", "number": 2, "call_sign": "KFIX", "network": "FOX", "on_air": true, "library": false, "launch": null},
+  "now": "1998-11-11T19:44:34.058464-05:00",
+  "offset_seconds": 679.058464,
+  "current": {
+    "kind": "episode", "start": "1998-11-11T19:33:15-05:00", "end": "1998-11-11T19:56:11-05:00", "seconds": 1376,
+    "title": "The Hendersons", "show": "the-hendersons", "episode_title": "Dad Gets Famous", "season": 5, "episode": 12,
+    "air_date": "1994-02-03", "new": false, "transplant": false, "holiday": null, "holiday_name": null,
+    "description": "A made-up family has a made-up week.",
+    "media_url": "/media/fixture/the-hendersons-s05e12.mp4"
+  },
+  "next": [
+    {
+      "kind": "bumper", "start": "1998-11-11T19:56:11-05:00", "end": "1998-11-11T19:56:21-05:00", "seconds": 10,
+      "title": "KFIX", "show": null, "episode_title": "", "season": null, "episode": null,
+      "air_date": null, "new": false, "transplant": false, "holiday": null, "holiday_name": null,
+      "media_url": null
+    },
+    {
+      "kind": "movie", "start": "1998-11-11T19:56:21-05:00", "end": "1998-11-11T21:21:21-05:00", "seconds": 5100,
+      "title": "Fixture: The Movie", "show": "fixture-the-movie", "episode_title": "", "season": null, "episode": null,
+      "air_date": "1998-10-17", "new": true, "transplant": false, "holiday": "halloween", "holiday_name": "Halloween",
+      "description": "",
+      "media_url": "/media/_demo/fixture-the-movie.mp4"
+    },
+    {
+      "kind": "filler", "start": "1998-11-11T21:21:21-05:00", "end": "1998-11-11T21:30:00-05:00", "seconds": 519,
+      "title": "Off the air", "show": null, "episode_title": "", "season": null, "episode": null,
+      "air_date": null, "new": false, "transplant": true, "holiday": null, "holiday_name": null,
+      "description": "",
+      "media_url": null
+    }
+  ]
+}
